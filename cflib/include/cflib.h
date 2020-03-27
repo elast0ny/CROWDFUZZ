@@ -1,6 +1,7 @@
 #ifndef __CF_PLUGIN_H_
 #define  __CF_PLUGIN_H_
 
+#include <stddef.h>
 #include "cf_error.h"
 #include "cf_core.h"
 #include "cf_store.h"
