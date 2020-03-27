@@ -1,0 +1,13 @@
+[package]
+name = "cflib"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "cflib"
+
+[dependencies]
+libc = "0.2"
+[build-dependencies]
+bindgen = "0.*"

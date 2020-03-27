@@ -1,0 +1,18 @@
+[package]
+name = "basic_run"
+version = "0.0.5"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[lib]
+path = "src/basic_run.rs"
+name = "basic_run"
+crate-type = ["cdylib"] # Compile to native lib
+
+[dependencies]
+cflib = {path="../cflib"}
+cfg-if = "0.*"
+
+#[target.'cfg(windows)'.dependencies]
+#winapi = { version = "0.3", features = ["winuser"] }
+

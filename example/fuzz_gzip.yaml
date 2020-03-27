@@ -1,0 +1,12 @@
+"input" : "input/"
+"state" : "state/"
+"results" : "results/"
+"target" : 'C:\Program Files\Git\usr\bin\gzip.exe'
+"target_args" : ["-cd"]
+#"input_file_name" : "cur_input"
+
+"fuzz_loop" : 
+  - '..\target\debug\basic_select.dll'
+  - '..\target\debug\basic_mutate.dll'
+  - '..\target\debug\basic_run.dll'
+  - '..\target\debug\basic_postrun.dll'

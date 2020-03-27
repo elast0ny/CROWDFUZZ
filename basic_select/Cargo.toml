@@ -1,0 +1,15 @@
+[package]
+name = "basic_select"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "basic_select"
+path = "src/basic_select.rs"
+crate-type = ["cdylib"] # Compile to native lib
+
+[dependencies]
+cflib = {path='../cflib'}
+rand = "0.*"
+rust-crypto = "0.*"

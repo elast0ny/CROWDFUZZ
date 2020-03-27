@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "cflib",
+    "core",
+    "basic_select",
+    "basic_mutate",
+    "basic_run",
+    "basic_postrun",
+]

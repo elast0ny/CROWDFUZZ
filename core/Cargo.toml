@@ -1,0 +1,23 @@
+[package]
+name = "crowdfuzz"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+libc = "0.*"
+shared_memory = "0.*"
+env_logger = "0.*"
+log = "0.*"
+cflib = {path="../cflib"}
+
+clap = "2.*"
+serde = "1.*"
+serde_derive = "1.*"
+serde_yaml = "0.*"
+ctrlc = "3.*"
+crc = "1.*"
+libloading = "0.*"
+
+core_affinity = "0.*"
+sysinfo = "0.*"

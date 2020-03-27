@@ -1,0 +1,14 @@
+[package]
+name = "basic_mutate"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[lib]
+path = "src/basic_mutate.rs"
+name = "basic_mutate"
+crate-type = ["cdylib"] # Compile to native lib
+
+[dependencies]
+cflib = {path="../cflib"}
+rand = "0.*"
