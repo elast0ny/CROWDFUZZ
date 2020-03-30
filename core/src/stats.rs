@@ -9,7 +9,7 @@ use crate::config::*;
 use crate::plugin::*;
 
 pub struct CoreStats {
-    pub reserved_stats: usize,
+    pub shmem_idx: usize,
     pub stats_memory: SharedMem,
 
     pub state: &'static mut cflib::CoreState,
@@ -24,7 +24,7 @@ impl CoreStats {
     pub fn new(shmem: SharedMem) -> CoreStats {
         unsafe {
             CoreStats {
-                reserved_stats: 0,
+                shmem_idx: 0,
                 stats_memory: shmem,
                 state: &mut *null_mut(),
 
@@ -40,8 +40,9 @@ impl CoreStats {
 
     pub fn init(&mut self, config: &Config) {
         self.state = unsafe { &mut *(self.stats_memory.get_ptr() as *mut _) };
-        self.reserved_stats += size_of_val(self.state);
+        
         *self.state = cflib::CORE_INITIALIZING;
+        self.shmem_idx += size_of_val(self.state);
 
         // Add the headers for the "core" component
         self.add_component(None);
@@ -93,16 +94,16 @@ impl CoreStats {
             Some(ref plugin) => plugin.name(),
         };
 
-        if self.reserved_stats + size_of::<cflib::StatHeader>() + plugin_name.len()
+        if self.shmem_idx + size_of::<cflib::StatHeader>() + plugin_name.len()
             >= self.stats_memory.get_size()
         {
             panic!("No more space to allocate stats... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", self.stats_memory.get_size());
         }
 
         let comp_header: &mut cflib::StatHeader =
-            unsafe { &mut *(shmem_base.add(self.reserved_stats) as *mut _) };
-        self.reserved_stats += size_of::<cflib::StatHeader>();
-        let tag_ptr: *mut u8 = unsafe { shmem_base.add(self.reserved_stats) as *mut _ };
+            unsafe { &mut *(shmem_base.add(self.shmem_idx) as *mut _) };
+        self.shmem_idx += size_of::<cflib::StatHeader>();
+        let tag_ptr: *mut u8 = unsafe { shmem_base.add(self.shmem_idx) as *mut _ };
         // Write the header values
         comp_header.stat_type = cflib::STAT_NEWCOMPONENT;
         comp_header.tag_len = plugin_name.len() as u16;
@@ -118,7 +119,7 @@ impl CoreStats {
             tag_ptr,
             comp_header.tag_len
         );
-        self.reserved_stats += plugin_name.len();
+        self.shmem_idx += plugin_name.len();
 
         //Every component gets an exec time stat
         let exec_time_ptr: *mut u64 =
@@ -136,10 +137,10 @@ impl CoreStats {
         };
     }
 
-    pub fn add<I: AsRef<str>>(
+    pub fn add(
         &mut self,
         stat_type: cflib::StatType,
-        tag: I,
+        tag: &str,
         requested_sz: u16,
     ) -> *mut c_void {
         if *self.state != cflib::CORE_INITIALIZING {
@@ -149,15 +150,15 @@ impl CoreStats {
         // Get the actual data size & data type
         let mut data_type: cflib::StatType = stat_type;
         let data_sz: u16 = match stat_type {
-            cflib::STAT_NEWCOMPONENT => panic!("Plugins cannot use StatId::NewComponent"),
+            cflib::STAT_NEWCOMPONENT => panic!("Plugins cannot use STAT_NEWCOMPONENT"),
             cflib::STAT_BYTES => requested_sz,
             cflib::STAT_STR => requested_sz,
             _ => {
-                let expected_sz = cflib::stat_data_len(stat_type).unwrap();
+                let expected_sz = cflib::stat_static_data_len(stat_type).unwrap();
                 if expected_sz != requested_sz {
                     warn!(
-                        "Plugin requested bad size ({}) for stat {:?}",
-                        requested_sz, stat_type
+                        "Plugin requested bad size ({}) for stat {:?}... (should be {})",
+                        requested_sz, stat_type, expected_sz,
                     );
                     data_type = cflib::STAT_BYTES;
                     requested_sz
@@ -166,51 +167,48 @@ impl CoreStats {
                 }
             }
         };
-        let header_sz: u16 = cflib::stat_header_len(data_type);
+        let header_sz: u16 = cflib::stat_header_size(data_type);
 
-        if self.reserved_stats + header_sz as usize + tag.as_ref().len() + data_sz as usize
+        if self.shmem_idx + header_sz as usize + tag.len() + data_sz as usize
             >= self.stats_memory.get_size()
         {
             panic!("No more space to allocate stats... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", self.stats_memory.get_size());
         }
 
         let shmem_base: *mut u8 = self.stats_memory.get_ptr() as *mut _;
-        let header_ptr: *mut u8 = unsafe { &mut *(shmem_base.add(self.reserved_stats) as *mut _) };
-        self.reserved_stats += header_sz as usize;
+        let header_ptr: *mut u8 = unsafe { &mut *(shmem_base.add(self.shmem_idx) as *mut _) };
+        self.shmem_idx += header_sz as usize;
 
         //init the header
-        let comp_header: &mut cflib::StatHeader = match data_type {
-            cflib::STAT_BYTES | cflib::STAT_STR => unsafe { &mut *(header_ptr as *mut _) },
-            _ => {
+        let comp_header: &mut cflib::StatHeader = match cflib::stat_static_data_len(stat_type) {
+            Some(_) => unsafe { &mut *(header_ptr as *mut _) },
+            None => {
                 let dyn_header: &mut cflib::StatHeaderDyn = unsafe { &mut *(header_ptr as *mut _) };
+                dyn_header.data_len = data_sz;
                 &mut dyn_header.header
             }
         };
         comp_header.stat_type = data_type;
-        comp_header.tag_len = tag.as_ref().len() as u16;
+        comp_header.tag_len = tag.len() as u16;
 
         // Write the tag
-        let tag_ptr: *mut u8 = unsafe { &mut *(shmem_base.add(self.reserved_stats) as *mut _) };
+        let tag_ptr: *mut u8 = unsafe { &mut *(shmem_base.add(self.shmem_idx) as *mut _) };
         unsafe {
-            std::ptr::copy(tag.as_ref().as_ptr(), tag_ptr, tag.as_ref().len());
+            std::ptr::copy(tag.as_ptr(), tag_ptr, tag.len());
         }
-        if data_sz as usize + self.reserved_stats > self.stats_memory.get_size() {
-            panic!("Plugin has requested ")
-        }
-        self.reserved_stats += tag.as_ref().len();
+        self.shmem_idx += tag.len();
 
         //Return pointer to data
-        let data_ptr: *mut c_void =
-            unsafe { &mut *(shmem_base.add(self.reserved_stats) as *mut _) };
-        self.reserved_stats += data_sz as usize;
+        let data_ptr: *mut c_void = unsafe{shmem_base.add(self.shmem_idx) as *mut _};
+        self.shmem_idx += data_sz as usize;
 
         trace!(
             "{:?}(\"{}\") : Header {:p} Tag {:p}[{}] Data {:p}[{}]",
             data_type,
-            tag.as_ref(),
+            tag,
             header_ptr,
             tag_ptr,
-            tag.as_ref().len(),
+            tag.len(),
             data_ptr,
             data_sz
         );

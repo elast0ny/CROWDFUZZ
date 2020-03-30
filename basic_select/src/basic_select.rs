@@ -61,7 +61,7 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
             data: std::ptr::null_mut(),
         },
         stats: CustomStats {
-            num_inputs:  &mut *(core.add_stat("num_inputs", Stat::USIZE) as *mut _),
+            num_inputs:  &mut *(core.add_stat("num_inputs", NewStat::USize) as *mut _),
         },
         input_providers: Vec::new(),
     })};

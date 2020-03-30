@@ -1,7 +1,7 @@
 pub mod bindings;
 pub use crate::bindings::*;
 
-use ::std::mem::size_of;
+use ::std::mem::{size_of};
 use ::std::os::raw::c_void;
 
 #[macro_export]
@@ -143,39 +143,40 @@ pub type PluginDestroyCbRaw = unsafe extern "C" fn(
         priv_data: *mut ::std::os::raw::c_void,
     ) -> PluginStatus;
 
-pub fn stat_header_len(some_val: StatType) -> u16 {
+pub fn stat_header_size(some_val: StatType) -> u16 {
     return match some_val {
         STAT_BYTES | STAT_STR => size_of::<StatHeaderDyn>(),
         _ => size_of::<StatHeader>(),
     } as u16;
 }
 
-pub fn stat_data_len(some_val: StatType) -> Option<u16> {
+
+pub fn stat_static_data_len(some_val: StatType) -> Option<u16> {
     match some_val {
-        STAT_NEWCOMPONENT => Some(0),
-        STAT_BYTES => None,
-        STAT_STR => None, 
-        STAT_USIZE => Some(size_of::<usize>() as u16),
-        STAT_ISIZE => Some(size_of::<isize>() as u16),
-        STAT_U8 => Some(size_of::<u8>() as u16),
-        STAT_U16 => Some(size_of::<u16>() as u16),
-        STAT_U32 => Some(size_of::<u32>() as u16),
-        STAT_U64 => Some(size_of::<u64>() as u16),
-        STAT_I8 => Some(size_of::<i8>() as u16),
-        STAT_I16 => Some(size_of::<i16>() as u16),
-        STAT_I32 => Some(size_of::<i32>() as u16),
-        STAT_I64 => Some(size_of::<i64>() as u16),
+        crate::STAT_NEWCOMPONENT => Some(0),
+        crate::STAT_BYTES => None,
+        crate::STAT_STR => None, 
+        crate::STAT_USIZE => Some(size_of::<usize>() as u16),
+        crate::STAT_ISIZE => Some(size_of::<isize>() as u16),
+        crate::STAT_U8 => Some(size_of::<u8>() as u16),
+        crate::STAT_U16 => Some(size_of::<u16>() as u16),
+        crate::STAT_U32 => Some(size_of::<u32>() as u16),
+        crate::STAT_U64 => Some(size_of::<u64>() as u16),
+        crate::STAT_I8 => Some(size_of::<i8>() as u16),
+        crate::STAT_I16 => Some(size_of::<i16>() as u16),
+        crate::STAT_I32 => Some(size_of::<i32>() as u16),
+        crate::STAT_I64 => Some(size_of::<i64>() as u16),
         _ => panic!("Invalid StatType given..."),
     }
 }
 
-pub enum Stat {
+pub enum NewStat {
     #[doc(hidden)]
     NewComponent(u16),
     Bytes(u16),
     Str(u16),
-    USIZE,
-    ISIZE,
+    USize,
+    ISize,
     U8,
     U16,
     U32,
@@ -186,32 +187,39 @@ pub enum Stat {
     I64,
 }
 
-impl Stat {
-
+impl NewStat {
     pub fn len(&self) -> u16 {
-        match *self {
-            Stat::NewComponent(v) => v,
-            Stat::Bytes(v) => v,
-            Stat::Str(v) => v,
-            _ => stat_data_len(self.to_id()).unwrap(),
-        }
+        (match &self {
+            &NewStat::NewComponent(v) => *v as usize,
+            &NewStat::Bytes(v) => *v as usize,
+            &NewStat::Str(v) => *v as usize,
+            &NewStat::USize => size_of::<usize>(),
+            &NewStat::ISize => size_of::<isize>(),
+            &NewStat::U8 => size_of::<u8>(),
+            &NewStat::U16 => size_of::<u16>(),
+            &NewStat::U32 => size_of::<u32>(),
+            &NewStat::U64 => size_of::<u64>(),
+            &NewStat::I8 => size_of::<i8>(),
+            &NewStat::I16 => size_of::<i16>(),
+            &NewStat::I32 => size_of::<i32>(),
+            &NewStat::I64 => size_of::<i64>(),
+        }) as u16
     }
-
     pub fn to_id(&self) -> StatType {
-        match *self {
-            Stat::NewComponent(_) => STAT_NEWCOMPONENT,
-            Stat::Bytes(_) => STAT_BYTES,
-            Stat::Str(_) => STAT_STR,
-            Stat::USIZE => STAT_USIZE,
-            Stat::ISIZE => STAT_ISIZE,
-            Stat::U8 => STAT_U8,
-            Stat::U16 => STAT_U16,
-            Stat::U32 => STAT_U32,
-            Stat::U64 => STAT_U64,
-            Stat::I8 => STAT_I8,
-            Stat::I16 => STAT_I16,
-            Stat::I32 => STAT_I32,
-            Stat::I64 => STAT_I64,
+        match &self {
+            &NewStat::NewComponent(_) => STAT_NEWCOMPONENT,
+            &NewStat::Bytes(_) => STAT_BYTES,
+            &NewStat::Str(_) => STAT_STR,
+            &NewStat::USize => STAT_USIZE,
+            &NewStat::ISize => STAT_ISIZE,
+            &NewStat::U8 => STAT_U8,
+            &NewStat::U16 => STAT_U16,
+            &NewStat::U32 => STAT_U32,
+            &NewStat::U64 => STAT_U64,
+            &NewStat::I8 => STAT_I8,
+            &NewStat::I16 => STAT_I16,
+            &NewStat::I32 => STAT_I32,
+            &NewStat::I64 => STAT_I64,
         }
     }
 }
@@ -255,7 +263,7 @@ impl CoreInterface {
             (self.log.unwrap())(self.ctx, log_level, msg.as_ptr(), msg.len());
         }
     }
-    pub fn add_stat<S: AsRef<str>>(&self, tag: S, stat_type: Stat) -> *mut c_void {
+    pub fn add_stat<S: AsRef<str>>(&self, tag: S, stat_type: NewStat) -> *mut c_void {
         let tag = tag.as_ref();
         unsafe {
             (self.add_stat.unwrap())(self.ctx, stat_type.to_id(), tag.as_ptr(), tag.len() as u16, stat_type.len())

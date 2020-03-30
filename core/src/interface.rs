@@ -104,9 +104,9 @@ pub extern "C" fn add_stat_cb(
     size_required: u16,
 ) -> *mut c_void {
     let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
-    let tag_copy: String = String::from(unsafe {
+    let tag_copy = unsafe {
         std::str::from_utf8_unchecked(std::slice::from_raw_parts(tag_ptr, tag_len as usize))
-    });
+    };
 
     core.stats.add(stat_type, tag_copy, size_required)
 }
