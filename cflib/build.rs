@@ -43,6 +43,8 @@ fn main() {
         .header("include/cflib.h")
         .size_t_is_usize(true)
         .rustfmt_bindings(true)
+        .blacklist_item("wchar_t")
+        .blacklist_item("max_align_t")
         .parse_callbacks(Box::new(StringMacroCallback {
             macros: extra_macros.clone(),
         }))
