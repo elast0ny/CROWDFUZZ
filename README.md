@@ -2,7 +2,7 @@
 A plugin based fuzzer core
 
 ## Why Another Fuzzer
-This fuzzer does not bring any novel techniques to fuzzing on its own. The goal is to create a flexible and performant fuzzer __core__ that implements common functionalities that every fuzzer out there implements (folder management, UI, statistics, automation/deployement...) and allow researchers and developers to focus their efforts on fuzzing related work (file mutation, testcase generation, process spawning...).
+This fuzzer does not bring any novel techniques to fuzzing on its own. The goal is to create a flexible and performant fuzzer __core__ that implements common functionalities that every fuzzer out there implements (folder management, UI, statistics, automation/deployement...) and allow researchers and developers to focus their efforts on fuzzing related work (file mutation, testcase generation, faster process spawning...).
 
 ## Specific Goals
 
@@ -19,10 +19,15 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
   * Private data store
   * Key based public store
 
+## Frontends
+|Name | Status | Description |
+|-----|--------|-------------|
+|cf_tui| Done | Basic terminal based UI to monitor fuzzers on a local machine|
+| ? | TODO | Web based fuzzer stat aggregator to see multiple fuzzers from multiple servers fuzzing the same project |
 ## List of Plugins
 |Name | Status | Description |
 |-----|--------|-------------|
-|basic| In-Progress |Very basic set of plugins. Should be used as reference/examples. See : [basic_select](basic_select/), [basic_mutate](basic_mutate/), [basic_run](basic_run/), [basic_postrun](basic_postrun/) |
+|basic| Done |Very basic set of plugins. Should be used as reference/examples. See : [basic_select](basic_select/), [basic_mutate](basic_mutate/), [basic_run](basic_run/), [basic_postrun](basic_postrun/) |
 |afl-fuzz| TODO | Standalone plugin suite that re-implements [afl-fuzz](http://lcamtuf.coredump.cx/afl/)|
 |winafl| TODO | Implement the execution technique from [winAFL](https://github.com/ivanfratric/winafl). Re-use `afl-fuzz` plugins for the rest|
 |angora| TODO | Standalone plugin suite that re-implements [AngoraFuzz](https://github.com/AngoraFuzzer/Angora)|
@@ -39,7 +44,7 @@ crate-type = ["cdylib"] # Compile to native lib
 cflib = "0.*"
 ```
 ```Rust
-cflib::register!(name, "my plugin name");
+cflib::register!(name, "my_better_plugin");
 cflib::register!(init, my_init_function);
 // etc...
 ```
@@ -47,7 +52,7 @@ __C/C++__
 ```C
 #include "cflib/include/cflib.h"
 //<...>
-extern const char SYMBOL_PLUGIN_NAME = "my plugin name";
+extern const char SYMBOL_PLUGIN_NAME = "my_fast_mutator";
 extern PluginInitCb SYMBOL_PLUGIN_INIT = my_init_function;
 // etc...
 ```
