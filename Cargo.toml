@@ -6,4 +6,5 @@ members = [
     "basic_mutate",
     "basic_run",
     "basic_postrun",
+    "cf_tui",
 ]
