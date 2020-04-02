@@ -1,4 +1,3 @@
-
 // TODO : Windows has no nice ways to detect a target application crash.
 //      Either the target returns normaly setting its exit status to whatever arbitrary value it picks
 //      or the target crashes and windows sets the exception code in the exit status.
@@ -13,7 +12,7 @@ pub fn get_exception(status: &ExitStatus) -> Option<i32> {
             } else {
                 None
             }
-        },
+        }
         None => None,
     }
 }
