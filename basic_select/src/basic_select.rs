@@ -1,11 +1,11 @@
 use std::collections::HashSet;
-use std::slice::from_raw_parts;
-use std::ffi::{c_void};
+use std::ffi::c_void;
 use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
 use std::iter::FromIterator;
 use std::path::PathBuf;
+use std::slice::from_raw_parts;
 use std::vec::Vec;
 
 use ::crypto::digest::Digest;
@@ -42,29 +42,31 @@ struct State {
     input_providers: Vec<&'static CVec>,
 }
 
-
 extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
     let core = cflib::ctx_unchecked!(core_ptr);
 
     // Init our state struct
-    let mut state: Box<State> = unsafe {Box::new(State {
-        hasher: Sha1::new(),
-        unique_files: HashSet::new(),
-        file_list: Vec::new(),
-        result_dir: PathBuf::new(),
-        cur_file_idx: 0,
-        cur_file: Vec::with_capacity(1),
-        pub_file_path: [0; 512],
-        pub_cur_file: CVec {
-            length: 0,
-            capacity: 0,
-            data: std::ptr::null_mut(),
-        },
-        stats: CustomStats {
-            num_inputs:  &mut *(core.add_stat("num_inputs", NewStat::USize) as *mut _),
-        },
-        input_providers: Vec::new(),
-    })};
+    let mut state: Box<State> = unsafe {
+        Box::new(State {
+            hasher: Sha1::new(),
+            unique_files: HashSet::new(),
+            file_list: Vec::new(),
+            result_dir: PathBuf::new(),
+            cur_file_idx: 0,
+            cur_file: Vec::with_capacity(1),
+            pub_file_path: [0; 512],
+            pub_cur_file: CVec {
+                length: 0,
+                capacity: 0,
+                data: std::ptr::null_mut(),
+            },
+            stats: CustomStats {
+                num_inputs: &mut *(core.add_stat("total_inputs", NewStat::USize).unwrap()
+                    as *mut _),
+            },
+            input_providers: Vec::new(),
+        })
+    };
 
     // Add values we control to the store
     core.store_push_back(KEY_INPUT_PATH_STR, state.pub_file_path.as_mut_ptr());
@@ -86,11 +88,24 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
     state.result_dir = PathBuf::from(state_dir);
     state.result_dir.push("queue/");
     if let Err(e) = std::fs::create_dir_all(&state.result_dir) {
-        core.log(LOGLEVEL_ERROR, &format!("Failed to create output directory '{}' : {}", state.result_dir.to_string_lossy(), e));    
+        core.log(
+            LOGLEVEL_ERROR,
+            &format!(
+                "Failed to create output directory '{}' : {}",
+                state.result_dir.to_string_lossy(),
+                e
+            ),
+        );
         return STATUS_PLUGINERROR;
     }
-    core.log(LOGLEVEL_INFO, &format!("Writing output files to '{}'", state.result_dir.to_string_lossy()));
-    
+    core.log(
+        LOGLEVEL_INFO,
+        &format!(
+            "Writing output files to '{}'",
+            state.result_dir.to_string_lossy()
+        ),
+    );
+
     // Scrape the input folders to gather a file list
     if let Err(e) = state.init_from_disk(core, &[input_dir]) {
         return e;
@@ -102,7 +117,9 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
         );
         return STATUS_PLUGINERROR;
     }
-    state.result_dir.push("placeholderfilenameplaceholderfilename00");
+    state
+        .result_dir
+        .push("placeholderfilenameplaceholderfilename00");
     core.log(
         LOGLEVEL_INFO,
         &format!("Found {} file(s) to use as input(s)", state.file_list.len()),
@@ -121,7 +138,7 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
     if i == 0 {
         core.log(LOGLEVEL_WARN, &format!("No plugins have registered as new input providers... Input list will remain static"));
     }
-    
+
     STATUS_SUCCESS
 }
 
@@ -136,7 +153,10 @@ extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> P
     STATUS_SUCCESS
 }
 
-extern "C" fn select_testcase(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
+extern "C" fn select_testcase(
+    core_ptr: *mut CoreInterface,
+    priv_data: *mut c_void,
+) -> PluginStatus {
     let (core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
 
     // Save any new inputs to disk
@@ -151,7 +171,7 @@ extern "C" fn select_testcase(core_ptr: *mut CoreInterface, priv_data: *mut c_vo
     if let Err(e) = state.load_cur_file(core) {
         return e;
     }
-    
+
     // Set current filepath
     let input_path = state.file_list[state.cur_file_idx].to_string_lossy();
     let path_bytes = input_path.as_bytes();
@@ -165,7 +185,6 @@ extern "C" fn select_testcase(core_ptr: *mut CoreInterface, priv_data: *mut c_vo
 }
 
 impl State {
-
     pub fn set_cur_file(&mut self, idx: usize) {
         self.cur_file_idx = idx;
     }
@@ -177,7 +196,11 @@ impl State {
             Err(e) => {
                 core.log(
                     LOGLEVEL_ERROR,
-                    &format!("Error openning file \"{}\" : {}", fpath.to_string_lossy(), e),
+                    &format!(
+                        "Error openning file \"{}\" : {}",
+                        fpath.to_string_lossy(),
+                        e
+                    ),
                 );
                 return Err(STATUS_PLUGINERROR);
             }
@@ -193,9 +216,13 @@ impl State {
         }
         Ok(())
     }
-    
+
     /// updates current state of input files from list of directories
-    pub fn init_from_disk(&mut self, core: &mut CoreInterface, dirs: &[&str]) -> Result<(), PluginStatus> {
+    pub fn init_from_disk(
+        &mut self,
+        core: &mut CoreInterface,
+        dirs: &[&str],
+    ) -> Result<(), PluginStatus> {
         let cur_files: HashSet<&PathBuf> = HashSet::from_iter(self.file_list.iter());
         let mut new_files = Vec::new();
         let mut all_dirs: Vec<&str> = Vec::with_capacity(dirs.len() + 1);
@@ -234,7 +261,7 @@ impl State {
                 new_files.push(entry_path.path());
             }
         }
-        
+
         self.file_list.append(&mut new_files);
         *self.stats.num_inputs = self.file_list.len();
 
@@ -250,13 +277,13 @@ impl State {
 
             self.unique_files.insert(cur_hash);
         }
-        
+
         Ok(())
     }
 
     pub fn save_new_inputs(&mut self, core: &mut CoreInterface) -> Result<(), PluginStatus> {
         let mut cur_hash: [u8; 20] = [0; 20];
-        
+
         for cur_input_provider in &self.input_providers {
             // number of files that should be kept
             if cur_input_provider.length == 0 {
@@ -273,7 +300,8 @@ impl State {
                 // Hash the file contents
                 self.hasher.reset();
                 for chunk in chunk_list {
-                    self.hasher.input(unsafe{from_raw_parts(chunk.second as _, chunk.first)});
+                    self.hasher
+                        .input(unsafe { from_raw_parts(chunk.second as _, chunk.first) });
                 }
                 self.hasher.result(&mut cur_hash);
 
@@ -284,19 +312,28 @@ impl State {
                 if self.unique_files.contains(&cur_hash) {
                     continue;
                 }
-    
+
                 // Save to state folder
                 self.result_dir.set_file_name(self.hasher.result_str());
                 let mut f = match File::create(&self.result_dir) {
                     Ok(f) => f,
                     Err(e) => {
-                        core.log(LOGLEVEL_ERROR, &format!("Failed to create new file '{}' : {}", self.result_dir.to_string_lossy(), e));
+                        core.log(
+                            LOGLEVEL_ERROR,
+                            &format!(
+                                "Failed to create new file '{}' : {}",
+                                self.result_dir.to_string_lossy(),
+                                e
+                            ),
+                        );
                         return Err(STATUS_PLUGINERROR);
                     }
                 };
                 //Write chunks to disk
                 for chunk in chunk_list {
-                    if let Err(e) = f.write_all(unsafe{from_raw_parts(chunk.second as _, chunk.first)}) {
+                    if let Err(e) =
+                        f.write_all(unsafe { from_raw_parts(chunk.second as _, chunk.first) })
+                    {
                         core.log(LOGLEVEL_ERROR, &format!("Failed to write file : {}", e));
                         return Err(STATUS_PLUGINERROR);
                     }

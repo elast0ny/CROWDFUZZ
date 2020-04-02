@@ -2,8 +2,8 @@ use ::cflib::*;
 
 extern crate rand;
 use rand::{thread_rng, Rng};
+use std::ffi::c_void;
 use std::slice::from_raw_parts_mut;
-use std::ffi::{c_void};
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
 cflib::register!(init, init);
@@ -19,9 +19,9 @@ struct State {
 
 extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
     let core = cflib::ctx_unchecked!(core_ptr);
-    
+
     let mut state = Box::new(State {
-        input_bytes: unsafe { &*std::ptr::null()},
+        input_bytes: unsafe { &*std::ptr::null() },
         input_chunks: Vec::with_capacity(16),
         chunk_list: CVec {
             length: 0,
@@ -55,15 +55,25 @@ extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> P
 }
 
 ///Select random byte in input and assign random value to it
-extern "C" fn mutate_testcase(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
+extern "C" fn mutate_testcase(
+    core_ptr: *mut CoreInterface,
+    priv_data: *mut c_void,
+) -> PluginStatus {
     let (_core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
-    
-    let input_bytes: &mut [u8] = unsafe{from_raw_parts_mut(state.input_bytes.data as *mut _, state.input_bytes.length)};
+
+    let input_bytes: &mut [u8] =
+        unsafe { from_raw_parts_mut(state.input_bytes.data as *mut _, state.input_bytes.length) };
 
     // Randomly mutate some bytes
     let num_of_bytes_mutated = thread_rng().gen_range(0, state.input_bytes.length as _);
     for _ in 0..num_of_bytes_mutated {
-        let rand_byte = unsafe{&mut *(state.input_bytes.data.offset(thread_rng().gen_range(0, state.input_bytes.length as _)) as *mut u8)};
+        let rand_byte = unsafe {
+            &mut *(state
+                .input_bytes
+                .data
+                .offset(thread_rng().gen_range(0, state.input_bytes.length as _))
+                as *mut u8)
+        };
         *rand_byte = thread_rng().gen::<u8>();
     }
 
@@ -79,4 +89,3 @@ extern "C" fn mutate_testcase(core_ptr: *mut CoreInterface, priv_data: *mut c_vo
 
     STATUS_SUCCESS
 }
-
