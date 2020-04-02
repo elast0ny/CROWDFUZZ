@@ -65,13 +65,13 @@ extern "C" fn mutate_testcase(
         unsafe { from_raw_parts_mut(state.input_bytes.data as *mut _, state.input_bytes.length) };
 
     // Randomly mutate some bytes
-    let num_of_bytes_mutated = thread_rng().gen_range(0, state.input_bytes.length as _);
+    let num_of_bytes_mutated = thread_rng().gen_range(0, state.input_bytes.length as usize);
     for _ in 0..num_of_bytes_mutated {
         let rand_byte = unsafe {
             &mut *(state
                 .input_bytes
                 .data
-                .offset(thread_rng().gen_range(0, state.input_bytes.length as _))
+                .offset(thread_rng().gen_range(0, state.input_bytes.length as usize) as isize)
                 as *mut u8)
         };
         *rand_byte = thread_rng().gen::<u8>();
