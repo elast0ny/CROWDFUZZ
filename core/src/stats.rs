@@ -92,14 +92,6 @@ impl CoreStats {
         self.header.pid = std::process::id();
         self.header.state = cflib::CORE_INITIALIZING;
 
-        trace!(
-            "{:p} : {} {} {}",
-            shmem_base,
-            self.header.stat_len,
-            self.header.pid,
-            self.header.state
-        );
-
         self.header.stat_len += size_of::<cflib::StatFileHeader>() as u32;
 
         // Add the stats for the "core" component
@@ -133,15 +125,6 @@ impl CoreStats {
         unsafe {
             std::ptr::copy(plugin_name.as_ptr(), tag_ptr, comp_header.tag_len as usize);
         }
-        trace!(
-            "\n{:p} {}\n{:p} {}\n{:p} {}\n",
-            comp_header,
-            comp_header.stat_type,
-            &(comp_header.tag_len),
-            comp_header.tag_len,
-            tag_ptr,
-            plugin_name,
-        );
         self.header.stat_len += plugin_name.len() as u32;
 
         //Every component gets an exec time stat
