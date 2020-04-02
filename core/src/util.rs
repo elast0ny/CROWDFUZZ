@@ -4,73 +4,65 @@ use sysinfo::{ProcessExt, RefreshKind, System, SystemExt};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
-/// Binds the current process to the specified core. If None, the function will search existing processes
-/// and increment the core ID for every fuzzer process that is running
-pub fn bind_to_core(target_core: Option<usize>) -> Option<usize> {
-    let core_ids = core_affinity::get_core_ids().unwrap();
-    let mut target_core_id = 0;
-    if let Some(id) = target_core {
-        if target_core_id >= core_ids.len() {
-            warn!(
-                "Tried to bind to core {} but only {} cores available...",
-                target_core_id,
-                core_ids.len()
-            );
-            return None;
-        }
+use crate::Result;
 
-        target_core_id = id;
+pub fn get_num_instances() -> Result<usize> {
+    let mut num_found = 0;
+    let prog_name: &'static str;
+    if cfg!(target_os = "windows") {
+        prog_name = concat!(env!("CARGO_PKG_NAME"), ".exe");
     } else {
-        let prog_name: &'static str;
-        if cfg!(target_os = "windows") {
-            prog_name = concat!(env!("CARGO_PKG_NAME"), ".exe");
-        } else {
-            prog_name = env!("CARGO_PKG_NAME");
-        }
-
-        debug!(
-            "No core id provided, will pick core number (# of '{}' - 1)",
-            prog_name
-        );
-
-        let system = System::new_with_specifics(RefreshKind::new().with_processes());
-        let prog_name: &'static str;
-        if cfg!(target_os = "windows") {
-            prog_name = concat!(env!("CARGO_PKG_NAME"), ".exe");
-        } else {
-            prog_name = env!("CARGO_PKG_NAME");
-        }
-        for (_pid, info) in system.get_processes().iter() {
-            if info.name() == prog_name {
-                target_core_id += 1;
-            }
-        }
-        if target_core_id == 0 {
-            error!("Unable to find our own process '{}' in the currently running processes on the system...", prog_name);
-            return None;
-        }
-
-        target_core_id -= 1;
+        prog_name = env!("CARGO_PKG_NAME");
     }
 
-    if target_core_id > core_ids.len() {
-        error!(
-            "Trying to bind to core #{} but only {} cores available",
+    let system = System::new_with_specifics(RefreshKind::new().with_processes());
+    
+    for (_pid, info) in system.get_processes().iter() {
+        if info.name() == prog_name {
+            num_found += 1;
+        }
+    }
+    
+    // We should at least find ourselves
+    if num_found == 0 {
+        return Err(From::from(format!("Unable to find ourselves in the current running processes... (Looking for '{}')", prog_name)));
+    }
+    
+    
+    Ok(num_found)
+}
+
+/// Binds the current process to the specified core. If None, the function will search existing processes
+/// and increment the core ID for every fuzzer process that is running
+pub fn bind_to_core(target_core: isize) -> usize {
+    let core_ids = core_affinity::get_core_ids().unwrap();
+    let requested_core = target_core % core_ids.len() as isize;
+    let target_core_id: usize;
+    if target_core < 0 {
+        target_core_id = (core_ids.len() as isize + requested_core) as usize;
+    } else {
+        target_core_id = requested_core as usize;
+    }
+
+    // Make sure we are getting a valid cpu index
+    if requested_core != target_core {
+        warn!(
+            "Tried to bind to core {} but only {} cores available, using core {} instead...",
+            target_core,
+            core_ids.len(),
             target_core_id,
-            core_ids.len()
         );
-        return None;
     }
 
     core_affinity::set_for_current(core_ids[target_core_id]);
-    return Some(target_core_id);
+    return target_core_id;
 }
 
 /// Spawns another instance of the fuzzer
 pub fn spawn_next_instance(
     instance_num: isize,
     cwd: &Path,
-) -> Result<Option<Child>, std::io::Error> {
+) -> Result<Option<Child>> {
     let mut new_inst_num = instance_num;
     if instance_num <= 0 {
         new_inst_num = (core_affinity::get_core_ids().unwrap().len() as isize) + instance_num;
@@ -121,7 +113,8 @@ pub fn spawn_next_instance(
         .spawn()
     {
         Ok(child) => {
-            //info!("{}", std::str::from_utf8(&child.wait_with_output().unwrap().stderr).unwrap());
+            //debug!("{}", std::str::from_utf8(&child.wait_with_output().unwrap().stderr).unwrap());
+            //None
             Some(child)
         }
         Err(e) => {
@@ -131,7 +124,7 @@ pub fn spawn_next_instance(
                 process_path,
                 new_args
             );
-            return Err(e);
+            return Err(From::from(e));
         }
     };
 

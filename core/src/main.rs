@@ -82,18 +82,19 @@ fn main() -> Result<()> {
         "Invalid number provided for --instances : {}",
         args.value_of("instances").unwrap()
     ));
-    let bind_cpu_arg = args.value_of("bind_cpu").map(|s| {
-        s.parse::<isize>()
-            .expect(&format!("Invalid number passed for --bind_cpu : {}", s))
-    });
-    match bind_cpu_arg {
-        Some(s) if s < 0 => {}
-        _ => match util::bind_to_core(bind_cpu_arg.map(|id| id as usize)) {
-            Some(id) => info!("Bound to core #{}", id),
-            None => {
-                warn!("Failed to bind to requested core...");
-            }
+    let bind_cpu_id: Option<isize> = match args.value_of("bind_cpu") {
+        None => {
+            info!("Automatically selecting cpu core");
+            Some(util::get_num_instances()? as isize * -1)
         },
+        Some(v) => {
+            let v = v.parse::<isize>().expect("Invalid number provided for --bind-cpu");
+            if v < 0 {
+                None
+            } else {
+                Some(v)
+            }
+        }
     };
 
     // Initialize the fuzzer core based on the yaml config
@@ -109,6 +110,10 @@ fn main() -> Result<()> {
             info!("Waiting for other instances to exit because of --single-run");
             let _ = p.wait();
         }
+    }
+    // Bind now that we arent spawning anything else
+    if let Some(core_id) = bind_cpu_id {
+        info!("Bound to core #{}", util::bind_to_core(core_id));    
     }
 
     //Add a ctrl-c handler
