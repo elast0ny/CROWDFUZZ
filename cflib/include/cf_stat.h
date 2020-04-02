@@ -23,6 +23,14 @@ const char CORE_FUZZING = 1;
 const char CORE_EXITING = 2;
 typedef const char CoreState;
 
+
+
+typedef struct {
+    unsigned int stat_len;
+    unsigned int pid;
+    CoreState state;
+} StatFileHeader;
+
 // Stat header layout in memory
 typedef struct {
     char stat_type;
@@ -36,6 +44,6 @@ typedef struct {
 } StatHeaderDyn;
 
 ///Requests memory space for a stat item from the core
-typedef void* (*AddStatCb)(const CoreCtx* const, StatType stat_type, const unsigned char *tag, const unsigned short tag_len, const unsigned short size_required);
+typedef void* (*AddStatCb)(const CoreCtx* const, const unsigned char *tag, const unsigned short tag_len, StatType stat_type, const unsigned short size_required);
 
 #endif

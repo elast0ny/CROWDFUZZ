@@ -1,12 +1,12 @@
 use ::bindgen;
-use ::bindgen::callbacks::{ParseCallbacks, MacroParsingBehavior};
+use ::bindgen::callbacks::{MacroParsingBehavior, ParseCallbacks};
 use std::path::PathBuf;
 
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
-use std::str::from_utf8;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
+use std::str::from_utf8;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
 struct StringMacroCallback {
@@ -14,15 +14,14 @@ struct StringMacroCallback {
 }
 
 impl ParseCallbacks for StringMacroCallback {
-
     fn will_parse_macro(&self, _name: &str) -> MacroParsingBehavior {
         //if name.starts_with("_SYMBOL") || name.starts_with("SYMBOL") || name.starts_with("KEY") {
-        //    MacroParsingBehavior::Ignore    
+        //    MacroParsingBehavior::Ignore
         //} else {
-            MacroParsingBehavior::Default
+        MacroParsingBehavior::Default
         //}
     }
-    
+
     /// Convert all C string macros to rust &'static str
     fn str_macro(&self, name: &str, value: &[u8]) {
         let mut new_name = format!("{}_STR", name);
@@ -59,8 +58,12 @@ fn main() {
         .write_to_file(&bindings_path)
         .expect("Couldn't write bindings!");
 
-    let mut f = OpenOptions::new().write(true).append(true).open(&bindings_path).unwrap();
-    for (k,v) in extra_macros.lock().unwrap().drain() {
+    let mut f = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(&bindings_path)
+        .unwrap();
+    for (k, v) in extra_macros.lock().unwrap().drain() {
         writeln!(f, "pub const {}: &'static str = \"{}\";", k, v).unwrap();
     }
 }

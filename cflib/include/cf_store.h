@@ -19,6 +19,10 @@
 #define KEY_TARGET_PATH "target_bin"
 /// Target arguments
 #define KEY_TARGET_ARGS "target_args"
+/// Number of last runs to count for averages
+#define KEY_AVG_DENOMINATOR "avg_denominator"
+/// Number of the current exec in progress
+#define KEY_CUR_EXEC_NUM "num_execs"
 /// Working directory of the project
 #define KEY_CWD "cwd"
 
