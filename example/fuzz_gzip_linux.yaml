@@ -1,0 +1,11 @@
+"input" : "input/"
+"state" : "state/"
+"results" : "results/"
+"target" : '/usr/bin/gzip'
+"target_args" : ["-cd"]
+
+"fuzz_loop" : 
+  - '../target/debug/libbasic_select.so'
+  - '../target/debug/libbasic_mutate.so'
+  - '../target/debug/libbasic_run.so'
+  - '../target/debug/libbasic_postrun.so'
