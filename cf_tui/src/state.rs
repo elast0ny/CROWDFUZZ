@@ -36,7 +36,7 @@ pub struct Fuzzer {
 
 impl Fuzzer {
     pub fn is_alive(pid: u32, sys_info: &mut System) -> bool {
-        match sys_info.get_process(pid as usize) {
+        match sys_info.get_process(pid as _) {
             None => false,
             Some(p) => p.name().starts_with("crowdfuzz"),
         }
@@ -203,8 +203,8 @@ impl State {
                     }
                     m
                 }
-                Err(e) => {
-                    println!("Failed to open {} : {:?}", fpath.to_string_lossy(), e);
+                Err(_e) => {
+                    //println!("Failed to open {} : {:?}", fpath.to_string_lossy(), e);
                     continue;
                 }
             };
