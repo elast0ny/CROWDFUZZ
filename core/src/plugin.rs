@@ -94,8 +94,12 @@ impl Plugin {
             }
         };
 
-        let init_fn =
-            get_callback_or_ret!(module, plugin_name, cflib::_SYMBOL_PLUGIN_INIT_STR, cflib::PluginInitCbRaw);
+        let init_fn = get_callback_or_ret!(
+            module,
+            plugin_name,
+            cflib::_SYMBOL_PLUGIN_INIT_STR,
+            cflib::PluginInitCbRaw
+        );
         let validate_fn = get_callback_or_ret!(
             module,
             plugin_name,

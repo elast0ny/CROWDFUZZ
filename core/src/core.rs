@@ -36,6 +36,7 @@ pub struct Core {
 
     /// Public plugin data store
     pub store: HashMap<String, VecDeque<*mut c_void>>,
+    pub avg_denominator: u64,
 
     ///Holds context information available to plugins
     pub core_if: cflib::CoreInterface,
@@ -96,7 +97,7 @@ impl Core {
             plugin_chain: plugin_chain,
             store: HashMap::new(),
             fuzz_loop_start: fuzz_loop_start_idx,
-
+            avg_denominator: 0,
             core_if: cflib::CoreInterface {
                 priv_data: null_mut(),
                 store_push_back: Some(store_push_back_cb),
@@ -114,72 +115,10 @@ impl Core {
         //Link the opaque core ptr for the plugin interface callbacks
         core.core_if.ctx = (&(*core)) as *const Core as *const _;
 
+        core.init_stats()?;
         core.init_public_store();
-        core.init_stats();
 
         return Ok(core);
-    }
-
-    pub fn init_public_store(&mut self) {
-        self.store_push_front(
-            String::from(cflib::KEY_INPUT_DIR_STR),
-            Box::leak(Box::new(cflib::CTuple::from_utf8(&self.config.input))) as *mut _ as _,
-        );
-        self.store_push_front(
-            String::from(cflib::KEY_STATE_DIR_STR),
-            Box::leak(Box::new(cflib::CTuple::from_utf8(&self.config.state))) as *mut _ as _,
-        );
-        self.store_push_front(
-            String::from(cflib::KEY_RESULT_DIR_STR),
-            Box::leak(Box::new(cflib::CTuple::from_utf8(&self.config.results))) as *mut _ as _,
-        );
-        self.store_push_front(
-            String::from(cflib::KEY_TARGET_PATH_STR),
-            Box::leak(Box::new(cflib::CTuple::from_utf8(&self.config.target))) as *mut _ as _,
-        );
-        self.store_push_front(
-            String::from(cflib::KEY_CWD_STR),
-            Box::leak(Box::new(cflib::CTuple::from_utf8(&self.config.cwd))) as *mut _ as _,
-        );
-        self.store_push_front(
-            String::from(cflib::KEY_CUR_INPUT_PATH_STR),
-            Box::leak(Box::new(cflib::CTuple::from_utf8(&self.config.input_file_name))) as *mut _ as _,
-        );
-        let mut tmp_list = Vec::with_capacity(self.config.target_args.len());
-        for arg in &self.config.target_args {
-            tmp_list.push(Box::leak(Box::new(cflib::CTuple::from_utf8(arg))) as *mut _ as _);
-        }
-        for arg in &tmp_list {
-            self.store_push_back(String::from(cflib::KEY_TARGET_ARGS_STR), *arg);
-        }
-    }
-
-    pub fn clear_public_store(&mut self) {
-        // Free up resources taken our store keys
-        let mut tmp_ptr: *mut cflib::CTuple;
-        unsafe {
-            let _: Box<cflib::CTuple> = Box::from_raw(self.store_pop_front(cflib::KEY_INPUT_DIR_STR) as *mut _);
-            let _: Box<cflib::CTuple> = Box::from_raw(self.store_pop_front(cflib::KEY_STATE_DIR_STR) as *mut _);
-            let _: Box<cflib::CTuple> = Box::from_raw(self.store_pop_front(cflib::KEY_RESULT_DIR_STR) as *mut _);
-            let _: Box<cflib::CTuple> =
-                Box::from_raw(self.store_pop_front(cflib::KEY_TARGET_PATH_STR) as *mut _);
-            let _: Box<cflib::CTuple> = Box::from_raw(self.store_pop_front(cflib::KEY_CWD_STR) as *mut _);
-            let _: Box<cflib::CTuple> =
-                Box::from_raw(self.store_pop_front(cflib::KEY_CUR_INPUT_PATH_STR) as *mut _);
-
-            while !{
-                tmp_ptr = self.store_pop_front(cflib::KEY_TARGET_ARGS_STR) as _;
-                tmp_ptr
-            }
-            .is_null()
-            {
-                Box::from_raw(tmp_ptr);
-            }
-        }
-    }
-
-    pub fn init_stats(&mut self) {
-        self.stats.init(&self.config);
     }
 
     pub fn exiting(&self) -> bool {
@@ -203,7 +142,7 @@ impl Core {
             let plugin: &mut Plugin =
                 unsafe { self.plugin_chain.get_unchecked_mut(self.cur_plugin_id) };
 
-            self.stats.add_component(Some(plugin));
+            self.stats.add_component(Some(plugin))?;
 
             debug!("\t\"{}\"->init()", plugin.name());
             if let Err(e) = plugin.init(&mut self.core_if) {
@@ -263,13 +202,14 @@ impl Core {
         let num_plugins = self.plugin_chain.len();
 
         self.cur_plugin_id = 0;
-        *self.stats.state = cflib::CORE_FUZZING;
+        self.stats.header.state = cflib::CORE_FUZZING;
         *self.stats.num_execs += 1;
+        self.avg_denominator += 1;
         info!("Running through all plugins once");
         for plugin in self.plugin_chain.iter_mut() {
             if self.exiting.load(Ordering::Relaxed) {
                 self.cur_plugin_id = num_plugins;
-                *self.stats.state = cflib::CORE_EXITING;
+                self.stats.header.state = cflib::CORE_EXITING;
                 return Err(From::from(format!(
                     "CTRL-C while testing plugins (about to call '{}')",
                     plugin.name()
@@ -281,12 +221,11 @@ impl Core {
             plugin_start = Instant::now();
             plugin.do_work(&mut self.core_if)?;
             time_elapsed = plugin_start.elapsed().as_micros() as u64;
+
             total_plugin_time += time_elapsed;
 
             //Adjust the plugin's exec_time average
-            *plugin.exec_time = plugin
-                .exec_time
-                .wrapping_add(time_elapsed.wrapping_sub(*plugin.exec_time) / *self.stats.num_execs);
+            cflib::update_average(plugin.exec_time, time_elapsed, *self.stats.num_execs);
             debug!("\tTime : {} us", *plugin.exec_time);
 
             self.cur_plugin_id += 1;
@@ -295,12 +234,18 @@ impl Core {
         self.cur_plugin_id = num_plugins;
 
         //Adjust the core's exec_time average
-        time_elapsed = core_start.elapsed().as_micros() as u64 - total_plugin_time;
-        *self.stats.exec_time = self
-            .stats
-            .exec_time
-            .wrapping_add(time_elapsed.wrapping_sub(*self.stats.exec_time) / *self.stats.num_execs);
-        debug!("\tCore time : {} us", *self.stats.exec_time);
+        time_elapsed = core_start.elapsed().as_micros() as u64;
+        cflib::update_average(
+            self.stats.total_exec_time,
+            time_elapsed,
+            *self.stats.num_execs,
+        );
+        cflib::update_average(
+            self.stats.core_exec_time,
+            time_elapsed - total_plugin_time,
+            *self.stats.num_execs,
+        );
+        debug!("\tCore time : {} us", *self.stats.core_exec_time);
 
         info!("Ready to go !");
         Ok(())
@@ -319,39 +264,46 @@ impl Core {
             core_start = Instant::now();
             total_plugin_time = 0;
             *self.stats.num_execs += 1;
-
+            if self.avg_denominator < 20 {
+                self.avg_denominator += 1;
+            }
             self.cur_plugin_id = self.fuzz_loop_start;
 
             for plugin in fuzz_loop_plugins.iter_mut() {
                 if self.exiting.load(Ordering::Relaxed) {
                     self.cur_plugin_id = num_plugins;
-                    *self.stats.state = cflib::CORE_EXITING;
+                    self.stats.header.state = cflib::CORE_EXITING;
                     return Err(From::from(format!(
                         "CTRL-C while fuzzing (about to call '{}')",
                         plugin.name()
                     )));
                 }
 
+                // run the plugin
                 plugin_start = Instant::now();
                 plugin.do_work(&mut self.core_if)?;
                 time_elapsed = plugin_start.elapsed().as_micros() as u64;
-                total_plugin_time += time_elapsed;
 
-                //Adjust the plugin's exec_time average
-                *plugin.exec_time = plugin.exec_time.wrapping_add(
-                    time_elapsed.wrapping_sub(*plugin.exec_time) / *self.stats.num_execs,
-                );
+                total_plugin_time += time_elapsed;
+                cflib::update_average(plugin.exec_time, time_elapsed, self.avg_denominator);
                 self.cur_plugin_id += 1;
             }
 
-            //if *self.stats.num_execs == 2 {
+            //if *self.stats.num_execs == 3 {
+            //    info!("Execs : {}", *self.stats.num_execs);
             //    return Ok(());
             //}
 
-            //Adjust the core's exec_time average
-            time_elapsed = core_start.elapsed().as_micros() as u64 - total_plugin_time;
-            *self.stats.exec_time = self.stats.exec_time.wrapping_add(
-                time_elapsed.wrapping_sub(*self.stats.exec_time) / *self.stats.num_execs,
+            time_elapsed = core_start.elapsed().as_micros() as u64;
+            cflib::update_average(
+                self.stats.total_exec_time,
+                time_elapsed,
+                self.avg_denominator,
+            );
+            cflib::update_average(
+                self.stats.core_exec_time,
+                time_elapsed - total_plugin_time,
+                self.avg_denominator,
             );
         }
     }

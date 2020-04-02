@@ -28,7 +28,10 @@ pub fn bind_to_core(target_core: Option<usize>) -> Option<usize> {
             prog_name = env!("CARGO_PKG_NAME");
         }
 
-        debug!("No core id provided, will pick core number (# of '{}' - 1)", prog_name);
+        debug!(
+            "No core id provided, will pick core number (# of '{}' - 1)",
+            prog_name
+        );
 
         let system = System::new_with_specifics(RefreshKind::new().with_processes());
         let prog_name: &'static str;

@@ -1,21 +1,67 @@
 use std::ffi::c_void;
-use std::mem::{size_of, size_of_val};
+use std::mem::size_of;
+use std::path::Path;
 use std::ptr::null_mut;
 
 use ::log::*;
 use ::shared_memory::SharedMem;
 
-use crate::config::*;
+use crate::core::Core;
 use crate::plugin::*;
+use crate::Result;
+
+impl Core {
+    pub fn init_stats(&mut self) -> Result<()> {
+        self.stats.init(&self.config.prefix)?;
+
+        // Iteration time
+        self.stats.total_exec_time =
+            unsafe { &mut *(self.stats.add("total_exec_time", cflib::NewStat::U64)? as *mut _) };
+        *self.stats.total_exec_time = 0;
+        // Total execs
+        self.stats.num_execs =
+            unsafe { &mut *(self.stats.add("total_execs", cflib::NewStat::U64)? as *mut _) };
+        *self.stats.num_execs = 0;
+        // Working dir
+        self.stats.cwd = unsafe {
+            &mut *(self.stats.add(
+                "working_dir",
+                cflib::NewStat::Str(self.config.cwd.len() as u16),
+            )? as *mut _)
+        };
+        cflib::update_dyn_stat(self.stats.cwd as *mut _, &self.config.cwd);
+        // Fuzz cmdline
+        let mut cmd_line: String = String::with_capacity(256);
+        let fpath = Path::new(&self.config.target);
+        cmd_line.push_str(fpath.file_name().unwrap().to_str().unwrap());
+        for arg in &self.config.target_args {
+            cmd_line.push(' ');
+            cmd_line.push_str(&arg);
+        }
+        self.stats.cmd_line = unsafe {
+            &mut *(self
+                .stats
+                .add("cmd_line", cflib::NewStat::Str(cmd_line.len() as u16))?
+                as *mut _)
+        };
+        cflib::update_dyn_stat(self.stats.cmd_line as *mut _, &cmd_line);
+        //Target binary hash
+        self.stats.target_hash =
+            unsafe { &mut *(self.stats.add("bin_hash", cflib::NewStat::U32)? as *mut _) };
+        *self.stats.target_hash =
+            crc::crc32::checksum_ieee(&std::fs::read(&self.config.target).unwrap());
+
+        Ok(())
+    }
+}
 
 pub struct CoreStats {
-    pub shmem_idx: usize,
+    prefix: String,
     pub stats_memory: SharedMem,
-
-    pub state: &'static mut cflib::CoreState,
-    pub pid: &'static mut u32,
+    pub header: &'static mut cflib::StatFileHeader,
     pub cwd: *mut c_void,
-    pub exec_time: &'static mut u64,
+    pub total_exec_time: &'static mut u64,
+    pub core_exec_time: &'static mut u64,
     pub num_execs: &'static mut u64,
     pub cmd_line: *mut c_void,
     pub target_hash: &'static mut u32,
@@ -24,13 +70,12 @@ impl CoreStats {
     pub fn new(shmem: SharedMem) -> CoreStats {
         unsafe {
             CoreStats {
-                shmem_idx: 0,
+                prefix: String::new(),
                 stats_memory: shmem,
-                state: &mut *null_mut(),
-
-                pid: &mut *null_mut(),
+                header: &mut *null_mut(),
                 cwd: null_mut(),
-                exec_time: &mut *null_mut(),
+                total_exec_time: &mut *null_mut(),
+                core_exec_time: &mut *null_mut(),
                 num_execs: &mut *null_mut(),
                 cmd_line: null_mut(),
                 target_hash: &mut *null_mut(),
@@ -38,72 +83,49 @@ impl CoreStats {
         }
     }
 
-    pub fn init(&mut self, config: &Config) {
-        self.state = unsafe { &mut *(self.stats_memory.get_ptr() as *mut _) };
-        
-        *self.state = cflib::CORE_INITIALIZING;
-        self.shmem_idx += size_of_val(self.state);
+    pub fn init(&mut self, core_name: &str) -> Result<()> {
+        self.prefix = core_name.to_string();
+        let shmem_base: *mut u8 = self.stats_memory.get_ptr() as *mut _;
+        // Init the stats header
+        self.header = unsafe { &mut *(shmem_base as *mut _) };
+        self.header.stat_len = 0;
+        self.header.pid = std::process::id();
+        self.header.state = cflib::CORE_INITIALIZING;
 
-        // Add the headers for the "core" component
-        self.add_component(None);
+        trace!(
+            "{:p} : {} {} {}",
+            shmem_base,
+            self.header.stat_len,
+            self.header.pid,
+            self.header.state
+        );
 
-        // Fuzzer pid
-        self.pid =
-            unsafe { &mut *(self.add(cflib::STAT_U32, "pid", size_of_val(self.pid) as u16) as *mut _) };
-        *self.pid = std::process::id();
+        self.header.stat_len += size_of::<cflib::StatFileHeader>() as u32;
 
-        // Current Working directory
-        /*
-        self.cwd = self.add(CFSTAT_STR, "cwd", config.cwd.to_bytes_with_nul().len() as u16);
-        Stat::write_cstr(self.cwd, &config.cwd);
-        */
-        self.num_execs = unsafe {
-            &mut *(self.add(cflib::STAT_U64, "num_execs", size_of_val(self.num_execs) as u16) as *mut _)
-        };
-        *self.num_execs = 0;
+        // Add the stats for the "core" component
+        self.add_component(None)?;
 
-        //Fuzz command line
-        /*
-        let mut cmd_line: String = String::with_capacity(256);
-        cmd_line.push_str(Path::new(config.target.to_str().unwrap()).file_name().unwrap().to_str().unwrap());
-        for arg in &config.target_args {
-            cmd_line.push(' ');
-            cmd_line.push_str(arg.to_str().unwrap());
-        }
-        let cmd_line: CString = CString::new(cmd_line).unwrap();
-        self.cmd_line = self.add(CFSTAT_STR, "cmd_line", cmd_line.to_bytes_with_nul().len() as _);
-        Stat::write_cstr(self.cmd_line, cmd_line);
-        */
-
-        //Target binary hash
-        self.target_hash = unsafe {
-            &mut *(self.add(
-                cflib::STAT_U32,
-                "target_id",
-                size_of_val(self.target_hash) as u16,
-            ) as *mut _)
-        };
-        *self.target_hash = crc::crc32::checksum_ieee(&std::fs::read(&config.target).unwrap());
+        Ok(())
     }
 
-    pub fn add_component(&mut self, plugin: Option<&mut Plugin>) {
+    pub fn add_component(&mut self, plugin: Option<&mut Plugin>) -> Result<()> {
         let shmem_base: *mut u8 = self.stats_memory.get_ptr() as *mut _;
 
         let plugin_name: &str = match plugin {
-            None => "core",
+            None => &self.prefix,
             Some(ref plugin) => plugin.name(),
         };
 
-        if self.shmem_idx + size_of::<cflib::StatHeader>() + plugin_name.len()
+        if self.header.stat_len as usize + size_of::<cflib::StatHeader>() + plugin_name.len()
             >= self.stats_memory.get_size()
         {
-            panic!("No more space to allocate stats... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", self.stats_memory.get_size());
+            return Err(From::from(format!("No more space to allocate stats... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", self.stats_memory.get_size())));
         }
 
         let comp_header: &mut cflib::StatHeader =
-            unsafe { &mut *(shmem_base.add(self.shmem_idx) as *mut _) };
-        self.shmem_idx += size_of::<cflib::StatHeader>();
-        let tag_ptr: *mut u8 = unsafe { shmem_base.add(self.shmem_idx) as *mut _ };
+            unsafe { &mut *(shmem_base.add(self.header.stat_len as _) as *mut _) };
+        self.header.stat_len += size_of::<cflib::StatHeader>() as u32;
+        let tag_ptr: *mut u8 = unsafe { shmem_base.add(self.header.stat_len as _) as *mut _ };
         // Write the header values
         comp_header.stat_type = cflib::STAT_NEWCOMPONENT;
         comp_header.tag_len = plugin_name.len() as u16;
@@ -112,107 +134,97 @@ impl CoreStats {
             std::ptr::copy(plugin_name.as_ptr(), tag_ptr, comp_header.tag_len as usize);
         }
         trace!(
-            "{:?}(\"{}\") : Header {:p} Tag {:p}[{}]",
-            comp_header.stat_type,
-            plugin_name,
+            "\n{:p} {}\n{:p} {}\n{:p} {}\n",
             comp_header,
+            comp_header.stat_type,
+            &(comp_header.tag_len),
+            comp_header.tag_len,
             tag_ptr,
-            comp_header.tag_len
+            plugin_name,
         );
-        self.shmem_idx += plugin_name.len();
+        self.header.stat_len += plugin_name.len() as u32;
 
         //Every component gets an exec time stat
-        let exec_time_ptr: *mut u64 =
-            unsafe { &mut *(self.add(cflib::STAT_U64, "exec_time", size_of::<u64>() as u16) as *mut _) };
-
         match plugin {
             None => {
-                self.exec_time = unsafe { &mut *exec_time_ptr };
-                *self.exec_time = 0;
+                let exec_time_ptr: *mut u64 =
+                    unsafe { &mut *(self.add("core_exec_time", cflib::NewStat::U64)? as *mut _) };
+                self.core_exec_time = unsafe { &mut *exec_time_ptr };
+                *self.core_exec_time = 0;
             }
             Some(cur_plugin) => {
+                let exec_time_ptr: *mut u64 =
+                    unsafe { &mut *(self.add("exec_time", cflib::NewStat::U64)? as *mut _) };
                 cur_plugin.exec_time = unsafe { &mut *exec_time_ptr };
                 *cur_plugin.exec_time = 0;
             }
         };
+
+        Ok(())
     }
 
-    pub fn add(
-        &mut self,
-        stat_type: cflib::StatType,
-        tag: &str,
-        requested_sz: u16,
-    ) -> *mut c_void {
-        if *self.state != cflib::CORE_INITIALIZING {
-            panic!("Plugins cannot reserve stat space after initialization");
+    pub fn add(&mut self, tag: &str, new_stat: cflib::NewStat) -> Result<*mut c_void> {
+        if self.header.state != cflib::CORE_INITIALIZING {
+            return Err(From::from(
+                "Plugins cannot reserve stat space after initialization".to_owned(),
+            ));
         }
 
-        // Get the actual data size & data type
-        let mut data_type: cflib::StatType = stat_type;
-        let data_sz: u16 = match stat_type {
-            cflib::STAT_NEWCOMPONENT => panic!("Plugins cannot use STAT_NEWCOMPONENT"),
-            cflib::STAT_BYTES => requested_sz,
-            cflib::STAT_STR => requested_sz,
-            _ => {
-                let expected_sz = cflib::stat_static_data_len(stat_type).unwrap();
-                if expected_sz != requested_sz {
-                    warn!(
-                        "Plugin requested bad size ({}) for stat {:?}... (should be {})",
-                        requested_sz, stat_type, expected_sz,
-                    );
-                    data_type = cflib::STAT_BYTES;
-                    requested_sz
-                } else {
-                    expected_sz
-                }
-            }
-        };
-        let header_sz: u16 = cflib::stat_header_size(data_type);
+        let header_len = new_stat.header_len();
+        let mut max_data_len = new_stat.max_len() as usize;
+        if header_len != size_of::<cflib::StatHeader>() {
+            // prepend a cur_data_len field to dynamic fields
+            max_data_len += size_of::<u16>();
+        }
 
-        if self.shmem_idx + header_sz as usize + tag.len() + data_sz as usize
-            >= self.stats_memory.get_size()
-        {
-            panic!("No more space to allocate stats... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", self.stats_memory.get_size());
+        if header_len + tag.len() + max_data_len >= self.stats_memory.get_size() {
+            return Err(
+                From::from(
+                    format!(
+                        "No more space to allocate stat {:?}... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", new_stat, self.stats_memory.get_size()
+                    )
+                )
+            );
         }
 
         let shmem_base: *mut u8 = self.stats_memory.get_ptr() as *mut _;
-        let header_ptr: *mut u8 = unsafe { &mut *(shmem_base.add(self.shmem_idx) as *mut _) };
-        self.shmem_idx += header_sz as usize;
+        let header_ptr: *mut u8 =
+            unsafe { &mut *(shmem_base.add(self.header.stat_len as _) as *mut _) };
+        self.header.stat_len += header_len as u32;
 
         //init the header
-        let comp_header: &mut cflib::StatHeader = match cflib::stat_static_data_len(stat_type) {
-            Some(_) => unsafe { &mut *(header_ptr as *mut _) },
-            None => {
-                let dyn_header: &mut cflib::StatHeaderDyn = unsafe { &mut *(header_ptr as *mut _) };
-                dyn_header.data_len = data_sz;
-                &mut dyn_header.header
-            }
+        let stat_header = if header_len == size_of::<cflib::StatHeader>() {
+            unsafe { &mut *(header_ptr as *mut _) }
+        } else {
+            let dyn_header: &mut cflib::StatHeaderDyn = unsafe { &mut *(header_ptr as *mut _) };
+            dyn_header.data_len = max_data_len as u16;
+            &mut dyn_header.header
         };
-        comp_header.stat_type = data_type;
-        comp_header.tag_len = tag.len() as u16;
+        stat_header.stat_type = new_stat.to_id();
+        stat_header.tag_len = tag.len() as u16;
 
         // Write the tag
-        let tag_ptr: *mut u8 = unsafe { &mut *(shmem_base.add(self.shmem_idx) as *mut _) };
+        let tag_ptr: *mut u8 =
+            unsafe { &mut *(shmem_base.add(self.header.stat_len as _) as *mut _) };
         unsafe {
             std::ptr::copy(tag.as_ptr(), tag_ptr, tag.len());
         }
-        self.shmem_idx += tag.len();
+        self.header.stat_len += tag.len() as u32;
 
         //Return pointer to data
-        let data_ptr: *mut c_void = unsafe{shmem_base.add(self.shmem_idx) as *mut _};
-        self.shmem_idx += data_sz as usize;
+        let data_ptr: *mut c_void = unsafe { shmem_base.add(self.header.stat_len as _) as *mut _ };
+        self.header.stat_len += max_data_len as u32;
 
         trace!(
-            "{:?}(\"{}\") : Header {:p} Tag {:p}[{}] Data {:p}[{}]",
-            data_type,
+            "(\"{}\") : Header {:p} Tag {:p}[{}] Data {:p} {:?}",
             tag,
             header_ptr,
             tag_ptr,
             tag.len(),
             data_ptr,
-            data_sz
+            new_stat
         );
 
-        data_ptr
+        Ok(data_ptr)
     }
 }

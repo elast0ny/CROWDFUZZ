@@ -64,7 +64,11 @@ pub extern "C" fn store_get_mut_cb(
 
     core.store_get_mut(store_key, index)
 }
-pub extern "C" fn store_len_cb(ctx: *const cflib::CoreCtx, key: *const u8, key_len: usize) -> usize {
+pub extern "C" fn store_len_cb(
+    ctx: *const cflib::CoreCtx,
+    key: *const u8,
+    key_len: usize,
+) -> usize {
     let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
     let store_key: &str =
         unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(key, key_len)) };
@@ -98,15 +102,22 @@ pub extern "C" fn log_cb(
 
 pub extern "C" fn add_stat_cb(
     ctx: *const cflib::CoreCtx,
-    stat_type: cflib::StatType,
     tag_ptr: *const u8,
     tag_len: u16,
-    size_required: u16,
+    stat_type: cflib::StatType,
+    max_len: u16,
 ) -> *mut c_void {
     let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
     let tag_copy = unsafe {
         std::str::from_utf8_unchecked(std::slice::from_raw_parts(tag_ptr, tag_len as usize))
     };
 
-    core.stats.add(stat_type, tag_copy, size_required)
+    let new_stat = cflib::NewStat::from_stat_type(stat_type, max_len);
+    match core.stats.add(tag_copy, new_stat) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!("Error adding stat : {:?}", e);
+            std::ptr::null_mut()
+        }
+    }
 }

@@ -39,7 +39,7 @@ fn main() -> Result<()> {
                 .help("Sets the fuzzer prefix")
                 .default_value("fuzzer")
                 .hidden(true) //This shouldnt really be needed by anyone
-                .takes_value(true)
+                .takes_value(true),
         )
         .arg(
             Arg::with_name("instances")
@@ -47,26 +47,26 @@ fn main() -> Result<()> {
                 .long("instances")
                 .help("How many fuzzers to spawn (1 == 1, 0 == #cores, -1 == (#cores - 1))")
                 .default_value("1")
-                .takes_value(true)
+                .takes_value(true),
         )
         .arg(
             Arg::with_name("single_run")
                 .short("s")
                 .long("single_run")
-                .help("Stop after one iteration")
+                .help("Stop after one iteration"),
         )
         .arg(
             Arg::with_name("bind_cpu")
                 .long("bind_cpu")
                 .takes_value(true)
-                .help("Bind to a specific cpu core (-1 to disable)")
+                .help("Bind to a specific cpu core (-1 to disable)"),
         )
         .arg(
             Arg::with_name("verbose")
                 .short("v")
                 .long("verbose")
                 .multiple(true)
-                .help("Sets the level of verbosity")
+                .help("Sets the level of verbosity"),
         )
         .get_matches();
 
@@ -129,6 +129,7 @@ fn main() -> Result<()> {
             break;
         }
 
+        core.stats.header.state = cflib::CORE_FUZZING;
         info!("Core & plugins initialized succesfully");
 
         //Run through once
