@@ -21,13 +21,28 @@ use crate::*;
 pub struct UiState {
     pub cur_fuzz_idx: usize,
     pub tab_header: String,
+    pub footer: Vec<String>,
+    pub footer_cpu_idx: usize,
+    pub footer_mem_idx: usize,
 }
 
 impl UiState {
     pub fn new() -> Self {
+        let mut footer = Vec::new();
+        footer.push("Load [Cpu ".to_owned());
+        let footer_cpu_idx = footer.len();
+        footer.push("000%".to_owned());
+        footer.push(", Mem ".to_owned());
+        let footer_mem_idx = footer.len();
+        footer.push("000%".to_owned());
+        footer.push("]".to_owned());
+
         let mut state = Self {
             cur_fuzz_idx: 0,
             tab_header: String::with_capacity(12),
+            footer,
+            footer_cpu_idx,
+            footer_mem_idx 
         };
 
         state.update_tab_header(0);
@@ -39,6 +54,17 @@ impl UiState {
         self.tab_header.clear();
         let _ = write!(&mut self.tab_header, "Fuzzers({})", num_fuzzers);
     }
+
+    pub fn update_footer(&mut self, cpu_load: usize, mem_load: usize) {
+        use std::fmt::Write;
+        let cpu_str = &mut self.footer[self.footer_cpu_idx];
+        cpu_str.clear();
+        let _ = write!(cpu_str, "{:02}%", cpu_load);
+
+        let mem_str = &mut self.footer[self.footer_mem_idx];
+        mem_str.clear();
+        let _ = write!(mem_str, "{:02}%", mem_load);
+    } 
 }
 
 pub fn init_ui() -> Result<Terminal<CrosstermBackend<Stdout>>, Box<dyn Error>> {
@@ -96,11 +122,11 @@ pub fn draw<B: Backend>(mut f: Frame<B>, state: &mut State) {
         draw_fuzzer(&mut f, state, rects[1]);
     }
 
-    draw_bottom(&mut f, state, rects[2]);
+    draw_footer(&mut f, state, rects[2]);
 }
 
-pub fn draw_bottom<B: Backend>(f: &mut Frame<B>, state: &mut State, area: Rect) {
-    let mut text = Vec::new();
+pub fn draw_footer<B: Backend>(f: &mut Frame<B>, state: &mut State, area: Rect) {
+    
     state.sys_info.refresh_cpu();
     state.sys_info.refresh_memory();
     let cpu_speed = state
@@ -109,34 +135,35 @@ pub fn draw_bottom<B: Backend>(f: &mut Frame<B>, state: &mut State, area: Rect) 
         .iter()
         .fold(0f32, |t, c| t + c.get_cpu_usage()) as usize
         / state.sys_info.get_processors().len();
-    let cpu_speed_str = format!("{:02}%", cpu_speed);
-    text.push(Text::raw("Load [Cpu "));
-    text.push(Text::styled(
-        cpu_speed_str.as_str(),
-        if cpu_speed > 85 {
-            Style::default().fg(Color::Red)
-        } else if cpu_speed > 70 {
-            Style::default().fg(Color::Yellow)
-        } else {
-            Style::default().fg(Color::Green)
-        },
-    ));
-    text.push(Text::raw(", Mem "));
-    let mem_usage = (state.sys_info.get_used_memory() * 100) / state.sys_info.get_total_memory();
-    let mem_str = format!("{:02}%", mem_usage);
-    text.push(Text::styled(
-        mem_str.as_str(),
-        if mem_usage > 85 {
-            Style::default().fg(Color::Red)
-        } else if mem_usage > 70 {
-            Style::default().fg(Color::Yellow)
-        } else {
-            Style::default().fg(Color::Green)
-        },
-    ));
-    text.push(Text::raw("]"));
+    let mem_usage = ((state.sys_info.get_used_memory() * 100) / state.sys_info.get_total_memory()) as usize;
+    state.ui.update_footer(cpu_speed, mem_usage);
 
-    let mut bottom_stats = Paragraph::new(text.iter())
+    // Apply color to cpu and mem
+    let footer = state.ui.footer.iter().enumerate().map(|(idx, s)| {
+        if idx == state.ui.footer_cpu_idx {
+            Text::styled(s, 
+            if cpu_speed > 90 {
+                Style::default().fg(Color::Red)
+            } else if cpu_speed > 75 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::Green)
+            })
+        } else if idx == state.ui.footer_mem_idx {
+            Text::styled(s, 
+            if mem_usage > 90 {
+                Style::default().fg(Color::Red)
+            } else if mem_usage > 75 {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::Green)
+            })
+        } else {
+            Text::raw(s)
+        }
+    }).collect::<Vec<Text>>();
+
+    let mut bottom_stats = Paragraph::new(footer.iter())
         //.style(Style::default())
         //.alignment(Alignment::Center)
         .wrap(false);
