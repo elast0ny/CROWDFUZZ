@@ -159,12 +159,8 @@ impl State {
                 to_del.push(idx);
             }
         }
-        for idx in to_del.iter().rev() {
-            let fuzzer = self.fuzzers.remove(*idx);
-            if self.ui.cur_fuzz_idx > self.fuzzers.len() {
-                self.ui.cur_fuzz_idx -= 1;
-            }
-            self.unique_fuzzers.remove(fuzzer.shmem.get_os_path());
+        if to_del.len() > 0 {
+            self.remove_fuzzers(&to_del);
         }
 
         let mut found_files = Vec::new();
@@ -224,6 +220,17 @@ impl State {
         self.unique_fuzzers
             .insert(fuzzer.shmem.get_os_path().to_string());
         self.fuzzers.push(fuzzer);
+        self.ui.update_tab_header(self.fuzzers.len());
+    }
+
+    fn remove_fuzzers(&mut self, idx_list: &[usize]) {
+        for idx in idx_list.iter().rev() {
+            let fuzzer = self.fuzzers.remove(*idx);
+            if self.ui.cur_fuzz_idx > self.fuzzers.len() {
+                self.ui.cur_fuzz_idx -= 1;
+            }
+            self.unique_fuzzers.remove(fuzzer.shmem.get_os_path());
+        }
         self.ui.update_tab_header(self.fuzzers.len());
     }
 
