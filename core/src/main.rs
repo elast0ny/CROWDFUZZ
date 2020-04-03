@@ -86,9 +86,11 @@ fn main() -> Result<()> {
         None => {
             info!("Automatically selecting cpu core");
             Some(util::get_num_instances()? as isize * -1)
-        },
+        }
         Some(v) => {
-            let v = v.parse::<isize>().expect("Invalid number provided for --bind-cpu");
+            let v = v
+                .parse::<isize>()
+                .expect("Invalid number provided for --bind-cpu");
             if v < 0 {
                 None
             } else {
@@ -113,7 +115,7 @@ fn main() -> Result<()> {
     }
     // Bind now that we arent spawning anything else
     if let Some(core_id) = bind_cpu_id {
-        info!("Bound to core #{}", util::bind_to_core(core_id));    
+        info!("Bound to core #{}", util::bind_to_core(core_id)?);
     }
 
     //Add a ctrl-c handler

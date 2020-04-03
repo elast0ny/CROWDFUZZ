@@ -19,5 +19,5 @@ ctrlc = "3.*"
 crc = "1.*"
 libloading = "0.*"
 
-core_affinity = "0.*"
+affinity = "0.*"
 sysinfo = "0.*"

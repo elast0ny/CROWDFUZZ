@@ -16,30 +16,38 @@ pub fn get_num_instances() -> Result<usize> {
     }
 
     let system = System::new_with_specifics(RefreshKind::new().with_processes());
-    
+
     for (_pid, info) in system.get_processes().iter() {
         if info.name() == prog_name {
             num_found += 1;
         }
     }
-    
+
     // We should at least find ourselves
     if num_found == 0 {
-        return Err(From::from(format!("Unable to find ourselves in the current running processes... (Looking for '{}')", prog_name)));
+        return Err(From::from(format!(
+            "Unable to find ourselves in the current running processes... (Looking for '{}')",
+            prog_name
+        )));
     }
-    
-    
+
     Ok(num_found)
 }
 
+
+#[cfg(target_os = "windows")]
+use ::affinity::set_process_affinity as set_affinity;
+#[cfg(not(target_os = "windows"))]
+use ::affinity::set_thread_affinity as set_affinity;
+
 /// Binds the current process to the specified core. If None, the function will search existing processes
 /// and increment the core ID for every fuzzer process that is running
-pub fn bind_to_core(target_core: isize) -> usize {
-    let core_ids = core_affinity::get_core_ids().unwrap();
-    let requested_core = target_core % core_ids.len() as isize;
+pub fn bind_to_core(target_core: isize) -> Result<usize> {
+    let num_cores = affinity::get_core_num() as isize;
+    let requested_core = target_core % num_cores;
     let target_core_id: usize;
     if target_core < 0 {
-        target_core_id = (core_ids.len() as isize + requested_core) as usize;
+        target_core_id = (num_cores + requested_core) as usize;
     } else {
         target_core_id = requested_core as usize;
     }
@@ -48,24 +56,21 @@ pub fn bind_to_core(target_core: isize) -> usize {
     if requested_core != target_core {
         warn!(
             "Tried to bind to core {} but only {} cores available, using core {} instead...",
-            target_core,
-            core_ids.len(),
-            target_core_id,
+            target_core, num_cores, target_core_id,
         );
     }
 
-    core_affinity::set_for_current(core_ids[target_core_id]);
-    return target_core_id;
+    set_affinity(&[target_core_id])?;
+
+    return Ok(target_core_id);
 }
 
 /// Spawns another instance of the fuzzer
-pub fn spawn_next_instance(
-    instance_num: isize,
-    cwd: &Path,
-) -> Result<Option<Child>> {
+pub fn spawn_next_instance(instance_num: isize, cwd: &Path) -> Result<Option<Child>> {
     let mut new_inst_num = instance_num;
+    let num_cores = affinity::get_core_num() as isize;
     if instance_num <= 0 {
-        new_inst_num = (core_affinity::get_core_ids().unwrap().len() as isize) + instance_num;
+        new_inst_num = (num_cores as isize) + instance_num;
         if new_inst_num <= 0 {
             return Ok(None);
         }
