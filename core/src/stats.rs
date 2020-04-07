@@ -9,14 +9,20 @@ use ::shared_memory::SharedMem;
 use crate::core::Core;
 use crate::plugin::*;
 use crate::Result;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 impl Core {
     pub fn init_stats(&mut self) -> Result<()> {
         self.stats.init(&self.config.prefix)?;
 
         // Iteration time
+        self.stats.start_time =
+            unsafe { &mut *(self.stats.add("uptime_epochs", cflib::NewStat::U64)? as *mut _) };
+        *self.stats.start_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+        // Iteration time
         self.stats.total_exec_time =
-            unsafe { &mut *(self.stats.add("total_exec_time", cflib::NewStat::U64)? as *mut _) };
+            unsafe { &mut *(self.stats.add("total_exec_time_us", cflib::NewStat::U64)? as *mut _) };
         *self.stats.total_exec_time = 0;
         // Total execs
         self.stats.num_execs =
@@ -59,6 +65,7 @@ pub struct CoreStats {
     prefix: String,
     pub stats_memory: SharedMem,
     pub header: &'static mut cflib::StatFileHeader,
+    pub start_time: &'static mut u64, 
     pub cwd: *mut c_void,
     pub total_exec_time: &'static mut u64,
     pub core_exec_time: &'static mut u64,
@@ -73,6 +80,7 @@ impl CoreStats {
                 prefix: String::new(),
                 stats_memory: shmem,
                 header: &mut *null_mut(),
+                start_time: &mut *null_mut(),
                 cwd: null_mut(),
                 total_exec_time: &mut *null_mut(),
                 core_exec_time: &mut *null_mut(),
@@ -131,13 +139,13 @@ impl CoreStats {
         match plugin {
             None => {
                 let exec_time_ptr: *mut u64 =
-                    unsafe { &mut *(self.add("core_exec_time", cflib::NewStat::U64)? as *mut _) };
+                    unsafe { &mut *(self.add("core_exec_time_us", cflib::NewStat::U64)? as *mut _) };
                 self.core_exec_time = unsafe { &mut *exec_time_ptr };
                 *self.core_exec_time = 0;
             }
             Some(cur_plugin) => {
                 let exec_time_ptr: *mut u64 =
-                    unsafe { &mut *(self.add("exec_time", cflib::NewStat::U64)? as *mut _) };
+                    unsafe { &mut *(self.add("exec_time_us", cflib::NewStat::U64)? as *mut _) };
                 cur_plugin.exec_time = unsafe { &mut *exec_time_ptr };
                 *cur_plugin.exec_time = 0;
             }
