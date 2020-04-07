@@ -3,16 +3,40 @@ use std::{collections::HashSet, error::Error, mem::size_of_val};
 use ::shared_memory::SharedMem;
 use ::sysinfo::{ProcessExt, System, SystemExt};
 
+// Every first stat is the exec time 
+pub const COMPONENT_EXEC_TIME_IDX: usize = 0;
+
 pub struct CachedStat {
-    pub stat_ref: cflib::StatRef,
-    pub cache: cflib::StatVal,
-    pub str_repr: String,
+    stat_ref: cflib::StatRef,
+    cache: cflib::StatVal,
+    pretty_tag: String,
+    tag_postfix: Option<&'static str>,
+    str_repr: String,
 }
 
 impl CachedStat {
+
+    pub fn new(stat_ref: cflib::StatRef) -> Self {
+        let (pretty_tag, tag_postfix) = cflib::strip_known_postfix(stat_ref.get_tag());
+        let pretty_tag = String::from(pretty_tag);
+        let cache = stat_ref.to_owned();
+        let str_repr = String::new();
+
+        let mut res = Self {
+            stat_ref,
+            cache,
+            pretty_tag,
+            tag_postfix,
+            str_repr,
+        };
+
+        res.update_str_repr();
+        res
+    }
+
     /// Return the stat tag
     pub fn get_tag(&self) -> &str {
-        self.stat_ref.get_tag()
+        self.pretty_tag.as_ref()
     }
 
     /// Returns the current string representation of the stat data
@@ -21,11 +45,32 @@ impl CachedStat {
     }
 
     /// Updates itself to represent the current value in the stats memory
-    pub fn update(&mut self) {
-        if !self.cache.is_equal(&self.stat_ref) {
+    pub fn update(&mut self, force: bool) {
+        if force || !self.cache.is_equal(&self.stat_ref) || 
+            //Epoch values "change" as time progresses
+            match self.tag_postfix {
+                Some(v) => v == "_epochs",
+                None => false,
+            }
+        {
             self.cache.update(&self.stat_ref);
+            self.update_str_repr();
+        }
+    }
+
+    fn update_str_repr(&mut self) {
+        if let Some(postfix) = self.tag_postfix {
+            cflib::write_pretty_stat(&mut self.str_repr, &self.cache, postfix);
+        } else {
             self.cache.write_str(&mut self.str_repr);
         }
+    }
+}
+
+use std::fmt;
+impl fmt::Display for CachedStat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.cache)
     }
 }
 
@@ -41,7 +86,7 @@ impl Plugin {
         self.max_val_len = 0;
         let stats_iter = self.stats.iter_mut().skip(1);
         for stat in stats_iter {
-            stat.update();
+            stat.update(false);
             // Update the longest name value
             if stat.str_repr.len() as u16 > self.max_val_len {
                 self.max_val_len = stat.str_repr.len() as u16;
@@ -125,6 +170,7 @@ impl Fuzzer {
 
         let mut cur_plugin: &mut Plugin = &mut cur_fuzzer.core;
         loop {
+            // Parse the next shmem blob
             if shmem_idx >= header.stat_len as usize {
                 break;
             }
@@ -138,32 +184,24 @@ impl Fuzzer {
             if cur_tag.len() as u16 > cur_plugin.max_tag_len {
                 cur_plugin.max_tag_len = cur_tag.len() as u16;
             }
+            
+            // Found new component
+            if cur_stat.is_component() {
+                let name = cur_tag;
+                if name.len() as u16 > cur_fuzzer.max_plugin_name_len {
+                    cur_fuzzer.max_plugin_name_len = name.len() as u16;
+                }
 
-            //println!("{} {:?}", cur_stat.get_tag(), cur_stat.get_data());
-            let cur_val = cur_stat.to_owned();
-            let mut str_repr = String::new();
-            cur_val.write_str(&mut str_repr);
-            match cur_val {
-                cflib::StatVal::Component(name) => {
-                    if name.len() as u16 > cur_fuzzer.max_plugin_name_len {
-                        cur_fuzzer.max_plugin_name_len = name.len() as u16;
-                    }
-                    cur_plugin.refresh_stat_vals();
-                    cur_fuzzer.plugins.push(Plugin {
-                        max_tag_len: name.len() as u16,
-                        name,
-                        stats: Vec::new(),
-                        max_val_len: 0,
-                    });
-                    cur_plugin = cur_fuzzer.plugins.last_mut().unwrap();
-                }
-                _ => {
-                    cur_plugin.stats.push(CachedStat {
-                        stat_ref: cur_stat,
-                        cache: cur_val,
-                        str_repr,
-                    });
-                }
+                cur_fuzzer.plugins.push(Plugin {
+                    max_tag_len: name.len() as u16,
+                    name: name.to_string(),
+                    stats: Vec::new(),
+                    max_val_len: 0,
+                });
+                cur_plugin = cur_fuzzer.plugins.last_mut().unwrap();
+            // Found new stat
+            } else {
+                cur_plugin.stats.push(CachedStat::new(cur_stat));
             }
         }
         Ok(cur_fuzzer)

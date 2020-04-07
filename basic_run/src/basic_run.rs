@@ -56,7 +56,7 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
             pub_chunk_list: &*std::ptr::null(),
             avg_denominator: &*std::ptr::null(),
             stats: CustomStats {
-                target_exec_time: &mut *(core.add_stat("target_exec_time", NewStat::U64).unwrap()
+                target_exec_time: &mut *(core.add_stat("target_exec_time_dur", NewStat::U64).unwrap()
                     as *mut _),
             },
         })

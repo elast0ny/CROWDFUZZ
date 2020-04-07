@@ -1,8 +1,119 @@
-use ::std::mem::size_of;
+use std::mem::size_of;
 use std::ptr::{copy_nonoverlapping};
 use std::sync::atomic::{AtomicU16, Ordering};
-
+use std::time::{SystemTime, UNIX_EPOCH};
 use crate::*;
+
+pub static STR_POSTFIX: &[&str] = &[
+    "_dir",
+];
+
+/// Specifies the data content type of number stats
+pub static NUM_POSTFIX: &[&str] = &[
+    "_epochs", // Since epoch
+    "_us",
+    "_ms",
+    "_s",
+    "_m",
+    "_h",
+];
+
+/// Sepcifies the data content type of byte stats
+pub static BYTES_POSTFIX: &[&str] = &[
+    "_hex",
+];
+
+/// Used to request new stat space from the core. Dynamic type
+/// require a max length for the stat value.
+#[derive(Debug)]
+pub enum NewStat {
+    #[doc(hidden)]
+    Bytes(u16),
+    Str(u16),
+    USize,
+    ISize,
+    U8,
+    U16,
+    U32,
+    U64,
+    I8,
+    I16,
+    I32,
+    I64,
+}
+
+impl NewStat {
+    pub fn from_stat_type(stat_type: StatType, max_len: u16) -> Self {
+        let new_stat = match stat_type {
+            STAT_BYTES => NewStat::Bytes(max_len),
+            STAT_STR => NewStat::Str(max_len),
+            STAT_USIZE => NewStat::USize,
+            STAT_ISIZE => NewStat::ISize,
+            STAT_U8 => NewStat::U8,
+            STAT_U16 => NewStat::U16,
+            STAT_U32 => NewStat::U32,
+            STAT_U64 => NewStat::U64,
+            STAT_I8 => NewStat::I8,
+            STAT_I16 => NewStat::I16,
+            STAT_I32 => NewStat::I32,
+            STAT_I64 => NewStat::I64,
+            _ => panic!("Unknown stat type {} (max_len {})", stat_type, max_len),
+        };
+
+        if max_len != new_stat.max_len() {
+            panic!(
+                "Requested max stat length {} doesnt match the stat {:?}(max_len {})",
+                max_len,
+                new_stat,
+                new_stat.max_len()
+            );
+        }
+
+        new_stat
+    }
+    pub fn header_len(&self) -> usize {
+        match &self {
+            &NewStat::Bytes(_) | &NewStat::Str(_) => size_of::<StatHeaderDyn>(),
+            _ => size_of::<StatHeader>(),
+        }
+    }
+    pub fn max_len(&self) -> u16 {
+        (match &self {
+            &NewStat::Bytes(v) => *v as usize,
+            &NewStat::Str(v) => *v as usize,
+            &NewStat::USize => size_of::<usize>(),
+            &NewStat::ISize => size_of::<isize>(),
+            &NewStat::U8 => size_of::<u8>(),
+            &NewStat::U16 => size_of::<u16>(),
+            &NewStat::U32 => size_of::<u32>(),
+            &NewStat::U64 => size_of::<u64>(),
+            &NewStat::I8 => size_of::<i8>(),
+            &NewStat::I16 => size_of::<i16>(),
+            &NewStat::I32 => size_of::<i32>(),
+            &NewStat::I64 => size_of::<i64>(),
+        }) as u16
+    }
+    pub fn to_id(&self) -> StatType {
+        match &self {
+            &NewStat::Bytes(_) => STAT_BYTES,
+            &NewStat::Str(_) => STAT_STR,
+            &NewStat::USize => STAT_USIZE,
+            &NewStat::ISize => STAT_ISIZE,
+            &NewStat::U8 => STAT_U8,
+            &NewStat::U16 => STAT_U16,
+            &NewStat::U32 => STAT_U32,
+            &NewStat::U64 => STAT_U64,
+            &NewStat::I8 => STAT_I8,
+            &NewStat::I16 => STAT_I16,
+            &NewStat::I32 => STAT_I32,
+            &NewStat::I64 => STAT_I64,
+        }
+    }
+}
+
+/* ---------------------------- */
+/* For front end writers bellow */
+/* ---------------------------- */
 
 pub fn stat_header_size(some_val: StatType) -> u16 {
     return match some_val {
@@ -30,7 +141,7 @@ pub fn stat_static_data_len(some_val: StatType) -> Option<u16> {
     }
 }
 
-/// Concrete value that a statistic can hold
+/// Concrete value that a stat can point to
 #[derive(Debug)]
 pub enum StatVal {
     Component(String),
@@ -165,7 +276,16 @@ impl StatVal {
     }
 }
 
-/// Holds references to an existing stat
+use std::fmt;
+impl fmt::Display for StatVal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut res = String::new();
+        self.write_str(&mut res);
+        write!(f, "{}", res.as_str())
+    }
+}
+
+/// Holds valid pointers into a stat field in shared memory
 pub struct StatRef {
     t: StatType,
     tag_len: u16,
@@ -297,29 +417,133 @@ impl StatRef {
         }
     }
 
-    pub fn copy_into(&self, dst: *mut u8) -> usize {
-        match self.t {
-            STAT_BYTES | STAT_STR => {
-                unsafe{copy_dyn_stat(dst, self.data_ptr)}
-            },
-            _ => {
-                let data_len = self.max_data_len as usize;
-                unsafe{copy_nonoverlapping(self.data_ptr, dst, data_len)};
-                data_len
-            }
-        }
+    pub fn is_component(&self) -> bool {
+        self.t == STAT_NEWCOMPONENT
     }
 }
 
-pub fn prettify_stat(tag: &str, dst: &mut String, stat: &StatRef) {
-    use std::fmt::Write;
-    let val = stat.to_owned();
+pub fn strip_known_postfix(tag: &str) -> (&str, Option<&'static str>) {
+    let tag_len = tag.len();
+    
+    // Numbers
+    for postfix in NUM_POSTFIX {
+        let postfix_len = postfix.len();
 
-    if tag.ends_with("_time") {
-        dst.clear();
-        let _ = write!(dst, "{:?} us", val);
+        if tag_len < postfix_len {
+            continue;
+        }
+
+        if &tag[tag_len - postfix_len..] == *postfix {
+            return (&tag[..tag_len - postfix_len], Some(*postfix));
+        }
+    }
+    // Strings
+    for postfix in STR_POSTFIX {
+        let postfix_len = postfix.len();
+
+        if tag_len < postfix_len {
+            continue;
+        }
+
+        if &tag[tag_len - postfix_len..] == *postfix {
+            return (&tag[..tag_len - postfix_len], Some(*postfix));
+        }
+    }
+    // Bytes
+    for postfix in BYTES_POSTFIX {
+        let postfix_len = postfix.len();
+
+        if tag_len < postfix_len {
+            continue;
+        }
+
+        if &tag[tag_len - postfix_len..] == *postfix {
+            return (&tag[..tag_len - postfix_len], Some(*postfix));
+        }
+    }
+
+    return (tag, None);
+}
+
+const MS_IN_US: u64 = 1000;
+const S_IN_US: u64 = 1000 * MS_IN_US;
+const M_IN_US: u64 = 60 * S_IN_US;
+const H_IN_US: u64 = 60 * M_IN_US;
+
+// Caller must clear the string before calling
+fn format_duration(dst: &mut String, mut val: u64, unit: &str) {
+    use std::fmt::Write;
+    // conver to us
+    val *= match unit {
+        "ms" => MS_IN_US,
+        "s" => S_IN_US,
+        "m" => M_IN_US,
+        "h" => H_IN_US,
+        _ => 1,
+    };
+
+    if val > H_IN_US {
+        let _ = write!(dst, "{}h{}m{}s", val / H_IN_US, (val % H_IN_US) / M_IN_US, (val % M_IN_US) / S_IN_US);
+    } else if val > M_IN_US {
+        let _ = write!(dst, "{}m{}s", val / M_IN_US, (val % M_IN_US) / S_IN_US);
+    } else if val > S_IN_US {
+        let _ = write!(dst, "{}.{}s", val / S_IN_US, (val % S_IN_US) / MS_IN_US);
+    } else if val > MS_IN_US {
+        let _ = write!(dst, "{}.{}ms", val / MS_IN_US, (val % MS_IN_US));
     } else {
-        let _ = write!(dst, "{:?}", val);
+        let _ = write!(dst, "{}us", val);
+    }
+}
+
+pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
+    use std::fmt::Write;
+
+    let mut is_negative = false;
+    let num = match src.as_u64() {
+        Some(v) => Some(v),
+        None => match src.as_i64() {
+            Some(v) => {
+                is_negative = true;
+                Some(v.abs() as u64)
+            },
+            None => None,
+        },
+    };
+
+    if let Some(num) = num {
+        let unit = match tag_postfix.rfind("_") {
+            Some(idx) => &tag_postfix[idx+1..],
+            None => "us",
+        };
+        
+        dst.clear();
+        if is_negative {
+            dst.push('-');
+        }
+
+        if tag_postfix.starts_with("_time") {
+            format_duration(dst, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - num, "s");
+        } else {
+            format_duration(dst, num, unit);
+        }
+        
+    } else if let Some(mut s) = src.as_str() {
+        dst.clear();
+        if tag_postfix == "_dir" {
+            if s.starts_with("\\\\?\\") {
+                s = &s[4..];
+            }
+        }
+        let _ = write!(dst, "{}", s);
+    } else if let Some(b) = src.as_bytes() {
+        dst.clear();
+        if tag_postfix == "_hex" {
+            for byte in b {
+                let _ = write!(dst, "{:02X}", byte);
+            }
+        } else {
+            let _ = write!(dst, "{:?}", b);
+        }
     }
 }
 
@@ -335,7 +559,7 @@ unsafe fn copy_dyn_stat(dst: *mut u8, src: *mut u8) -> usize {
         cur_len = *(src as *mut u16);
         // Set length to 0 if not already 0
         match atom_cur_len.compare_exchange(cur_len, 0, Ordering::Acquire, Ordering::Acquire) {
-            Ok(0)  => break,
+            Ok(_) => break,
             _ => continue,
         };
     }
@@ -362,7 +586,7 @@ pub fn update_dyn_stat<B: AsRef<[u8]>>(dst: *mut u8, data: B) {
             cur_len = *(dst as *mut u16);
             // Set length to 0 if not already 0
             match atom_cur_len.compare_exchange(cur_len, 0, Ordering::Acquire, Ordering::Acquire) {
-                Ok(0)  => break,
+                Ok(_)  => break,
                 _ => continue,
             };
         }
@@ -371,90 +595,3 @@ pub fn update_dyn_stat<B: AsRef<[u8]>>(dst: *mut u8, data: B) {
     }
 }
 
-/// Used to request new stat space from the core. Dynamic type
-/// require a max length for the stat value.
-#[derive(Debug)]
-pub enum NewStat {
-    #[doc(hidden)]
-    Bytes(u16),
-    Str(u16),
-    USize,
-    ISize,
-    U8,
-    U16,
-    U32,
-    U64,
-    I8,
-    I16,
-    I32,
-    I64,
-}
-
-impl NewStat {
-    pub fn from_stat_type(stat_type: StatType, max_len: u16) -> Self {
-        let new_stat = match stat_type {
-            STAT_BYTES => NewStat::Bytes(max_len),
-            STAT_STR => NewStat::Str(max_len),
-            STAT_USIZE => NewStat::USize,
-            STAT_ISIZE => NewStat::ISize,
-            STAT_U8 => NewStat::U8,
-            STAT_U16 => NewStat::U16,
-            STAT_U32 => NewStat::U32,
-            STAT_U64 => NewStat::U64,
-            STAT_I8 => NewStat::I8,
-            STAT_I16 => NewStat::I16,
-            STAT_I32 => NewStat::I32,
-            STAT_I64 => NewStat::I64,
-            _ => panic!("Unknown stat type {} (max_len {})", stat_type, max_len),
-        };
-
-        if max_len != new_stat.max_len() {
-            panic!(
-                "Requested max stat length {} doesnt match the stat {:?}(max_len {})",
-                max_len,
-                new_stat,
-                new_stat.max_len()
-            );
-        }
-
-        new_stat
-    }
-    pub fn header_len(&self) -> usize {
-        match &self {
-            &NewStat::Bytes(_) | &NewStat::Str(_) => size_of::<StatHeaderDyn>(),
-            _ => size_of::<StatHeader>(),
-        }
-    }
-    pub fn max_len(&self) -> u16 {
-        (match &self {
-            &NewStat::Bytes(v) => *v as usize,
-            &NewStat::Str(v) => *v as usize,
-            &NewStat::USize => size_of::<usize>(),
-            &NewStat::ISize => size_of::<isize>(),
-            &NewStat::U8 => size_of::<u8>(),
-            &NewStat::U16 => size_of::<u16>(),
-            &NewStat::U32 => size_of::<u32>(),
-            &NewStat::U64 => size_of::<u64>(),
-            &NewStat::I8 => size_of::<i8>(),
-            &NewStat::I16 => size_of::<i16>(),
-            &NewStat::I32 => size_of::<i32>(),
-            &NewStat::I64 => size_of::<i64>(),
-        }) as u16
-    }
-    pub fn to_id(&self) -> StatType {
-        match &self {
-            &NewStat::Bytes(_) => STAT_BYTES,
-            &NewStat::Str(_) => STAT_STR,
-            &NewStat::USize => STAT_USIZE,
-            &NewStat::ISize => STAT_ISIZE,
-            &NewStat::U8 => STAT_U8,
-            &NewStat::U16 => STAT_U16,
-            &NewStat::U32 => STAT_U32,
-            &NewStat::U64 => STAT_U64,
-            &NewStat::I8 => STAT_I8,
-            &NewStat::I16 => STAT_I16,
-            &NewStat::I32 => STAT_I32,
-            &NewStat::I64 => STAT_I64,
-        }
-    }
-}

@@ -242,9 +242,9 @@ impl<'a> UiState<'a> {
 
         // Refresh current fuzzer core stats and select plugin stats
         cur_fuzzer.core.refresh_stat_vals();
-        cur_fuzzer.core.stats[0].update();
+        cur_fuzzer.core.stats[COMPONENT_EXEC_TIME_IDX].update(false);
         for (idx, plugin) in cur_fuzzer.plugins.iter_mut().enumerate() {
-            plugin.stats[0].update();
+            plugin.stats[COMPONENT_EXEC_TIME_IDX].update(false);
             if idx == cur_fuzzer.cur_plugin_idx {
                 plugin.refresh_stat_vals()
             }
@@ -311,7 +311,7 @@ impl<'a> UiState<'a> {
         let mut plugin_times: Vec<&str> = Vec::with_capacity(cur_fuzzer.plugins.len());
         for plugin in cur_fuzzer.plugins.iter() {
             plugin_names.push(plugin.name.as_str());
-            plugin_times.push(plugin.stats[0].str_repr.as_ref());
+            plugin_times.push(plugin.stats[COMPONENT_EXEC_TIME_IDX].as_str());
         }
         let mut plugin_list = SelectableList::default()
             .block(
