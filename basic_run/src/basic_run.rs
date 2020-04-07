@@ -33,6 +33,7 @@ pub struct State {
     target_path: &'static str,
     target_args: Vec<&'static str>,
     target_input_file: Option<File>,
+    last_run_time: u64,
     exit_status: CTuple,
     pub_chunk_list: &'static CVec,
     avg_denominator: &'static u64,
@@ -47,6 +48,7 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
             target_path: "",
             target_args: Vec::new(),
             target_input_file: None,
+            last_run_time: 0,
             exit_status: CTuple {
                 first: 0,
                 second: 0,
@@ -132,6 +134,14 @@ extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> P
 
 extern "C" fn run_target(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
     let (core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
+
+    // Update the target exec from the last run
+    update_average(
+        state.stats.target_exec_time,
+        state.last_run_time,
+        *state.avg_denominator,
+    );
+
     let mut cmd = Command::new(state.target_path);
     cmd.args(&state.target_args)
         .stdout(Stdio::null())
@@ -159,8 +169,6 @@ extern "C" fn run_target(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -
             cmd.stdin(Stdio::piped());
         }
     }
-
-    //std::thread::sleep(std::time::Duration::from_secs(5));
 
     // Spawn the target process
     let child_start: Instant = Instant::now();
@@ -191,13 +199,11 @@ extern "C" fn run_target(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -
         }
     }
 
+    //std::thread::sleep(std::time::Duration::from_secs(30));
+
     //TODO : Add some timeout mechanism
     let result = child.wait().unwrap();
-    update_average(
-        state.stats.target_exec_time,
-        child_start.elapsed().as_micros() as u64,
-        1,
-    );
+    state.last_run_time = child_start.elapsed().as_micros() as u64;
 
     match os::get_exception(&result) {
         Some(exception) => {
