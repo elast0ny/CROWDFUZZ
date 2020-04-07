@@ -1,14 +1,38 @@
-use std::{collections::HashSet, error::Error, mem::size_of_val, time::Duration};
+use std::{collections::HashSet, error::Error, mem::size_of_val};
 
 use ::shared_memory::SharedMem;
 use ::sysinfo::{ProcessExt, System, SystemExt};
 
-use crate::ui::*;
+pub struct CachedStat {
+    pub stat_ref: cflib::StatRef,
+    pub cache: cflib::StatVal,
+    pub str_repr: String,
+}
+
+impl CachedStat {
+    /// Return the stat tag
+    pub fn get_tag(&self) -> &str {
+        self.stat_ref.get_tag()
+    }
+
+    /// Returns the current string representation of the stat data
+    pub fn as_str(&self) -> &str {
+        self.str_repr.as_str()
+    }
+
+    /// Updates itself to represent the current value in the stats memory
+    pub fn update(&mut self) {
+        if !self.cache.is_equal(&self.stat_ref) {
+            self.cache.update(&self.stat_ref);
+            self.cache.write_str(&mut self.str_repr);
+        }
+    }
+}
 
 pub struct Plugin {
-    pub name: &'static str,
+    pub name: String,
     // Name with some details
-    pub stats: Vec<cflib::StatRef>,
+    pub stats: Vec<CachedStat>,
     pub max_tag_len: u16,
     pub max_val_len: u16,
 }
@@ -17,9 +41,10 @@ impl Plugin {
         self.max_val_len = 0;
         let stats_iter = self.stats.iter_mut().skip(1);
         for stat in stats_iter {
-            let new_val = stat.update_pretty_str_repr();
-            if new_val.len() as u16 > self.max_val_len {
-                self.max_val_len = new_val.len() as u16;
+            stat.update();
+            // Update the longest name value
+            if stat.str_repr.len() as u16 > self.max_val_len {
+                self.max_val_len = stat.str_repr.len() as u16;
             }
         }
     }
@@ -66,12 +91,13 @@ impl Fuzzer {
         }
 
         // First stat should be the fuzzer core
-        let core_name: &str;
+        let core_name: String;
         let cur_stat = cflib::StatRef::from_base_ptr(
             unsafe { shmem_base.add(shmem_idx) },
             header.stat_len as usize - shmem_idx,
         )?;
-        match cur_stat.get_data() {
+        let cur_val = cur_stat.to_owned();
+        match cur_val {
             cflib::StatVal::Component(name) => {
                 core_name = name;
             }
@@ -114,8 +140,10 @@ impl Fuzzer {
             }
 
             //println!("{} {:?}", cur_stat.get_tag(), cur_stat.get_data());
-
-            match cur_stat.get_data() {
+            let cur_val = cur_stat.to_owned();
+            let mut str_repr = String::new();
+            cur_val.write_str(&mut str_repr);
+            match cur_val {
                 cflib::StatVal::Component(name) => {
                     if name.len() as u16 > cur_fuzzer.max_plugin_name_len {
                         cur_fuzzer.max_plugin_name_len = name.len() as u16;
@@ -130,7 +158,11 @@ impl Fuzzer {
                     cur_plugin = cur_fuzzer.plugins.last_mut().unwrap();
                 }
                 _ => {
-                    cur_plugin.stats.push(cur_stat);
+                    cur_plugin.stats.push(CachedStat {
+                        stat_ref: cur_stat,
+                        cache: cur_val,
+                        str_repr,
+                    });
                 }
             }
         }
@@ -140,17 +172,17 @@ impl Fuzzer {
 
 pub struct State {
     pub unique_fuzzers: HashSet<String>,
-    pub dir_scan_rate: Duration,
-    pub refresh_rate: Duration,
     pub fuzzers: Vec<Fuzzer>,
     pub fuzzer_prefix: String,
     pub stat_file_prefix: String,
     pub monitored_dirs: Vec<String>,
-    pub ui: UiState,
     pub sys_info: System,
+    pub changed: bool,
+    pub tab_titles: Vec<String>,
 }
 
 impl State {
+    /// Removes any dead fuzzer and scans the directories for new fuzzers
     pub fn update_fuzzers(&mut self) {
         self.sys_info.refresh_processes();
         let mut to_del: Vec<usize> = Vec::new();
@@ -217,59 +249,17 @@ impl State {
     }
 
     fn add_fuzzer(&mut self, fuzzer: Fuzzer) {
+        self.changed = true;
         self.unique_fuzzers
             .insert(fuzzer.shmem.get_os_path().to_string());
         self.fuzzers.push(fuzzer);
-        self.ui.update_tab_header(self.fuzzers.len());
     }
 
     fn remove_fuzzers(&mut self, idx_list: &[usize]) {
+        self.changed = true;
         for idx in idx_list.iter().rev() {
             let fuzzer = self.fuzzers.remove(*idx);
-            if self.ui.cur_fuzz_idx > self.fuzzers.len() {
-                self.ui.cur_fuzz_idx -= 1;
-            }
             self.unique_fuzzers.remove(fuzzer.shmem.get_os_path());
-        }
-        self.ui.update_tab_header(self.fuzzers.len());
-    }
-
-    pub fn select_next_fuzzer(&mut self) {
-        self.ui.cur_fuzz_idx += 1;
-        if self.ui.cur_fuzz_idx == self.fuzzers.len() + 1 {
-            self.ui.cur_fuzz_idx = 0;
-        }
-    }
-
-    pub fn select_prev_fuzzer(&mut self) {
-        if self.ui.cur_fuzz_idx == 0 {
-            self.ui.cur_fuzz_idx = self.fuzzers.len();
-        } else {
-            self.ui.cur_fuzz_idx -= 1;
-        }
-    }
-
-    pub fn select_next_plugin(&mut self) {
-        if self.ui.cur_fuzz_idx == 0 {
-            return;
-        }
-        let cur_fuzzer = &mut self.fuzzers[self.ui.cur_fuzz_idx - 1];
-        cur_fuzzer.cur_plugin_idx += 1;
-        if cur_fuzzer.cur_plugin_idx == cur_fuzzer.plugins.len() {
-            cur_fuzzer.cur_plugin_idx = 0;
-        }
-    }
-
-    pub fn select_prev_plugin(&mut self) {
-        if self.ui.cur_fuzz_idx == 0 {
-            return;
-        }
-        let cur_fuzzer = &mut self.fuzzers[self.ui.cur_fuzz_idx - 1];
-
-        if cur_fuzzer.cur_plugin_idx == 0 {
-            cur_fuzzer.cur_plugin_idx = cur_fuzzer.plugins.len() - 1;
-        } else {
-            cur_fuzzer.cur_plugin_idx -= 1;
-        }
+        }        
     }
 }

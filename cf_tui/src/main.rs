@@ -65,22 +65,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .help("Sets the level of verbosity"),
         )
         .get_matches();
+    let dir_scan_rate: Duration = Duration::from_millis(
+        args.value_of("dir_scan_rate")
+            .unwrap()
+            .parse()
+            .expect("Invalid number specified for --dir_scan_rate"))
+    ;
+    let refresh_rate: Duration = Duration::from_millis(
+        args.value_of("refresh_rate")
+            .unwrap()
+            .parse()
+            .expect("Invalid number specified for --refresh_rate"),
+    );
 
     let mut state = State {
-        dir_scan_rate: Duration::from_millis(
-            args.value_of("dir_scan_rate")
-                .unwrap()
-                .parse()
-                .expect("Invalid number specified for --dir_scan_rate"),
-        ),
-        refresh_rate: Duration::from_millis(
-            args.value_of("refresh_rate")
-                .unwrap()
-                .parse()
-                .expect("Invalid number specified for --refresh_rate"),
-        ),
         unique_fuzzers: HashSet::new(),
-        ui: UiState::new(),
         fuzzers: Vec::new(),
         fuzzer_prefix: String::from(args.value_of("fuzzer_prefix").unwrap()),
         stat_file_prefix: String::from(args.value_of("stats_prefix").unwrap()),
@@ -92,25 +91,28 @@ fn main() -> Result<(), Box<dyn Error>> {
         sys_info: System::new_with_specifics(
             RefreshKind::new().with_processes().with_cpu().with_memory(),
         ),
+        tab_titles: Vec::new(),
+        changed: true,
     };
-
     state.sys_info.refresh_cpu();
     state.sys_info.refresh_memory();
 
+    let mut ui = UiState::new(&mut state);
+
     let mut terminal = init_ui()?;
-    state.update_fuzzers();
+    
     let mut last_scan = Instant::now();
     let status: Result<(), Box<dyn Error>>;
     loop {
         // Scan fuzzer directories
-        if last_scan.elapsed() > state.dir_scan_rate {
-            state.update_fuzzers();
+        if last_scan.elapsed() > dir_scan_rate {
+            ui.update_fuzzers();
             last_scan = Instant::now();
         }
         // refresh the UI
-        terminal.draw(|f| draw(f, &mut state))?;
+        terminal.draw(|f| UiState::draw_self(&mut ui, f))?;
 
-        if poll(state.refresh_rate)? {
+        if poll(refresh_rate)? {
             let read_evt = match read() {
                 Ok(e) => e,
                 Err(e) => {
@@ -126,19 +128,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                             break;
                         }
                         KeyCode::F(5) => {
-                            state.update_fuzzers();
+                            ui.update_fuzzers();
                         }
                         KeyCode::Tab | KeyCode::PageUp | KeyCode::Right => {
-                            state.select_next_fuzzer();
+                            ui.select_next_fuzzer();
                         }
                         KeyCode::PageDown | KeyCode::Left => {
-                            state.select_prev_fuzzer();
+                            ui.select_prev_fuzzer();
                         }
                         KeyCode::Up => {
-                            state.select_prev_plugin();
+                            ui.select_prev_plugin();
                         }
                         KeyCode::Down => {
-                            state.select_next_plugin();
+                            ui.select_next_plugin();
                         }
                         _ => {}
                     };
