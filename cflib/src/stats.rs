@@ -4,6 +4,13 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use crate::*;
 
+/// Stat tag prefixes to give hints to UIs
+pub static TAG_PREFIX: &[&str] = &[
+    "total_",
+    "avg_",
+];
+
+/// Specifies the data content type of string stats
 pub static STR_POSTFIX: &[&str] = &[
     "_dir",
 ];
@@ -379,6 +386,10 @@ impl StatRef {
         tag
     }
 
+    pub fn get_type(&self) -> StatType {
+        self.t
+    }
+
     /// Returns a copy of the value. The potential allocation will always
     /// be big enough to hold the biggest value of the current stat
     pub fn to_owned(&self) -> StatVal {
@@ -422,7 +433,34 @@ impl StatRef {
     }
 }
 
-pub fn strip_known_postfix(tag: &str) -> (&str, Option<&'static str>) {
+/// Removes known prefixes and postfixes
+pub fn strip_tag_hints(tag: &str) -> (&str, (Option<&'static str>, Option<&'static str>)) {
+
+    let (res_tag, prefix) = strip_tag_prefix(tag);
+    let (res_tag, postfix) = strip_tag_postfix(res_tag);
+
+    (res_tag, (prefix, postfix))
+}
+
+pub fn strip_tag_prefix(tag: &str) -> (&str, Option<&'static str>) {
+    let tag_len = tag.len();
+
+    for val in TAG_PREFIX {
+        let val_len = val.len();
+
+        if tag_len < val_len {
+            continue;
+        }
+
+        if tag.starts_with(*val) {
+            return (&tag[val_len..], Some(*val));
+        }
+    }
+
+    return (tag, None);
+}
+
+pub fn strip_tag_postfix(tag: &str) -> (&str, Option<&'static str>) {
     let tag_len = tag.len();
     
     // Numbers
@@ -446,7 +484,11 @@ pub fn strip_known_postfix(tag: &str) -> (&str, Option<&'static str>) {
         }
 
         if &tag[tag_len - postfix_len..] == *postfix {
-            return (&tag[..tag_len - postfix_len], Some(*postfix));
+            if *postfix == "_dir" {
+                return (tag, Some(*postfix));    
+            } else {
+                return (&tag[..tag_len - postfix_len], Some(*postfix));       
+            }
         }
     }
     // Bytes
@@ -487,7 +529,13 @@ fn format_duration(dst: &mut String, mut val: u64, unit: &str) {
     } else if val > M_IN_US {
         let _ = write!(dst, "{}m{}s", val / M_IN_US, (val % M_IN_US) / S_IN_US);
     } else if val > S_IN_US {
-        let _ = write!(dst, "{}.{}s", val / S_IN_US, (val % S_IN_US) / MS_IN_US);
+        let _ = write!(dst, "{}", val / S_IN_US);
+        let ms = (val % S_IN_US) / MS_IN_US;
+        if ms != 0 {
+            let _ = write!(dst, ".{}s", ms);
+        } else {
+            dst.push('s');
+        }
     } else if val > MS_IN_US {
         let _ = write!(dst, "{}.{}ms", val / MS_IN_US, (val % MS_IN_US));
     } else {
@@ -521,7 +569,7 @@ pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
             dst.push('-');
         }
 
-        if tag_postfix.starts_with("_time") {
+        if tag_postfix.starts_with("_epochs") {
             format_duration(dst, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - num, "s");
         } else {
             format_duration(dst, num, unit);

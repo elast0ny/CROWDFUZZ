@@ -17,12 +17,12 @@ impl Core {
 
         // Iteration time
         self.stats.start_time =
-            unsafe { &mut *(self.stats.add("uptime_epochs", cflib::NewStat::U64)? as *mut _) };
+            unsafe { &mut *(self.stats.add("total_uptime_epochs", cflib::NewStat::U64)? as *mut _) };
         *self.stats.start_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
         // Iteration time
         self.stats.total_exec_time =
-            unsafe { &mut *(self.stats.add("total_exec_time_us", cflib::NewStat::U64)? as *mut _) };
+            unsafe { &mut *(self.stats.add("avg_iteration_time_us", cflib::NewStat::U64)? as *mut _) };
         *self.stats.total_exec_time = 0;
         // Total execs
         self.stats.num_execs =
@@ -136,16 +136,14 @@ impl CoreStats {
         self.header.stat_len += plugin_name.len() as u32;
 
         //Every component gets an exec time stat
+        let exec_time_ptr: *mut u64 =
+                    unsafe { &mut *(self.add("avg_exec_time_us", cflib::NewStat::U64)? as *mut _) };
         match plugin {
             None => {
-                let exec_time_ptr: *mut u64 =
-                    unsafe { &mut *(self.add("core_exec_time_us", cflib::NewStat::U64)? as *mut _) };
                 self.core_exec_time = unsafe { &mut *exec_time_ptr };
                 *self.core_exec_time = 0;
             }
-            Some(cur_plugin) => {
-                let exec_time_ptr: *mut u64 =
-                    unsafe { &mut *(self.add("exec_time_us", cflib::NewStat::U64)? as *mut _) };
+            Some(cur_plugin) => { 
                 cur_plugin.exec_time = unsafe { &mut *exec_time_ptr };
                 *cur_plugin.exec_time = 0;
             }

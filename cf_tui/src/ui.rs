@@ -76,6 +76,7 @@ impl<'a> UiState<'a> {
             }
         }
         
+        // Get list of stat values
         let mut unique_core_stats: HashSet<String> = HashSet::new();
         let mut unique_plugin_stats: HashSet<String> = HashSet::new();
         self.core_stat_tags.clear();
@@ -100,7 +101,6 @@ impl<'a> UiState<'a> {
                 }
             }
         }
-
     }
 
     pub fn update_footer(&mut self, cpu_load: usize, mem_load: usize) {
@@ -240,14 +240,11 @@ impl<'a> UiState<'a> {
         }
         core_stats_height += 2;
 
-        // Refresh current fuzzer core stats and select plugin stats
-        cur_fuzzer.core.refresh_stat_vals();
-        cur_fuzzer.core.stats[COMPONENT_EXEC_TIME_IDX].update(false);
-        for (idx, plugin) in cur_fuzzer.plugins.iter_mut().enumerate() {
+        // Refresh core stats
+        cur_fuzzer.refresh(false);
+        // Refresh all the plugin exec_times
+        for plugin in cur_fuzzer.plugins.iter_mut() {
             plugin.stats[COMPONENT_EXEC_TIME_IDX].update(false);
-            if idx == cur_fuzzer.cur_plugin_idx {
-                plugin.refresh_stat_vals()
-            }
         }
 
         // split total area into subsections
@@ -269,8 +266,8 @@ impl<'a> UiState<'a> {
             .constraints(
                 [
                     Constraint::Length(cur_fuzzer.core.max_tag_len + 2),
-                    Constraint::Length(cur_fuzzer.core.max_val_len + 2),
-                    Constraint::Length(cur_fuzzer.max_plugin_name_len + 2),
+                    Constraint::Length(cur_fuzzer.core.max_val_len + 1),
+                    Constraint::Length(cur_fuzzer.max_plugin_name_len + 3),
                     Constraint::Percentage(100),
                 ]
                 .as_ref(),
@@ -321,6 +318,7 @@ impl<'a> UiState<'a> {
             )
             .items(&plugin_names)
             .select(Some(cur_fuzzer.cur_plugin_idx))
+            .highlight_symbol(">")
             .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
         f.render(&mut plugin_list, plugins_list_rect);
         // Render each average exec time for the plugin list
@@ -330,8 +328,9 @@ impl<'a> UiState<'a> {
             .select(Some(cur_fuzzer.cur_plugin_idx))
             .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
         f.render(&mut plugin_times, plugins_time_rect);
-
-        let cur_plugin = &mut cur_fuzzer.plugins[cur_fuzzer.cur_plugin_idx];
+        
+        // Refresh selected plugin stats
+        let cur_plugin = cur_fuzzer.refresh_cur_plugin();       
         
         // Split bottom area for currently selected plugin
         let rects = Layout::default()

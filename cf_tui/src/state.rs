@@ -10,14 +10,14 @@ pub struct CachedStat {
     stat_ref: cflib::StatRef,
     cache: cflib::StatVal,
     pretty_tag: String,
+    tag_prefix: Option<&'static str>,
     tag_postfix: Option<&'static str>,
     str_repr: String,
 }
-
 impl CachedStat {
 
     pub fn new(stat_ref: cflib::StatRef) -> Self {
-        let (pretty_tag, tag_postfix) = cflib::strip_known_postfix(stat_ref.get_tag());
+        let (pretty_tag, (tag_prefix, tag_postfix)) = cflib::strip_tag_hints(stat_ref.get_tag());
         let pretty_tag = String::from(pretty_tag);
         let cache = stat_ref.to_owned();
         let str_repr = String::new();
@@ -26,6 +26,7 @@ impl CachedStat {
             stat_ref,
             cache,
             pretty_tag,
+            tag_prefix,
             tag_postfix,
             str_repr,
         };
@@ -34,9 +35,21 @@ impl CachedStat {
         res
     }
 
+    pub fn val_as_mut(&mut self) -> &mut cflib::StatVal {
+        &mut self.cache
+    }
+
+    pub fn val_as_ref(&mut self) -> &cflib::StatVal {
+        &self.cache
+    }
+
     /// Return the stat tag
     pub fn get_tag(&self) -> &str {
         self.pretty_tag.as_ref()
+    }
+
+    pub fn get_type(&self) -> cflib::StatType {
+        self.stat_ref.get_type()
     }
 
     /// Returns the current string representation of the stat data
@@ -45,26 +58,38 @@ impl CachedStat {
     }
 
     /// Updates itself to represent the current value in the stats memory
-    pub fn update(&mut self, force: bool) {
+    pub fn update_cache(&mut self, force: bool) -> bool {
         if force || !self.cache.is_equal(&self.stat_ref) || 
             //Epoch values "change" as time progresses
             match self.tag_postfix {
-                Some(v) => v == "_epochs",
+                Some(v) => {
+                    v == "_epochs"
+                },
                 None => false,
             }
         {
             self.cache.update(&self.stat_ref);
-            self.update_str_repr();
+            true
+        } else {
+            false
         }
     }
 
-    fn update_str_repr(&mut self) {
+    pub fn update_str_repr(&mut self) {
         if let Some(postfix) = self.tag_postfix {
             cflib::write_pretty_stat(&mut self.str_repr, &self.cache, postfix);
         } else {
             self.cache.write_str(&mut self.str_repr);
         }
     }
+
+    /// Update both the cached value and the string repr
+    pub fn update(&mut self, force: bool) {
+        if self.update_cache(force) {
+            self.update_str_repr();
+        }
+    }
+    
 }
 
 use std::fmt;
@@ -81,19 +106,21 @@ pub struct Plugin {
     pub max_tag_len: u16,
     pub max_val_len: u16,
 }
+
 impl Plugin {
-    pub fn refresh_stat_vals(&mut self) {
-        self.max_val_len = 0;
-        let stats_iter = self.stats.iter_mut().skip(1);
-        for stat in stats_iter {
-            stat.update(false);
-            // Update the longest name value
-            if stat.str_repr.len() as u16 > self.max_val_len {
-                self.max_val_len = stat.str_repr.len() as u16;
+    pub fn refresh(&mut self, force: bool) {
+        for stat in  self.stats.iter_mut() {
+            if stat.update_cache(force) {
+                stat.update_str_repr();
+                if stat.as_str().len() as u16 > self.max_val_len {
+                    self.max_val_len = stat.as_str().len() as u16;
+                }
             }
         }
     }
 }
+
+
 pub struct Fuzzer {
     #[allow(unused)]
     shmem: SharedMem,
@@ -102,9 +129,49 @@ pub struct Fuzzer {
     pub core: Plugin,
     pub max_plugin_name_len: u16,
     pub plugins: Vec<Plugin>,
+    // Plugin idx and stat idx for the avg_target_exec_time
+    pub target_exec_stat: Option<(usize, usize)>,
 }
 
 impl Fuzzer {
+    /// refresh the current plugin stats
+    pub fn refresh_cur_plugin(&mut self) -> &mut Plugin {
+        let cur_plugin = &mut self.plugins[self.cur_plugin_idx];
+
+        // Update all stats
+        for stat in  cur_plugin.stats.iter_mut().skip(1) {
+            stat.update(false);
+        }
+
+        // Remove the target_exec_time from the plugin time if applicable
+        if let Some((plugin_idx, stat_idx)) = self.target_exec_stat{
+            if plugin_idx != self.cur_plugin_idx {
+                return cur_plugin;
+            }
+            let target_time = cur_plugin.stats[stat_idx].val_as_mut().as_u64().unwrap();
+
+            match cur_plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_mut() {
+                cflib::StatVal::U64(v) => {
+                    if target_time < *v {
+                        *v -= target_time;
+                    } else {
+                        *v = 0;
+                    }
+                    cur_plugin.stats[COMPONENT_EXEC_TIME_IDX].update_str_repr();
+                },
+                _ => {},
+            };            
+        }
+
+        cur_plugin
+    }
+
+    /// Refresh the core stats
+    pub fn refresh(&mut self, force: bool) {
+         // Update all core stats
+         self.core.refresh(force);
+    }
+
     pub fn is_alive(pid: u32, sys_info: &mut System) -> bool {
         match sys_info.get_process(pid as _) {
             None => false,
@@ -166,8 +233,10 @@ impl Fuzzer {
             max_plugin_name_len: 0,
             cur_plugin_idx: 0,
             plugins: Vec::new(),
+            target_exec_stat: None,
         };
 
+        let (mut target_plugin_idx, mut target_stat_idx) = (0usize, 0usize);
         let mut cur_plugin: &mut Plugin = &mut cur_fuzzer.core;
         loop {
             // Parse the next shmem blob
@@ -180,18 +249,21 @@ impl Fuzzer {
             )?;
             shmem_idx += cur_stat.mem_len();
 
-            let cur_tag = cur_stat.get_tag();
-            if cur_tag.len() as u16 > cur_plugin.max_tag_len {
-                cur_plugin.max_tag_len = cur_tag.len() as u16;
-            }
-            
+            let cur_tag = cur_stat.get_tag();            
             // Found new component
             if cur_stat.is_component() {
                 let name = cur_tag;
                 if name.len() as u16 > cur_fuzzer.max_plugin_name_len {
                     cur_fuzzer.max_plugin_name_len = name.len() as u16;
                 }
-
+                if cur_fuzzer.target_exec_stat.is_none() {
+                    target_plugin_idx += 1;
+                    target_stat_idx = 0;
+                }
+                // Got all stats for last plugin, refresh them
+                cur_plugin.refresh(true);
+                
+                // Add plugin to list
                 cur_fuzzer.plugins.push(Plugin {
                     max_tag_len: name.len() as u16,
                     name: name.to_string(),
@@ -201,7 +273,18 @@ impl Fuzzer {
                 cur_plugin = cur_fuzzer.plugins.last_mut().unwrap();
             // Found new stat
             } else {
-                cur_plugin.stats.push(CachedStat::new(cur_stat));
+                let new_stat = CachedStat::new(cur_stat);
+                if new_stat.get_tag().len() as u16 > cur_plugin.max_tag_len {
+                    cur_plugin.max_tag_len = new_stat.get_tag().len() as u16;
+                }
+                if cur_fuzzer.target_exec_stat.is_none() {
+                    if new_stat.get_type() == cflib::STAT_U64 && new_stat.get_tag() == "target_exec_time" {
+                        cur_fuzzer.target_exec_stat = Some((target_plugin_idx - 1, target_stat_idx));
+                    } else {
+                        target_stat_idx += 1;
+                    }
+                }
+                cur_plugin.stats.push(new_stat);
             }
         }
         Ok(cur_fuzzer)
