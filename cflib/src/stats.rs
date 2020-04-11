@@ -1,23 +1,26 @@
 use std::mem::size_of;
 use std::ptr::{copy_nonoverlapping};
 use std::sync::atomic::{AtomicU16, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::*;
 
+
+pub const TAG_PREFIX_TOTAL: &str = "total_";
+pub const TAG_PREFIX_AVERAGE: &str = "avg_";
 /// Stat tag prefixes to give hints to UIs
-pub static TAG_PREFIX: &[&str] = &[
-    "total_",
-    "avg_",
+static TAG_PREFIX: &[&str] = &[
+    TAG_PREFIX_TOTAL,
+    TAG_PREFIX_AVERAGE,
 ];
 
 /// Specifies the data content type of string stats
-pub static STR_POSTFIX: &[&str] = &[
+static STR_POSTFIX: &[&str] = &[
     "_dir",
 ];
 
+pub const TAG_POSTFIX_EPOCH: &str = "_epoch_s";
 /// Specifies the data content type of number stats
-pub static NUM_POSTFIX: &[&str] = &[
-    "_epochs", // Since epoch
+static NUM_POSTFIX: &[&str] = &[
+    TAG_POSTFIX_EPOCH,
     "_us",
     "_ms",
     "_s",
@@ -268,7 +271,8 @@ impl StatVal {
             StatVal::U8(v) => Some(*v as u64),
             StatVal::U16(v) => Some(*v as u64),
             StatVal::U32(v) => Some(*v as u64),
-            StatVal::U64(v) => Some(*v as u64),
+            StatVal::U64(v) => Some(*v),
+            StatVal::USize(v) => Some(*v as u64),
             _ => None,
         }
     }
@@ -277,7 +281,8 @@ impl StatVal {
             StatVal::I8(v) => Some(*v as i64),
             StatVal::I16(v) => Some(*v as i64),
             StatVal::I32(v) => Some(*v as i64),
-            StatVal::I64(v) => Some(*v as i64),
+            StatVal::I64(v) => Some(*v),
+            StatVal::ISize(v) => Some(*v as i64),
             _ => None,
         }
     }
@@ -551,7 +556,9 @@ pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
         Some(v) => Some(v),
         None => match src.as_i64() {
             Some(v) => {
-                is_negative = true;
+                if v < 0 {
+                    is_negative = true;
+                }
                 Some(v.abs() as u64)
             },
             None => None,
@@ -569,11 +576,7 @@ pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
             dst.push('-');
         }
 
-        if tag_postfix.starts_with("_epochs") {
-            format_duration(dst, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - num, "s");
-        } else {
-            format_duration(dst, num, unit);
-        }
+        format_duration(dst, num, unit);
         
     } else if let Some(mut s) = src.as_str() {
         dst.clear();

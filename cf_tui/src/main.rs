@@ -1,8 +1,6 @@
 use ::clap::{App, Arg};
 use ::crossterm::event::{poll, read, Event, KeyCode};
-use ::sysinfo::{RefreshKind, System, SystemExt};
 
-use std::collections::HashSet;
 use std::error::Error;
 use std::time::{Duration, Instant};
 
@@ -17,12 +15,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .author(env!("CARGO_PKG_AUTHORS"))
         .about("A terminal based ui for CROWDFUZZ fuzzers")
         .arg(
-            Arg::with_name("state_dir")
-                .short("s")
-                .long("state_dir")
+            Arg::with_name("project_state")
                 .help("Path to a fuzzer's state directory")
                 .required(true)
-                .multiple(true)
                 .takes_value(true),
         )
         .arg(
@@ -78,25 +73,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .expect("Invalid number specified for --refresh_rate"),
     );
 
-    let mut state = State {
-        unique_fuzzers: HashSet::new(),
-        fuzzers: Vec::new(),
-        fuzzer_prefix: String::from(args.value_of("fuzzer_prefix").unwrap()),
-        stat_file_prefix: String::from(args.value_of("stats_prefix").unwrap()),
-        monitored_dirs: args
-            .values_of("state_dir")
-            .unwrap()
-            .map(|d| String::from(d))
-            .collect::<Vec<String>>(),
-        sys_info: System::new_with_specifics(
-            RefreshKind::new().with_processes().with_cpu().with_memory(),
-        ),
-        tab_titles: Vec::new(),
-        changed: true,
-    };
-    state.sys_info.refresh_cpu();
-    state.sys_info.refresh_memory();
-
+    let mut state = State::new(args);
     let mut ui = UiState::new(&mut state);
 
     let mut terminal = init_ui()?;

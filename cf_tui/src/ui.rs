@@ -22,15 +22,26 @@ pub struct UiState<'a> {
     pub state: &'a mut State,
 
     /// Tab header state
-    pub header_title_num: usize,
     pub header_title: String,
+    /// Currently selected fuzzer tab
     pub selected_tab: usize,
+    /// Index of the selected plugin for the overview window
+    pub overview_plugin_idx: usize,
+    
+    /// The height required to show fuzzer stats & plugin list
+    pub fuzzer_stats_heigth: usize,
+    /// The width required to show the fuzzer name and stat titles
+    pub max_core_stat_title: usize,
+    /// The width required for the select plugin list titles
+    pub max_plugin_name: usize,
+    /// The width required to show plugin details (plugin bname and plugin stats titles)
+    pub max_plugin_stat_title: usize,
 
-    pub core_stat_tags: Vec<String>,
-    pub plugin_stat_tags: Vec<String>,
-
+    /// List of strings that constitute the footer
     pub footer: Vec<String>,
+    /// Index of the CPU string in `footer`
     pub footer_cpu_idx: usize,
+    /// Index of the MEM string in `footer`
     pub footer_mem_idx: usize,
 }
 
@@ -45,16 +56,23 @@ impl<'a> UiState<'a> {
         footer.push("000%".to_owned());
         footer.push("]".to_owned());
 
+        let fuzzer_stats_heigth = 0;
+        let max_core_stat_title = 0;
+        let max_plugin_stat_title = 0;
+        let max_plugin_name = 0;
+
         let mut state = Self {
             state,
-            header_title_num: 0,
             header_title: String::from("Fuzzers (0)"),
             selected_tab: 0,
-            core_stat_tags: Vec::new(),
-            plugin_stat_tags: Vec::new(),
+            overview_plugin_idx: 0,
+            fuzzer_stats_heigth,
+            max_core_stat_title,
+            max_plugin_name,
+            max_plugin_stat_title,
             footer,
             footer_cpu_idx,
-            footer_mem_idx 
+            footer_mem_idx
         };
 
         state.update_fuzzers();
@@ -64,41 +82,62 @@ impl<'a> UiState<'a> {
     pub fn update_cached_values(&mut self) {
         use std::fmt::Write;
         
-        // Number of fuzzers has changed
-        if self.header_title_num != self.state.fuzzers.len() {
-            self.header_title.clear();
-            self.header_title_num = self.state.fuzzers.len();
-            let _ = write!(self.header_title, "Fuzzers ({})", self.header_title_num);
-            
-            // Make sure the tab selection is within bounds
-            if self.selected_tab > self.header_title_num {
-                self.selected_tab = self.header_title_num;
-            }
-        }
+        self.header_title.clear();
+        let num_fuzzers = self.state.fuzzers.len();
+        let _ = write!(self.header_title, "Fuzzers ({})", num_fuzzers);
         
-        // Get list of stat values
-        let mut unique_core_stats: HashSet<String> = HashSet::new();
-        let mut unique_plugin_stats: HashSet<String> = HashSet::new();
-        self.core_stat_tags.clear();
-        self.plugin_stat_tags.clear();
-        for fuzzer in self.state.fuzzers.iter() {
-            for stat in fuzzer.core.stats.iter() {
-                let tag = stat.get_tag();
-                if unique_core_stats.contains(stat.get_tag()) {
-                    continue;
+        // Make sure the tab selection is within bounds
+        if self.selected_tab > num_fuzzers {
+            self.selected_tab = num_fuzzers;
+        }
+
+        // If no more fuzzer, reset cached max lengths
+        if num_fuzzers == 0 {
+            self.fuzzer_stats_heigth = 0;
+            self.max_core_stat_title = 0;
+            self.max_plugin_stat_title = 0;
+            self.max_plugin_name = 0;
+        // If we havent computed the max lengths yet
+        } else if self.max_core_stat_title == 0 {
+
+            // Get longest fuzzer name
+            for fuzzer in self.state.fuzzers.iter() {
+                if self.max_core_stat_title < fuzzer.pretty_name.len() {
+                    self.max_core_stat_title = fuzzer.pretty_name.len();
                 }
-                unique_core_stats.insert(String::from(tag));
-                self.core_stat_tags.push(String::from(tag));
             }
-            for plugin in fuzzer.plugins.iter() {
-                for stat in plugin.stats.iter() {
-                    let tag = stat.get_tag();
-                    if unique_plugin_stats.contains(stat.get_tag()) {
-                        continue;
-                    }
-                    unique_plugin_stats.insert(String::from(tag));
-                    self.plugin_stat_tags.push(String::from(tag));
+            let fuzzer = &self.state.fuzzers[0];
+
+            // longest list between core stats and plugin list
+            if fuzzer.core.stats.len() > fuzzer.plugins.len() {
+                self.fuzzer_stats_heigth = fuzzer.core.stats.len();
+            } else {
+                self.fuzzer_stats_heigth = fuzzer.plugins.len();
+            }
+
+            for stat in fuzzer.core.stats.iter() {
+                // Get longest fuzzer stat name
+                if self.max_core_stat_title < stat.get_tag().len() {
+                    self.max_core_stat_title = stat.get_tag().len();
                 }
+            }
+
+            for plugin in fuzzer.plugins.iter() {
+                // Longest plugin name
+                if self.max_plugin_name < plugin.name.len() {
+                    self.max_plugin_name = plugin.name.len();
+                }
+                // Longest plugin stat name
+                for stat in plugin.stats.iter() {
+                    if self.max_plugin_stat_title < stat.get_tag().len() {
+                        self.max_plugin_stat_title = stat.get_tag().len();
+                    }
+                }
+            }            
+            
+            // If plugin name is longer than the longest stat title
+            if self.max_plugin_name > self.max_plugin_stat_title {
+                self.max_plugin_stat_title = self.max_plugin_name;
             }
         }
     }
@@ -138,26 +177,45 @@ impl<'a> UiState<'a> {
     }
 
     pub fn select_next_plugin(&mut self) {
-        if self.selected_tab == 0 {
+        let num_plugins: usize;
+        let idx: &mut usize;
+        
+        if self.state.fuzzers.len() == 0 {
             return;
+        } else if self.selected_tab == 0 {
+            num_plugins = self.state.fuzzers[0].plugins.len();
+            idx = &mut self.overview_plugin_idx;
+        } else {
+            let cur_fuzzer = &mut self.state.fuzzers[self.selected_tab - 1];
+            num_plugins = cur_fuzzer.plugins.len();
+            idx = &mut cur_fuzzer.cur_plugin_idx;
         }
-        let cur_fuzzer = &mut self.state.fuzzers[self.selected_tab - 1];
-        cur_fuzzer.cur_plugin_idx += 1;
-        if cur_fuzzer.cur_plugin_idx == cur_fuzzer.plugins.len() {
-            cur_fuzzer.cur_plugin_idx = 0;
+
+        *idx += 1;
+        if *idx == num_plugins {
+            *idx = 0;
         }
     }
 
     pub fn select_prev_plugin(&mut self) {
-        if self.selected_tab == 0 {
+        let num_plugins: usize;
+        let idx: &mut usize;
+        
+        if self.state.fuzzers.len() == 0 {
             return;
-        }
-        let cur_fuzzer = &mut self.state.fuzzers[self.selected_tab - 1];
-
-        if cur_fuzzer.cur_plugin_idx == 0 {
-            cur_fuzzer.cur_plugin_idx = cur_fuzzer.plugins.len() - 1;
+        } else if self.selected_tab == 0 {
+            num_plugins = self.state.fuzzers[0].plugins.len();
+            idx = &mut self.overview_plugin_idx;
         } else {
-            cur_fuzzer.cur_plugin_idx -= 1;
+            let cur_fuzzer = &mut self.state.fuzzers[self.selected_tab - 1];
+            num_plugins = cur_fuzzer.plugins.len();
+            idx = &mut cur_fuzzer.cur_plugin_idx;
+        }
+
+        if *idx == 0 {
+            *idx = num_plugins - 1;
+        } else {
+            *idx -= 1;
         }
     }
 
@@ -184,11 +242,7 @@ impl<'a> UiState<'a> {
         // Draw main sections
         let (header_rect, content_rect, footer_rect) = (rects[0], rects[1], rects[2]);
         self.draw_header(f, header_rect);
-        if self.selected_tab == 0 {
-            self.draw_all(f, content_rect);
-        } else {
-            self.draw_fuzzer(f, content_rect);
-        }
+        self.draw_fuzzer(f, content_rect);
         self.draw_footer(f, footer_rect);
     }
 
@@ -210,165 +264,186 @@ impl<'a> UiState<'a> {
         f.render(&mut fuzzer_tabs, area);
     }
 
-    /// Draws the view for total stats for the current fuzzers
-    pub fn draw_all<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect) {
-        let fuzzer_details = Block::default().borders(Borders::ALL).title("Overview");
-
-        if self.state.fuzzers.len() == 0 {
-            let text = &[Text::raw(Cow::from("<No fuzzers>"))];
-            let mut content = Paragraph::new(text.iter())
-                .block(fuzzer_details)
-                .style(Style::default().fg(Color::Red))
-                .alignment(tui::layout::Alignment::Center)
-                .wrap(false);
-            f.render(&mut content, area);
-            return;
-        }
-
-        //f.render(&mut fuzzer_details, area);
-    }
-
     /// Draws the view when a fuzzer is selected
     pub fn draw_fuzzer<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect) {
-        let cur_fuzzer = &mut self.state.fuzzers[self.selected_tab - 1];
-        let core_title = format!("{}({})", cur_fuzzer.core.name, cur_fuzzer.pid);
+        let cur_fuzzer;
+        let selected_plugin_idx;
 
-        // Get longest list between core stats and plugin list
-        let mut core_stats_height = cur_fuzzer.core.stats.len();
-        if core_stats_height < cur_fuzzer.plugins.len() {
-            core_stats_height = cur_fuzzer.plugins.len();
+        if self.selected_tab == 0 {
+            let fuzzer_details = Block::default().borders(Borders::ALL).title("Overview");
+            selected_plugin_idx = self.overview_plugin_idx;
+            if self.state.fuzzers.len() == 0 {
+                let text = &[Text::raw(Cow::from("<No fuzzers>"))];
+                let mut content = Paragraph::new(text.iter())
+                    .block(fuzzer_details)
+                    .style(Style::default().fg(Color::Red))
+                    .alignment(tui::layout::Alignment::Center)
+                    .wrap(false);
+                f.render(&mut content, area);
+                return;
+            }
+            
+            for fuzzer in self.state.fuzzers.iter_mut() {
+                // Refresh main fuzzer stats
+                fuzzer.refresh(false);
+                // Refresh all plugin exec_time
+                for plugin in fuzzer.plugins.iter_mut() {
+                    plugin.stats[COMPONENT_EXEC_TIME_IDX].refresh(false);
+                }
+                // Refresh selected plugin's stats
+                fuzzer.refresh_plugin(selected_plugin_idx);
+            }
+            // Merge all of the stats into one
+            let (head, tail) = self.state.fuzzers.split_at_mut(1);
+            // Combine all fuzzer stats
+            Plugin::combine_stats(&mut head[0].core, &tail.iter().map(|f| &f.core).collect::<Vec<&Plugin>>());
+            // Combine selected plugin's stats
+            Plugin::combine_stats(&mut head[0].plugins[selected_plugin_idx], &tail.iter().map(|f| &f.plugins[selected_plugin_idx]).collect::<Vec<&Plugin>>());
+
+            cur_fuzzer = &mut self.state.fuzzers[0];
+        } else {
+            cur_fuzzer = &mut self.state.fuzzers[self.selected_tab - 1];
+            selected_plugin_idx = cur_fuzzer.cur_plugin_idx;
+            // Refresh fuzzer stats
+            cur_fuzzer.refresh(false);
+            // Refresh plugin exec_time
+            for plugin in cur_fuzzer.plugins.iter_mut() {
+                plugin.stats[COMPONENT_EXEC_TIME_IDX].refresh(false);
+            }
+            // Refresh rest of stats for selected plugin
+            cur_fuzzer.refresh_plugin(selected_plugin_idx);
         }
-        core_stats_height += 2;
 
-        // Refresh core stats
-        cur_fuzzer.refresh(false);
-        // Refresh all the plugin exec_times
-        for plugin in cur_fuzzer.plugins.iter_mut() {
-            plugin.stats[COMPONENT_EXEC_TIME_IDX].update(false);
-        }
-
-        // split total area into subsections
-        let details_rect = area;
-        let rects = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(
-                [
-                    Constraint::Length(core_stats_height as u16),
-                    Constraint::Percentage(100),
-                ]
-                .as_ref(),
-            )
-            .split(details_rect);
-        let core_details_rect = rects[0];
-        let plugin_details_rect = rects[1];
-        let rects = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(
-                [
-                    Constraint::Length(cur_fuzzer.core.max_tag_len + 2),
-                    Constraint::Length(cur_fuzzer.core.max_val_len + 1),
-                    Constraint::Length(cur_fuzzer.max_plugin_name_len + 3),
-                    Constraint::Percentage(100),
-                ]
-                .as_ref(),
-            )
-            .split(core_details_rect);
-        let core_tag_list_rect = rects[0];
-        let core_val_list_rect = rects[1];
-        let plugins_list_rect = rects[2];
-        let plugins_time_rect = rects[3];
-
-        // Render fuzzer core stat names
-        let mut core_tag_list = List::new(
-            cur_fuzzer
-                .core
-                .stats
-                .iter()
-                .map(|s| Text::Raw(Cow::from(s.get_tag()))),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
-                .title(&core_title),
-        );
-        f.render(&mut core_tag_list, core_tag_list_rect);
-        // Render fuzzer core stat values
-        let mut core_val_list = List::new(
-            cur_fuzzer
-                .core
-                .stats
-                .iter()
-                .map(|s| Text::Raw(Cow::from(s.as_str()))),
-        )
-        .block(Block::default().borders(Borders::TOP | Borders::BOTTOM));
-        f.render(&mut core_val_list, core_val_list_rect);
-
-        // Render list of plugin names
-        let mut plugin_names: Vec<&str> = Vec::with_capacity(cur_fuzzer.plugins.len());
-        let mut plugin_times: Vec<&str> = Vec::with_capacity(cur_fuzzer.plugins.len());
-        for plugin in cur_fuzzer.plugins.iter() {
-            plugin_names.push(plugin.name.as_str());
-            plugin_times.push(plugin.stats[COMPONENT_EXEC_TIME_IDX].as_str());
-        }
-        let mut plugin_list = SelectableList::default()
-            .block(
-                Block::default()
-                    .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
-                    .title("Plugins"),
-            )
-            .items(&plugin_names)
-            .select(Some(cur_fuzzer.cur_plugin_idx))
-            .highlight_symbol(">")
-            .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
-        f.render(&mut plugin_list, plugins_list_rect);
-        // Render each average exec time for the plugin list
-        let mut plugin_times = SelectableList::default()
-            .block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT))
-            .items(&plugin_times)
-            .select(Some(cur_fuzzer.cur_plugin_idx))
-            .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
-        f.render(&mut plugin_times, plugins_time_rect);
+        let plugin_details_rect;
         
-        // Refresh selected plugin stats
-        let cur_plugin = cur_fuzzer.refresh_cur_plugin();       
-        
-        // Split bottom area for currently selected plugin
-        let rects = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(
-                [
-                    Constraint::Length(cur_plugin.max_tag_len + 2),
-                    Constraint::Percentage(100),
-                ]
-                .as_ref(),
-            )
-            .split(plugin_details_rect);
-        let plugin_tag_list_rect = rects[0];
-        let plugin_val_list_rect = rects[1];
+        // Render the top view (fuzzer stats and plugin list)
+        {
+            let mut max_fuzzer_val = 0;
+            let mut fuzzer_titles = Vec::new();
+            let mut fuzzer_vals = Vec::new();
+            for s in cur_fuzzer.core.stats.iter_mut() {                
+                let (tag, val) = s.get_tuple();
+                fuzzer_titles.push(Text::Raw(Cow::from(tag)));
+                if val.len() > max_fuzzer_val {
+                    max_fuzzer_val = val.len();
+                }
+                fuzzer_vals.push(Text::Raw(Cow::from(val)));
+            }
 
-        // Render selected plugin stat names
-        let mut plugin_tag_list = List::new(
-            cur_plugin
-                .stats
-                .iter()
-                .map(|s| Text::Raw(Cow::from(s.get_tag()))),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
-                .title(cur_plugin.name.as_ref()),
-        );
-        f.render(&mut plugin_tag_list, plugin_tag_list_rect);
+            // split total area into subsections
+            let details_rect = area;
+            let rects = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(
+                    [
+                        Constraint::Length((self.fuzzer_stats_heigth + 2) as u16),
+                        Constraint::Percentage(100),
+                    ]
+                    .as_ref(),
+                )
+                .split(details_rect);
+            let core_details_rect = rects[0];
+            plugin_details_rect = rects[1];
+            let rects = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(
+                    [
+                        Constraint::Length((self.max_core_stat_title + 2) as u16),
+                        Constraint::Length((max_fuzzer_val + 1) as u16),
+                        Constraint::Length((self.max_plugin_name + 3) as u16),
+                        Constraint::Percentage(100),
+                    ]
+                    .as_ref(),
+                )
+                .split(core_details_rect);
+            let core_tag_list_rect = rects[0];
+            let core_val_list_rect = rects[1];
+            let plugins_list_rect = rects[2];
+            let plugins_time_rect = rects[3];
 
-        // Render selected plugin stat values
-        let mut plugin_val_list = List::new(
-            cur_plugin
-                .stats
-                .iter()
-                .map(|s| Text::Raw(Cow::from(s.as_str()))),
-        )
-        .block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT));
-        f.render(&mut plugin_val_list, plugin_val_list_rect);
+            // Render fuzzer stat titles
+            let mut core_tag_list = List::new(fuzzer_titles.drain(..))
+                .block(
+                    Block::default()
+                        .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
+                        .title(cur_fuzzer.pretty_name.as_str()),
+                );
+            f.render(&mut core_tag_list, core_tag_list_rect);
+            // Render fuzzer stat values
+            let mut core_val_list = List::new(fuzzer_vals.drain(..))
+                .block(Block::default().borders(Borders::TOP | Borders::BOTTOM));
+            f.render(&mut core_val_list, core_val_list_rect);
+
+            // Render list of plugin names
+            let mut plugin_names: Vec<&str> = Vec::with_capacity(cur_fuzzer.plugins.len());
+            let mut plugin_times: Vec<&str> = Vec::with_capacity(cur_fuzzer.plugins.len());
+            for plugin in cur_fuzzer.plugins.iter_mut() {
+                plugin_names.push(plugin.name.as_str());
+                plugin_times.push(plugin.stats[COMPONENT_EXEC_TIME_IDX].get_val_as_str());
+            }
+            let mut plugin_list = SelectableList::default()
+                .block(
+                    Block::default()
+                        .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
+                        .title("Plugins"),
+                )
+                .items(&plugin_names)
+                .select(Some(selected_plugin_idx))
+                .highlight_symbol(">")
+                .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
+            f.render(&mut plugin_list, plugins_list_rect);
+            // Render each average exec time for the plugin list
+            let mut plugin_times = SelectableList::default()
+                .block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT))
+                .items(&plugin_times)
+                .select(Some(selected_plugin_idx))
+                .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
+            f.render(&mut plugin_times, plugins_time_rect);
+        }
+    
+        // Render the selected plugin details
+        {
+            let cur_plugin = &mut cur_fuzzer.plugins[selected_plugin_idx];       
+
+            let mut _max_plugin_val = 0;
+            let mut plugin_titles = Vec::new();
+            let mut plugin_vals = Vec::new();
+            for s in cur_plugin.stats.iter_mut() {                
+                let (tag, val) = s.get_tuple();
+                plugin_titles.push(Text::Raw(Cow::from(tag)));
+                if val.len() > _max_plugin_val {
+                    _max_plugin_val = val.len();
+                }
+                plugin_vals.push(Text::Raw(Cow::from(val)));
+            }
+            
+            // Split bottom area for currently selected plugin
+            let rects = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(
+                    [
+                        Constraint::Length((self.max_plugin_stat_title + 2) as u16),
+                        Constraint::Percentage(100),
+                    ]
+                    .as_ref(),
+                )
+                .split(plugin_details_rect);
+            let plugin_tag_list_rect = rects[0];
+            let plugin_val_list_rect = rects[1];
+
+            // Render selected plugin stat names
+            let mut plugin_tag_list = List::new(plugin_titles.drain(..))
+                .block(
+                    Block::default()
+                        .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
+                        .title(cur_plugin.name.as_ref()),
+                );
+            f.render(&mut plugin_tag_list, plugin_tag_list_rect);
+            // Render selected plugin stat values
+            let mut plugin_val_list = List::new(plugin_vals.drain(..))
+                .block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT));
+            f.render(&mut plugin_val_list, plugin_val_list_rect);
+        }
     }
 
     pub fn draw_footer<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect) {

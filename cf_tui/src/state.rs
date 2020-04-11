@@ -1,45 +1,53 @@
-use std::{collections::HashSet, error::Error, mem::size_of_val};
+use std::{
+    collections::{
+        HashSet,
+    },
+    error::Error,
+    mem::size_of_val,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use ::shared_memory::SharedMem;
-use ::sysinfo::{ProcessExt, System, SystemExt};
+use ::sysinfo::{RefreshKind, ProcessExt, System, SystemExt};
 
 // Every first stat is the exec time 
 pub const COMPONENT_EXEC_TIME_IDX: usize = 0;
 
 pub struct CachedStat {
-    stat_ref: cflib::StatRef,
+    stat_ref: Option<cflib::StatRef>,
     cache: cflib::StatVal,
     pretty_tag: String,
     tag_prefix: Option<&'static str>,
     tag_postfix: Option<&'static str>,
+    str_repr_stale: bool,
     str_repr: String,
 }
 impl CachedStat {
 
-    pub fn new(stat_ref: cflib::StatRef) -> Self {
-        let (pretty_tag, (tag_prefix, tag_postfix)) = cflib::strip_tag_hints(stat_ref.get_tag());
+    pub fn new(stat_ref: Option<cflib::StatRef>) -> Self {
+        let live_data = stat_ref.as_ref().unwrap();
+        let (pretty_tag, (tag_prefix, tag_postfix)) = cflib::strip_tag_hints(live_data.get_tag());
         let pretty_tag = String::from(pretty_tag);
-        let cache = stat_ref.to_owned();
+        let cache = live_data.to_owned();
         let str_repr = String::new();
+        let str_repr_stale = true;
 
-        let mut res = Self {
+        Self {
             stat_ref,
             cache,
             pretty_tag,
             tag_prefix,
             tag_postfix,
+            str_repr_stale,
             str_repr,
-        };
-
-        res.update_str_repr();
-        res
+        }
     }
 
     pub fn val_as_mut(&mut self) -> &mut cflib::StatVal {
         &mut self.cache
     }
 
-    pub fn val_as_ref(&mut self) -> &cflib::StatVal {
+    pub fn val_as_ref(&self) -> &cflib::StatVal {
         &self.cache
     }
 
@@ -49,47 +57,70 @@ impl CachedStat {
     }
 
     pub fn get_type(&self) -> cflib::StatType {
-        self.stat_ref.get_type()
+        self.stat_ref.as_ref().unwrap().get_type()
     }
 
     /// Returns the current string representation of the stat data
-    pub fn as_str(&self) -> &str {
+    /// This will update the string repr if the cached value has been updated
+    pub fn get_val_as_str(&mut self) -> &str {
+        if self.str_repr_stale {
+            self.update_str_repr();
+        }
         self.str_repr.as_str()
     }
 
-    /// Updates itself to represent the current value in the stats memory
-    pub fn update_cache(&mut self, force: bool) -> bool {
-        if force || !self.cache.is_equal(&self.stat_ref) || 
+    /// Returns a (tag, val) tuple
+    pub fn get_tuple(&mut self) -> (&str, &str) {
+        if self.str_repr_stale {
+            self.update_str_repr();
+        }
+        (self.get_tag(), self.str_repr.as_str())
+    }
+
+    /// Updates the cached value of the stat
+    pub fn refresh(&mut self, force: bool) -> bool {
+        let live_data = match self.stat_ref {
+            Some(ref d) => d,
+            None => return false,
+        };
+
+        if force || !self.cache.is_equal(live_data) || 
             //Epoch values "change" as time progresses
             match self.tag_postfix {
-                Some(v) => {
-                    v == "_epochs"
-                },
-                None => false,
+                Some(cflib::TAG_POSTFIX_EPOCH) => true,
+                _ => false,
             }
         {
-            self.cache.update(&self.stat_ref);
+            self.cache.update(live_data);
+            // Fixup static epoch to represent number of seconds elpased
+            if let Some(cflib::TAG_POSTFIX_EPOCH) = self.tag_postfix {
+                match self.cache {            
+                    cflib::StatVal::U64(ref mut v) => *v = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - *v,
+                    _ => {},
+                };
+            }
+            self.set_val_changed();
             true
         } else {
             false
         }
     }
 
-    pub fn update_str_repr(&mut self) {
-        if let Some(postfix) = self.tag_postfix {
-            cflib::write_pretty_stat(&mut self.str_repr, &self.cache, postfix);
-        } else {
-            self.cache.write_str(&mut self.str_repr);
-        }
+    pub fn set_val_changed(&mut self) {
+        self.str_repr_stale = true;
     }
 
-    /// Update both the cached value and the string repr
-    pub fn update(&mut self, force: bool) {
-        if self.update_cache(force) {
-            self.update_str_repr();
+    fn update_str_repr(&mut self) {
+
+        if self.str_repr_stale {
+            if let Some(postfix) = self.tag_postfix {
+                cflib::write_pretty_stat(&mut self.str_repr, &self.cache, postfix);
+            } else {
+                self.cache.write_str(&mut self.str_repr);
+            }
+            self.str_repr_stale = false;
         }
-    }
-    
+    }   
 }
 
 use std::fmt;
@@ -103,18 +134,71 @@ pub struct Plugin {
     pub name: String,
     // Name with some details
     pub stats: Vec<CachedStat>,
-    pub max_tag_len: u16,
-    pub max_val_len: u16,
 }
 
 impl Plugin {
+
     pub fn refresh(&mut self, force: bool) {
         for stat in  self.stats.iter_mut() {
-            if stat.update_cache(force) {
-                stat.update_str_repr();
-                if stat.as_str().len() as u16 > self.max_val_len {
-                    self.max_val_len = stat.as_str().len() as u16;
+            stat.refresh(force);
+        }
+    }
+
+    pub fn combine_stats(plugin: &mut Self, plugin_list: &[&Self]) {
+        
+        if plugin_list.len() == 0 {
+            return;
+        }
+        let num_plugins = 1 + plugin_list.len();
+    
+        for cur_plugin in plugin_list {
+            for (stat_idx, stat) in cur_plugin.stats.iter().enumerate() {
+                if stat.tag_prefix.is_none() {
+                    continue;
                 }
+
+                //println!("{}", stat.get_tag());
+
+                // Append the value
+                match plugin.stats[stat_idx].val_as_mut() {
+                    cflib::StatVal::USize(v) => *v += stat.val_as_ref().as_u64().unwrap() as usize,
+                    cflib::StatVal::U8(v) => *v += stat.val_as_ref().as_u64().unwrap() as u8,
+                    cflib::StatVal::U16(v) => *v += stat.val_as_ref().as_u64().unwrap() as u16,
+                    cflib::StatVal::U32(v) => *v += stat.val_as_ref().as_u64().unwrap() as u32,
+                    cflib::StatVal::U64(v) => *v += stat.val_as_ref().as_u64().unwrap(),
+                    cflib::StatVal::ISize(v) => *v += stat.val_as_ref().as_i64().unwrap() as isize,
+                    cflib::StatVal::I8(v) => *v += stat.val_as_ref().as_i64().unwrap() as i8,
+                    cflib::StatVal::I16(v) => *v += stat.val_as_ref().as_i64().unwrap() as i16,
+                    cflib::StatVal::I32(v) => *v += stat.val_as_ref().as_i64().unwrap() as i32,
+                    cflib::StatVal::I64(v) => *v += stat.val_as_ref().as_i64().unwrap() as i64,
+                    _ => continue,
+                };
+            }
+
+            // fixup averages
+            for stat in plugin.stats.iter_mut() {
+                match stat.tag_prefix {
+                    Some(p) => {
+                        if p != cflib::TAG_PREFIX_AVERAGE {
+                            continue;
+                        }
+                    },
+                    None => continue,
+                };
+                // transfrom total into average
+                match stat.val_as_mut() {
+                    cflib::StatVal::USize(v) => *v /= num_plugins,
+                    cflib::StatVal::U8(v) => *v /= num_plugins as u8,
+                    cflib::StatVal::U16(v) => *v /= num_plugins as u16,
+                    cflib::StatVal::U32(v) => *v /= num_plugins as u32,
+                    cflib::StatVal::U64(v) => *v /= num_plugins as u64,
+                    cflib::StatVal::ISize(v) => *v /= num_plugins as isize,
+                    cflib::StatVal::I8(v) => *v /= num_plugins as i8,
+                    cflib::StatVal::I16(v) => *v /= num_plugins as i16,
+                    cflib::StatVal::I32(v) => *v /= num_plugins as i32,
+                    cflib::StatVal::I64(v) => *v /= num_plugins as i64,
+                    _ => continue,
+                };
             }
         }
     }
@@ -126,6 +210,7 @@ pub struct Fuzzer {
     shmem: SharedMem,
     pub cur_plugin_idx: usize,
     pub pid: u32,
+    pub pretty_name: String,
     pub core: Plugin,
     pub max_plugin_name_len: u16,
     pub plugins: Vec<Plugin>,
@@ -135,21 +220,17 @@ pub struct Fuzzer {
 
 impl Fuzzer {
     /// refresh the current plugin stats
-    pub fn refresh_cur_plugin(&mut self) -> &mut Plugin {
-        let cur_plugin = &mut self.plugins[self.cur_plugin_idx];
+    pub fn refresh_plugin(&mut self, plugin_idx: usize) -> &mut Plugin {
+        let cur_plugin = &mut self.plugins[plugin_idx];
 
-        // Update all stats
-        for stat in  cur_plugin.stats.iter_mut().skip(1) {
-            stat.update(false);
-        }
+        cur_plugin.refresh(false);
 
-        // Remove the target_exec_time from the plugin time if applicable
-        if let Some((plugin_idx, stat_idx)) = self.target_exec_stat{
-            if plugin_idx != self.cur_plugin_idx {
+        // Substract target_exec_time from the plugin time if applicable
+        if let Some((idx, stat_idx)) = self.target_exec_stat{
+            if plugin_idx != idx {
                 return cur_plugin;
             }
             let target_time = cur_plugin.stats[stat_idx].val_as_mut().as_u64().unwrap();
-
             match cur_plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_mut() {
                 cflib::StatVal::U64(v) => {
                     if target_time < *v {
@@ -157,7 +238,7 @@ impl Fuzzer {
                     } else {
                         *v = 0;
                     }
-                    cur_plugin.stats[COMPONENT_EXEC_TIME_IDX].update_str_repr();
+                    cur_plugin.stats[COMPONENT_EXEC_TIME_IDX].set_val_changed();
                 },
                 _ => {},
             };            
@@ -223,12 +304,11 @@ impl Fuzzer {
 
         let mut cur_fuzzer = Fuzzer {
             shmem,
+            pretty_name: format!("{}({})", core_name, header.pid),
             pid: header.pid,
             core: Plugin {
-                max_tag_len: core_name.len() as u16,
                 name: core_name,
                 stats: Vec::new(),
-                max_val_len: 0,
             },
             max_plugin_name_len: 0,
             cur_plugin_idx: 0,
@@ -265,18 +345,13 @@ impl Fuzzer {
                 
                 // Add plugin to list
                 cur_fuzzer.plugins.push(Plugin {
-                    max_tag_len: name.len() as u16,
                     name: name.to_string(),
                     stats: Vec::new(),
-                    max_val_len: 0,
                 });
                 cur_plugin = cur_fuzzer.plugins.last_mut().unwrap();
             // Found new stat
             } else {
-                let new_stat = CachedStat::new(cur_stat);
-                if new_stat.get_tag().len() as u16 > cur_plugin.max_tag_len {
-                    cur_plugin.max_tag_len = new_stat.get_tag().len() as u16;
-                }
+                let new_stat = CachedStat::new(Some(cur_stat));
                 if cur_fuzzer.target_exec_stat.is_none() {
                     if new_stat.get_type() == cflib::STAT_U64 && new_stat.get_tag() == "target_exec_time" {
                         cur_fuzzer.target_exec_stat = Some((target_plugin_idx - 1, target_stat_idx));
@@ -296,13 +371,35 @@ pub struct State {
     pub fuzzers: Vec<Fuzzer>,
     pub fuzzer_prefix: String,
     pub stat_file_prefix: String,
-    pub monitored_dirs: Vec<String>,
+    pub monitored_dir: String,
     pub sys_info: System,
     pub changed: bool,
     pub tab_titles: Vec<String>,
 }
 
 impl State {
+
+    pub fn new(args: ::clap::ArgMatches) -> Self {
+        let mut state = Self {
+            unique_fuzzers: HashSet::new(),
+            fuzzers: Vec::new(),
+            fuzzer_prefix: String::from(args.value_of("fuzzer_prefix").unwrap()),
+            stat_file_prefix: String::from(args.value_of("stats_prefix").unwrap()),
+            monitored_dir: String::from(args
+                .value_of("project_state")
+                .unwrap()),
+            sys_info: System::new_with_specifics(
+                RefreshKind::new().with_processes().with_cpu().with_memory(),
+            ),
+            tab_titles: Vec::new(),
+            changed: true,
+        };
+
+        state.sys_info.refresh_cpu();
+        state.sys_info.refresh_memory();
+        
+        state
+    }
     /// Removes any dead fuzzer and scans the directories for new fuzzers
     pub fn update_fuzzers(&mut self) {
         self.sys_info.refresh_processes();
@@ -317,30 +414,29 @@ impl State {
         }
 
         let mut found_files = Vec::new();
-        for dir in &self.monitored_dirs {
-            if let Ok(mut dir_list) = std::fs::read_dir(dir) {
-                while let Some(Ok(entry)) = dir_list.next() {
-                    let metadata = match entry.metadata() {
-                        Ok(v) => v,
-                        _ => continue,
-                    };
-                    if !metadata.is_file() {
-                        continue;
-                    }
+        if let Ok(mut dir_list) = std::fs::read_dir(&self.monitored_dir) {
+            while let Some(Ok(entry)) = dir_list.next() {
+                let metadata = match entry.metadata() {
+                    Ok(v) => v,
+                    _ => continue,
+                };
+                if !metadata.is_file() {
+                    continue;
+                }
 
-                    let file_path = entry.path();
-                    if file_path
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .starts_with(&self.stat_file_prefix)
-                    {
-                        found_files.push(file_path);
-                    }
+                let file_path = entry.path();
+                if file_path
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with(&self.stat_file_prefix)
+                {
+                    found_files.push(file_path);
                 }
             }
         }
+        
 
         // Try to load all the files
         for fpath in found_files.iter() {
@@ -369,11 +465,60 @@ impl State {
         }
     }
 
+    /// Returns whether this fuzzer can be combined with the other existing fuzzers
+    fn is_valid_fuzzer(&mut self, fuzzer: &Fuzzer) -> bool {
+        if self.fuzzers.len() == 0 {
+            return true;
+        }
+
+        // Compare stats to the first fuzzer
+        let baseline_fuzzer = &self.fuzzers[0];
+        if baseline_fuzzer.core.stats.len() != fuzzer.core.stats.len() ||
+            baseline_fuzzer.plugins.len() != fuzzer.plugins.len() {
+            eprintln!("Ignoring fuzzer {} because of incompatible projects", fuzzer.pid);
+            return false;
+        }
+
+        // Validate fuzzer core stats
+        for (idx, stat) in fuzzer.core.stats.iter().enumerate() {
+            let baseline_stat = &baseline_fuzzer.core.stats[idx];
+
+            if baseline_stat.get_tag() != stat.get_tag() || baseline_stat.get_type() != stat.get_type() {
+                eprintln!("Ignoring fuzzer {} : stat {} doesnt match", fuzzer.pid, stat.get_tag());
+                return false;
+            }
+        }
+
+        // Validate plugins
+        for (idx, plugin) in fuzzer.plugins.iter().enumerate() {
+            let baseline_plugin = &baseline_fuzzer.plugins[idx];
+            
+            if baseline_plugin.name != plugin.name || baseline_plugin.stats.len() != plugin.stats.len() {
+                eprintln!("Ignoring fuzzer {} : plugin {} doesnt match", fuzzer.pid, plugin.name);
+                return false;
+            }
+
+            for (idx, stat) in plugin.stats.iter().enumerate() {
+                let baseline_stat = &baseline_plugin.stats[idx];
+
+                if baseline_stat.get_tag() != stat.get_tag() || baseline_stat.get_type() != stat.get_type() {
+                    eprintln!("Ignoring fuzzer {} : stat {} doesnt match", fuzzer.pid, stat.get_tag());
+                    return false;
+                }
+            }
+        }        
+        return true;
+    }
+
     fn add_fuzzer(&mut self, fuzzer: Fuzzer) {
         self.changed = true;
+
         self.unique_fuzzers
             .insert(fuzzer.shmem.get_os_path().to_string());
-        self.fuzzers.push(fuzzer);
+
+        if self.is_valid_fuzzer(&fuzzer) {
+            self.fuzzers.push(fuzzer);
+        }
     }
 
     fn remove_fuzzers(&mut self, idx_list: &[usize]) {

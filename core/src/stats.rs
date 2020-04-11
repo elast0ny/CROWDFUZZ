@@ -17,7 +17,7 @@ impl Core {
 
         // Iteration time
         self.stats.start_time =
-            unsafe { &mut *(self.stats.add("total_uptime_epochs", cflib::NewStat::U64)? as *mut _) };
+            unsafe { &mut *(self.stats.add("total_uptime_epoch_s", cflib::NewStat::U64)? as *mut _) };
         *self.stats.start_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
         // Iteration time

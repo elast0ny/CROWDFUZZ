@@ -25,7 +25,8 @@ cflib::register!(destroy, destroy);
 
 /// Custom stats owned by the plugin
 struct CustomStats {
-    num_inputs: &'static mut usize,
+    initial_input_num: &'static mut usize,
+    generated_input_num: &'static mut usize,
 }
 
 /// Plugin state
@@ -61,12 +62,17 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
                 data: std::ptr::null_mut(),
             },
             stats: CustomStats {
-                num_inputs: &mut *(core.add_stat("total_inputs", NewStat::USize).unwrap()
+                initial_input_num: &mut *(core.add_stat("initial_inputs", NewStat::U64).unwrap()
+                    as *mut _),
+                generated_input_num: &mut *(core.add_stat("total_generated_inputs", NewStat::U64).unwrap()
                     as *mut _),
             },
             input_providers: Vec::new(),
         })
     };
+
+    *state.stats.generated_input_num = 0;
+    *state.stats.initial_input_num = 0;
 
     // Add values we control to the store
     core.store_push_back(KEY_INPUT_PATH_STR, state.pub_file_path.as_mut_ptr());
@@ -263,7 +269,7 @@ impl State {
         }
 
         self.file_list.append(&mut new_files);
-        *self.stats.num_inputs = self.file_list.len();
+        *self.stats.initial_input_num = self.file_list.len();
 
         // Gerenate a hash for all the current files
         let mut cur_hash: [u8; 20] = [0; 20];
@@ -338,6 +344,7 @@ impl State {
                         return Err(STATUS_PLUGINERROR);
                     }
                 }
+                *self.stats.generated_input_num += 1;
                 self.file_list.push(self.result_dir.clone());
                 self.unique_files.insert(cur_hash);
             }
