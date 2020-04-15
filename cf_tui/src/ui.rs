@@ -268,6 +268,7 @@ impl<'a> UiState<'a> {
     pub fn draw_fuzzer<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect) {
         let cur_fuzzer;
         let selected_plugin_idx;
+        let cur_tab_name: &str;
 
         // Overview
         if self.selected_tab == 0 {
@@ -306,6 +307,7 @@ impl<'a> UiState<'a> {
                 }
             }
             cur_fuzzer = &mut self.state.fuzzers[0];
+            cur_tab_name = "Overview"
         // Specific fuzzer selected
         } else {
             cur_fuzzer = &mut self.state.fuzzers[self.selected_tab - 1];
@@ -314,6 +316,7 @@ impl<'a> UiState<'a> {
             cur_fuzzer.refresh(false);
             // Refresh stats for selected plugin
             cur_fuzzer.refresh_plugin(selected_plugin_idx);
+            cur_tab_name = cur_fuzzer.pretty_name.as_str();
         }
 
         let plugin_details_rect;
@@ -368,7 +371,7 @@ impl<'a> UiState<'a> {
                 .block(
                     Block::default()
                         .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
-                        .title(cur_fuzzer.pretty_name.as_str()),
+                        .title(cur_tab_name),
                 );
             f.render(&mut core_tag_list, core_tag_list_rect);
             // Render fuzzer stat values
