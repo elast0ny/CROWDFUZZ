@@ -87,15 +87,15 @@ impl CachedStat {
         if force || !self.cache.is_equal(live_data) || 
             //Epoch values "change" as time progresses
             match self.tag_postfix {
-                Some(cflib::TAG_POSTFIX_EPOCH) => true,
+                Some(cflib::NUM_POSTFIX_EPOCHS_STR) => true,
                 _ => false,
             }
         {
             self.cache.update(live_data);
             // Fixup static epoch to represent number of seconds elpased
-            if let Some(cflib::TAG_POSTFIX_EPOCH) = self.tag_postfix {
+            if let Some(cflib::NUM_POSTFIX_EPOCHS_STR) = self.tag_postfix {
                 match self.cache {            
-                    cflib::StatVal::U64(ref mut v) => *v = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - *v,
+                    cflib::StatVal::Number(ref mut v) => *v = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - *v,
                     _ => {},
                 };
             }
@@ -161,16 +161,7 @@ impl Plugin {
 
                 // Append the value
                 match plugin.stats[stat_idx].val_as_mut() {
-                    cflib::StatVal::USize(v) => *v += stat.val_as_ref().as_u64().unwrap() as usize,
-                    cflib::StatVal::U8(v) => *v += stat.val_as_ref().as_u64().unwrap() as u8,
-                    cflib::StatVal::U16(v) => *v += stat.val_as_ref().as_u64().unwrap() as u16,
-                    cflib::StatVal::U32(v) => *v += stat.val_as_ref().as_u64().unwrap() as u32,
-                    cflib::StatVal::U64(v) => *v += stat.val_as_ref().as_u64().unwrap(),
-                    cflib::StatVal::ISize(v) => *v += stat.val_as_ref().as_i64().unwrap() as isize,
-                    cflib::StatVal::I8(v) => *v += stat.val_as_ref().as_i64().unwrap() as i8,
-                    cflib::StatVal::I16(v) => *v += stat.val_as_ref().as_i64().unwrap() as i16,
-                    cflib::StatVal::I32(v) => *v += stat.val_as_ref().as_i64().unwrap() as i32,
-                    cflib::StatVal::I64(v) => *v += stat.val_as_ref().as_i64().unwrap() as i64,
+                    cflib::StatVal::Number(v) => *v += stat.val_as_ref().as_num().unwrap(),
                     _ => continue,
                 };
             }
@@ -179,7 +170,7 @@ impl Plugin {
             for stat in plugin.stats.iter_mut() {
                 match stat.tag_prefix {
                     Some(p) => {
-                        if p != cflib::TAG_PREFIX_AVERAGE {
+                        if p != cflib::TAG_PREFIX_AVERAGE_STR {
                             continue;
                         }
                     },
@@ -187,16 +178,7 @@ impl Plugin {
                 };
                 // transfrom total into average
                 match stat.val_as_mut() {
-                    cflib::StatVal::USize(v) => *v /= num_plugins,
-                    cflib::StatVal::U8(v) => *v /= num_plugins as u8,
-                    cflib::StatVal::U16(v) => *v /= num_plugins as u16,
-                    cflib::StatVal::U32(v) => *v /= num_plugins as u32,
-                    cflib::StatVal::U64(v) => *v /= num_plugins as u64,
-                    cflib::StatVal::ISize(v) => *v /= num_plugins as isize,
-                    cflib::StatVal::I8(v) => *v /= num_plugins as i8,
-                    cflib::StatVal::I16(v) => *v /= num_plugins as i16,
-                    cflib::StatVal::I32(v) => *v /= num_plugins as i32,
-                    cflib::StatVal::I64(v) => *v /= num_plugins as i64,
+                    cflib::StatVal::Number(v) => *v /= num_plugins as u64,
                     _ => continue,
                 };
             }
@@ -230,9 +212,9 @@ impl Fuzzer {
             if plugin_idx != idx {
                 return cur_plugin;
             }
-            let target_time = cur_plugin.stats[stat_idx].val_as_mut().as_u64().unwrap();
+            let target_time = cur_plugin.stats[stat_idx].val_as_mut().as_num().unwrap();
             match cur_plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_mut() {
-                cflib::StatVal::U64(v) => {
+                cflib::StatVal::Number(v) => {
                     if target_time < *v {
                         *v -= target_time;
                     } else {
@@ -353,7 +335,7 @@ impl Fuzzer {
             } else {
                 let new_stat = CachedStat::new(Some(cur_stat));
                 if cur_fuzzer.target_exec_stat.is_none() {
-                    if new_stat.get_type() == cflib::STAT_U64 && new_stat.get_tag() == "target_exec_time" {
+                    if new_stat.get_type() == cflib::STAT_NUMBER && new_stat.get_tag() == "target_exec_time" {
                         cur_fuzzer.target_exec_stat = Some((target_plugin_idx - 1, target_stat_idx));
                     } else {
                         target_stat_idx += 1;

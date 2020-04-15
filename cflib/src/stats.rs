@@ -3,34 +3,30 @@ use std::ptr::{copy_nonoverlapping};
 use std::sync::atomic::{AtomicU16, Ordering};
 use crate::*;
 
-
-pub const TAG_PREFIX_TOTAL: &str = "total_";
-pub const TAG_PREFIX_AVERAGE: &str = "avg_";
 /// Stat tag prefixes to give hints to UIs
 static TAG_PREFIX: &[&str] = &[
-    TAG_PREFIX_TOTAL,
-    TAG_PREFIX_AVERAGE,
+    TAG_PREFIX_TOTAL_STR,
+    TAG_PREFIX_AVERAGE_STR,
 ];
 
 /// Specifies the data content type of string stats
 static STR_POSTFIX: &[&str] = &[
-    "_dir",
+    STR_POSTFIX_DIR_STR,
 ];
 
-pub const TAG_POSTFIX_EPOCH: &str = "_epoch_s";
 /// Specifies the data content type of number stats
 static NUM_POSTFIX: &[&str] = &[
-    TAG_POSTFIX_EPOCH,
-    "_us",
-    "_ms",
-    "_s",
-    "_m",
-    "_h",
+    NUM_POSTFIX_EPOCHS_STR,
+    NUM_POSTFIX_US_STR,
+    NUM_POSTFIX_MS_STR,
+    NUM_POSTFIX_SEC_STR,
+    NUM_POSTFIX_MIN_STR,
+    NUM_POSTFIX_HOUR_STR,
 ];
 
 /// Sepcifies the data content type of byte stats
 pub static BYTES_POSTFIX: &[&str] = &[
-    "_hex",
+    BYTES_POSTFIX_HEX_STR,
 ];
 
 /// Used to request new stat space from the core. Dynamic type
@@ -40,16 +36,7 @@ pub enum NewStat {
     #[doc(hidden)]
     Bytes(u16),
     Str(u16),
-    USize,
-    ISize,
-    U8,
-    U16,
-    U32,
-    U64,
-    I8,
-    I16,
-    I32,
-    I64,
+    Number,
 }
 
 impl NewStat {
@@ -57,16 +44,7 @@ impl NewStat {
         let new_stat = match stat_type {
             STAT_BYTES => NewStat::Bytes(max_len),
             STAT_STR => NewStat::Str(max_len),
-            STAT_USIZE => NewStat::USize,
-            STAT_ISIZE => NewStat::ISize,
-            STAT_U8 => NewStat::U8,
-            STAT_U16 => NewStat::U16,
-            STAT_U32 => NewStat::U32,
-            STAT_U64 => NewStat::U64,
-            STAT_I8 => NewStat::I8,
-            STAT_I16 => NewStat::I16,
-            STAT_I32 => NewStat::I32,
-            STAT_I64 => NewStat::I64,
+            STAT_NUMBER => NewStat::Number,
             _ => panic!("Unknown stat type {} (max_len {})", stat_type, max_len),
         };
 
@@ -91,32 +69,14 @@ impl NewStat {
         (match &self {
             &NewStat::Bytes(v) => *v as usize,
             &NewStat::Str(v) => *v as usize,
-            &NewStat::USize => size_of::<usize>(),
-            &NewStat::ISize => size_of::<isize>(),
-            &NewStat::U8 => size_of::<u8>(),
-            &NewStat::U16 => size_of::<u16>(),
-            &NewStat::U32 => size_of::<u32>(),
-            &NewStat::U64 => size_of::<u64>(),
-            &NewStat::I8 => size_of::<i8>(),
-            &NewStat::I16 => size_of::<i16>(),
-            &NewStat::I32 => size_of::<i32>(),
-            &NewStat::I64 => size_of::<i64>(),
+            &NewStat::Number => size_of::<u64>(),
         }) as u16
     }
     pub fn to_id(&self) -> StatType {
         match &self {
             &NewStat::Bytes(_) => STAT_BYTES,
             &NewStat::Str(_) => STAT_STR,
-            &NewStat::USize => STAT_USIZE,
-            &NewStat::ISize => STAT_ISIZE,
-            &NewStat::U8 => STAT_U8,
-            &NewStat::U16 => STAT_U16,
-            &NewStat::U32 => STAT_U32,
-            &NewStat::U64 => STAT_U64,
-            &NewStat::I8 => STAT_I8,
-            &NewStat::I16 => STAT_I16,
-            &NewStat::I32 => STAT_I32,
-            &NewStat::I64 => STAT_I64,
+            &NewStat::Number => STAT_NUMBER,
         }
     }
 }
@@ -137,17 +97,8 @@ pub fn stat_static_data_len(some_val: StatType) -> Option<u16> {
         STAT_NEWCOMPONENT => Some(0),
         STAT_BYTES => None,
         STAT_STR => None,
-        STAT_USIZE => Some(size_of::<usize>() as u16),
-        STAT_ISIZE => Some(size_of::<isize>() as u16),
-        STAT_U8 => Some(size_of::<u8>() as u16),
-        STAT_U16 => Some(size_of::<u16>() as u16),
-        STAT_U32 => Some(size_of::<u32>() as u16),
-        STAT_U64 => Some(size_of::<u64>() as u16),
-        STAT_I8 => Some(size_of::<i8>() as u16),
-        STAT_I16 => Some(size_of::<i16>() as u16),
-        STAT_I32 => Some(size_of::<i32>() as u16),
-        STAT_I64 => Some(size_of::<i64>() as u16),
-        _ => panic!("Invalid StatType given : {}...", some_val),
+        STAT_NUMBER => Some(size_of::<u64>() as u16),
+        t => panic!("Invalid StatType given : {}...", t),
     }
 }
 
@@ -157,16 +108,7 @@ pub enum StatVal {
     Component(String),
     Bytes(Vec<u8>),
     Str(String),
-    USize(usize),
-    ISize(isize),
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-    I8(i8),
-    I16(i16),
-    I32(i32),
-    I64(i64),
+    Number(u64),
 }
 
 impl StatVal {
@@ -190,16 +132,7 @@ impl StatVal {
                     &dst.as_bytes() == &bytes
                 }
             },
-            StatVal::USize(v) => {*v == *(src.data_ptr as *mut usize)},
-            StatVal::ISize(v) => {*v == *(src.data_ptr as *mut isize)},
-            StatVal::U8(v) => {*v == *(src.data_ptr as *mut u8)},
-            StatVal::U16(v) => {*v == *(src.data_ptr as *mut u16)},
-            StatVal::U32(v) => {*v == *(src.data_ptr as *mut u32)},
-            StatVal::U64(v) => {*v == *(src.data_ptr as *mut u64)},
-            StatVal::I8(v) => {*v == *(src.data_ptr as *mut i8)},
-            StatVal::I16(v) => {*v == *(src.data_ptr as *mut i16)},
-            StatVal::I32(v) => {*v == *(src.data_ptr as *mut i32)},
-            StatVal::I64(v) => {*v == *(src.data_ptr as *mut i64)},
+            StatVal::Number(v) => {*v == *(src.data_ptr as *mut u64)},
         }
         }
 
@@ -217,16 +150,7 @@ impl StatVal {
                 let cur_len = copy_dyn_stat(dst.as_mut_ptr(), src.data_ptr);
                 dst.set_len(cur_len);
             },
-            StatVal::USize(v) => {*v = *(src.data_ptr as *mut usize)},
-            StatVal::ISize(v) => {*v = *(src.data_ptr as *mut isize)},
-            StatVal::U8(v) => {*v = *(src.data_ptr as *mut u8)},
-            StatVal::U16(v) => {*v = *(src.data_ptr as *mut u16)},
-            StatVal::U32(v) => {*v = *(src.data_ptr as *mut u32)},
-            StatVal::U64(v) => {*v = *(src.data_ptr as *mut u64)},
-            StatVal::I8(v) => {*v = *(src.data_ptr as *mut i8)},
-            StatVal::I16(v) => {*v = *(src.data_ptr as *mut i16)},
-            StatVal::I32(v) => {*v = *(src.data_ptr as *mut i32)},
-            StatVal::I64(v) => {*v = *(src.data_ptr as *mut i64)},
+            StatVal::Number(v) => {*v = *(src.data_ptr as *mut u64)},
         }
         }
     }
@@ -242,16 +166,7 @@ impl StatVal {
                 Ok(())
             },
             StatVal::Str(v) => write!(dst, "{}", v),
-            StatVal::USize(v) => write!(dst, "{}", v),
-            StatVal::ISize(v) => write!(dst, "{}", v),
-            StatVal::U8(v) => write!(dst, "{}", v),
-            StatVal::U16(v) => write!(dst, "{}", v),
-            StatVal::U32(v) => write!(dst, "{}", v),
-            StatVal::U64(v) => write!(dst, "{}", v),
-            StatVal::I8(v) => write!(dst, "{}", v),
-            StatVal::I16(v) => write!(dst, "{}", v),
-            StatVal::I32(v) => write!(dst, "{}", v),
-            StatVal::I64(v) => write!(dst, "{}", v),
+            StatVal::Number(v) => write!(dst, "{}", v),
         };
     }
     pub fn as_str(&self) -> Option<&str> {
@@ -266,23 +181,15 @@ impl StatVal {
             _ => None,
         }
     }
-    pub fn as_u64(&self) -> Option<u64> {
+    pub fn as_num(&self) -> Option<u64> {
         match self {
-            StatVal::U8(v) => Some(*v as u64),
-            StatVal::U16(v) => Some(*v as u64),
-            StatVal::U32(v) => Some(*v as u64),
-            StatVal::U64(v) => Some(*v),
-            StatVal::USize(v) => Some(*v as u64),
+            StatVal::Number(v) => Some(*v),
             _ => None,
         }
     }
-    pub fn as_i64(&self) -> Option<i64> {
+    pub fn as_signed_num(&self) -> Option<i64> {
         match self {
-            StatVal::I8(v) => Some(*v as i64),
-            StatVal::I16(v) => Some(*v as i64),
-            StatVal::I32(v) => Some(*v as i64),
-            StatVal::I64(v) => Some(*v),
-            StatVal::ISize(v) => Some(*v as i64),
+            StatVal::Number(v) => Some(*v as i64),
             _ => None,
         }
     }
@@ -418,17 +325,8 @@ impl StatRef {
                     res.set_len(cur_len);
                     StatVal::Str(String::from_utf8_unchecked(res))
                 },
-                STAT_USIZE => StatVal::USize(*(self.data_ptr as *mut usize)),
-                STAT_ISIZE => StatVal::ISize(*(self.data_ptr as *mut isize)),
-                STAT_U8 => StatVal::U8(*(self.data_ptr as *mut u8)),
-                STAT_U16 => StatVal::U16(*(self.data_ptr as *mut u16)),
-                STAT_U32 => StatVal::U32(*(self.data_ptr as *mut u32)),
-                STAT_U64 => StatVal::U64(*(self.data_ptr as *mut u64)),
-                STAT_I8 => StatVal::I8(*(self.data_ptr as *mut i8)),
-                STAT_I16 => StatVal::I16(*(self.data_ptr as *mut i16)),
-                STAT_I32 => StatVal::I32(*(self.data_ptr as *mut i32)),
-                STAT_I64 => StatVal::I64(*(self.data_ptr as *mut i64)),
-                _ => panic!("Invalid StatType given..."),
+                STAT_NUMBER => StatVal::Number(*(self.data_ptr as *mut u64)),
+                t => panic!("Invalid StatType given '{}' ...", t),
             }
         }
     }
@@ -489,7 +387,7 @@ pub fn strip_tag_postfix(tag: &str) -> (&str, Option<&'static str>) {
         }
 
         if &tag[tag_len - postfix_len..] == *postfix {
-            if *postfix == "_dir" {
+            if *postfix == STR_POSTFIX_DIR_STR {
                 return (tag, Some(*postfix));    
             } else {
                 return (&tag[..tag_len - postfix_len], Some(*postfix));       
@@ -551,19 +449,7 @@ fn format_duration(dst: &mut String, mut val: u64, unit: &str) {
 pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
     use std::fmt::Write;
 
-    let mut is_negative = false;
-    let num = match src.as_u64() {
-        Some(v) => Some(v),
-        None => match src.as_i64() {
-            Some(v) => {
-                if v < 0 {
-                    is_negative = true;
-                }
-                Some(v.abs() as u64)
-            },
-            None => None,
-        },
-    };
+    let num = src.as_num();
 
     if let Some(num) = num {
         let unit = match tag_postfix.rfind("_") {
@@ -572,15 +458,12 @@ pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
         };
         
         dst.clear();
-        if is_negative {
-            dst.push('-');
-        }
-
         format_duration(dst, num, unit);
         
     } else if let Some(mut s) = src.as_str() {
         dst.clear();
-        if tag_postfix == "_dir" {
+        if tag_postfix == STR_POSTFIX_DIR_STR {
+            // Strip windows path grossness
             if s.starts_with("\\\\?\\") {
                 s = &s[4..];
             }
@@ -588,9 +471,9 @@ pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
         let _ = write!(dst, "{}", s);
     } else if let Some(b) = src.as_bytes() {
         dst.clear();
-        if tag_postfix == "_hex" {
+        if tag_postfix == BYTES_POSTFIX_HEX_STR {
             for byte in b {
-                let _ = write!(dst, "{:02X}", byte);
+                let _ = write!(dst, "{:X}", byte);
             }
         } else {
             let _ = write!(dst, "{:?}", b);

@@ -11,23 +11,34 @@ use crate::plugin::*;
 use crate::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+//const UPTIME_EPOCH: &str = concat!(cflib::TAG_PREFIX_TOTAL_STR, "uptime", cflib::NUM_POSTFIX_EPOCHS_STR);
+
 impl Core {
     pub fn init_stats(&mut self) -> Result<()> {
+        use std::fmt::Write;
         self.stats.init(&self.config.prefix)?;
+        let mut tag = format!("{}uptime{}", cflib::TAG_PREFIX_TOTAL_STR, cflib::NUM_POSTFIX_EPOCHS_STR);
+
 
         // Iteration time
         self.stats.start_time =
-            unsafe { &mut *(self.stats.add("total_uptime_epoch_s", cflib::NewStat::U64)? as *mut _) };
+            unsafe { &mut *(self.stats.add(&tag, cflib::NewStat::Number)? as *mut _) };
         *self.stats.start_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
         // Iteration time
+        tag.clear();
+        let _ = write!(&mut tag, "{}iteration_time{}", cflib::TAG_PREFIX_AVERAGE_STR, cflib::NUM_POSTFIX_US_STR);
         self.stats.total_exec_time =
-            unsafe { &mut *(self.stats.add("avg_iteration_time_us", cflib::NewStat::U64)? as *mut _) };
+            unsafe { &mut *(self.stats.add(&tag, cflib::NewStat::Number)? as *mut _) };
         *self.stats.total_exec_time = 0;
+        
         // Total execs
+        tag.clear();
+        let _ = write!(&mut tag, "{}execs", cflib::TAG_PREFIX_TOTAL_STR);
         self.stats.num_execs =
-            unsafe { &mut *(self.stats.add("total_execs", cflib::NewStat::U64)? as *mut _) };
+            unsafe { &mut *(self.stats.add(&tag, cflib::NewStat::Number)? as *mut _) };
         *self.stats.num_execs = 0;
+        
         // Working dir
         self.stats.cwd = unsafe {
             &mut *(self.stats.add(
@@ -44,18 +55,16 @@ impl Core {
             cmd_line.push(' ');
             cmd_line.push_str(&arg);
         }
-        self.stats.cmd_line = unsafe {
-            &mut *(self
-                .stats
-                .add("cmd_line", cflib::NewStat::Str(cmd_line.len() as u16))?
-                as *mut _)
-        };
+        self.stats.cmd_line = self
+        .stats
+        .add("cmd_line", cflib::NewStat::Str(cmd_line.len() as u16))?;
         cflib::update_dyn_stat(self.stats.cmd_line as *mut _, &cmd_line);
+        
         //Target binary hash
-        self.stats.target_hash =
-            unsafe { &mut *(self.stats.add("bin_hash", cflib::NewStat::U32)? as *mut _) };
-        *self.stats.target_hash =
-            crc::crc32::checksum_ieee(&std::fs::read(&self.config.target).unwrap());
+        tag.clear();
+        let _ = write!(&mut tag, "bin_bash{}", cflib::BYTES_POSTFIX_HEX_STR);
+        self.stats.target_hash = self.stats.add("bin_hash_hex", cflib::NewStat::Bytes(4))?;
+        cflib::update_dyn_stat(self.stats.target_hash as *mut _, &crc::crc32::checksum_ieee(&std::fs::read(&self.config.target).unwrap()).to_le_bytes());
 
         Ok(())
     }
@@ -71,7 +80,7 @@ pub struct CoreStats {
     pub core_exec_time: &'static mut u64,
     pub num_execs: &'static mut u64,
     pub cmd_line: *mut c_void,
-    pub target_hash: &'static mut u32,
+    pub target_hash: *mut c_void,
 }
 impl CoreStats {
     pub fn new(shmem: SharedMem) -> CoreStats {
@@ -136,8 +145,11 @@ impl CoreStats {
         self.header.stat_len += plugin_name.len() as u32;
 
         //Every component gets an exec time stat
+        let mut tag = String::from(cflib::TAG_PREFIX_AVERAGE_STR);
+        tag.push_str("exec_time");
+        tag.push_str(cflib::NUM_POSTFIX_US_STR);
         let exec_time_ptr: *mut u64 =
-                    unsafe { &mut *(self.add("avg_exec_time_us", cflib::NewStat::U64)? as *mut _) };
+                    unsafe { &mut *(self.add(&tag, cflib::NewStat::Number)? as *mut _) };
         match plugin {
             None => {
                 self.core_exec_time = unsafe { &mut *exec_time_ptr };

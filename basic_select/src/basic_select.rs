@@ -62,9 +62,11 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
                 data: std::ptr::null_mut(),
             },
             stats: CustomStats {
-                initial_input_num: &mut *(core.add_stat("initial_inputs", NewStat::U64).unwrap()
+                initial_input_num: &mut *(core.add_stat("initial_inputs", NewStat::Number).unwrap()
                     as *mut _),
-                generated_input_num: &mut *(core.add_stat("total_generated_inputs", NewStat::U64).unwrap()
+                generated_input_num: &mut *(core.add_stat(
+                    &format!("{}generated_inputs", cflib::TAG_PREFIX_TOTAL_STR),
+                    NewStat::Number).unwrap()
                     as *mut _),
             },
             input_providers: Vec::new(),
