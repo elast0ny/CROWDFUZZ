@@ -103,6 +103,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
                             status = Ok(());
                             break;
+                        },
+                        //also allow ctrl-c
+                        KeyCode::Char('c') | KeyCode::Char('C') => {
+                            if event.modifiers.contains(KeyModifiers::CONTROL) {
+                                status = Ok(());
+                                break;
+                            }
                         }
                         KeyCode::F(5) => {
                             ui.update_fuzzers();
@@ -119,12 +126,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                         KeyCode::Down => {
                             ui.select_next_plugin();
                         },
-                        KeyCode::Char('c') => {
-                            if event.modifiers.contains(KeyModifiers::CONTROL) {
-                                status = Ok(());
-                                break;
-                            }
-                        }
                         _ => {}
                     };
                 }
