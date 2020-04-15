@@ -269,6 +269,7 @@ impl<'a> UiState<'a> {
         let cur_fuzzer;
         let selected_plugin_idx;
 
+        // Overview
         if self.selected_tab == 0 {
             let fuzzer_details = Block::default().borders(Borders::ALL).title("Overview");
             selected_plugin_idx = self.overview_plugin_idx;
@@ -283,34 +284,35 @@ impl<'a> UiState<'a> {
                 return;
             }
             
+            // Refresh stat values
             for fuzzer in self.state.fuzzers.iter_mut() {
                 // Refresh main fuzzer stats
                 fuzzer.refresh(false);
-                // Refresh all plugin exec_time
-                for plugin in fuzzer.plugins.iter_mut() {
-                    plugin.stats[COMPONENT_EXEC_TIME_IDX].refresh(false);
-                }
-                // Refresh selected plugin's stats
+                // Refresh stats for selected plugin
                 fuzzer.refresh_plugin(selected_plugin_idx);
             }
-            // Merge all of the stats into one
+            
+            // Merge stats
             let (head, tail) = self.state.fuzzers.split_at_mut(1);
-            // Combine all fuzzer stats
-            Plugin::combine_stats(&mut head[0].core, &tail.iter().map(|f| &f.core).collect::<Vec<&Plugin>>());
-            // Combine selected plugin's stats
-            Plugin::combine_stats(&mut head[0].plugins[selected_plugin_idx], &tail.iter().map(|f| &f.plugins[selected_plugin_idx]).collect::<Vec<&Plugin>>());
-
+            // Fuzzer stats
+            Plugin::combine_stats(&mut head[0].core, &tail.iter().map(|f| &f.core).collect::<Vec<&Plugin>>(), None);
+            // Plugin stats
+            for (idx, plugin) in head[0].plugins.iter_mut().enumerate() {
+                let plugin_list = &tail.iter().map(|f| &f.plugins[idx]).collect::<Vec<&Plugin>>();
+                if idx == selected_plugin_idx {
+                    Plugin::combine_stats(plugin, plugin_list, None);
+                } else {
+                    Plugin::combine_stats(plugin, plugin_list, Some(COMPONENT_EXEC_TIME_IDX));
+                }
+            }
             cur_fuzzer = &mut self.state.fuzzers[0];
+        // Specific fuzzer selected
         } else {
             cur_fuzzer = &mut self.state.fuzzers[self.selected_tab - 1];
             selected_plugin_idx = cur_fuzzer.cur_plugin_idx;
             // Refresh fuzzer stats
             cur_fuzzer.refresh(false);
-            // Refresh plugin exec_time
-            for plugin in cur_fuzzer.plugins.iter_mut() {
-                plugin.stats[COMPONENT_EXEC_TIME_IDX].refresh(false);
-            }
-            // Refresh rest of stats for selected plugin
+            // Refresh stats for selected plugin
             cur_fuzzer.refresh_plugin(selected_plugin_idx);
         }
 

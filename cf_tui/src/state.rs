@@ -144,43 +144,58 @@ impl Plugin {
         }
     }
 
-    pub fn combine_stats(plugin: &mut Self, plugin_list: &[&Self]) {
+    pub fn combine_stats(plugin: &mut Self, plugin_list: &[&Self], stat_idx: Option<usize>) {
         
         if plugin_list.len() == 0 {
             return;
         }
         let num_plugins = 1 + plugin_list.len();
-    
-        for cur_plugin in plugin_list {
-            for (stat_idx, stat) in cur_plugin.stats.iter().enumerate() {
+
+        //Only merge specific stat
+        if let Some(idx) = stat_idx {
+            for cur_plugin in plugin_list {
+                let stat = &cur_plugin.stats[idx];
                 if stat.tag_prefix.is_none() {
                     continue;
                 }
-
-                //println!("{}", stat.get_tag());
-
-                // Append the value
-                match plugin.stats[stat_idx].val_as_mut() {
+                // Add the value
+                match plugin.stats[idx].val_as_mut() {
                     cflib::StatVal::Number(v) => *v += stat.val_as_ref().as_num().unwrap(),
                     _ => continue,
                 };
             }
 
-            // fixup averages
-            for stat in plugin.stats.iter_mut() {
-                match stat.tag_prefix {
-                    Some(p) => {
-                        if p != cflib::TAG_PREFIX_AVERAGE_STR {
-                            continue;
-                        }
-                    },
-                    None => continue,
-                };
-                // transfrom total into average
-                match stat.val_as_mut() {
-                    cflib::StatVal::Number(v) => *v /= num_plugins as u64,
+            // If average, divide by number of values
+            if let Some(cflib::TAG_PREFIX_AVERAGE_STR) = plugin.stats[idx].tag_prefix {
+                if let cflib::StatVal::Number(v) = plugin.stats[idx].val_as_mut() {
+                    *v /= num_plugins as u64;
+                }
+            }
+            return;    
+        }
+        
+        // Merge ALL stats
+        for cur_plugin in plugin_list {
+            for (idx, stat) in cur_plugin.stats.iter().enumerate() {
+                // Only prefixes for now have same behavior, add up average_ | total_
+                if stat.tag_prefix.is_none() {
+                    continue;
+                }
+                // Add the value
+                match plugin.stats[idx].val_as_mut() {
+                    cflib::StatVal::Number(v) => *v += stat.val_as_ref().as_num().unwrap(),
                     _ => continue,
                 };
+            }
+        }
+        
+        // fixup averages
+        for stat in plugin.stats.iter_mut() {
+            // If average, divide by number of values
+            if let Some(cflib::TAG_PREFIX_AVERAGE_STR) = stat.tag_prefix {
+                if let cflib::StatVal::Number(v) = stat.val_as_mut() {
+                    *v /= num_plugins as u64;
+                }
             }
         }
     }
@@ -231,8 +246,31 @@ impl Fuzzer {
 
     /// Refresh the core stats
     pub fn refresh(&mut self, force: bool) {
-         // Update all core stats
-         self.core.refresh(force);
+        // Update all core stats
+        self.core.refresh(force);
+
+        // We must fixup plugin exec time if its running the target bin
+        if let Some((exec_plugin_idx, exec_stat_idx)) = self.target_exec_stat {
+            for (cur_idx, plugin) in self.plugins.iter_mut().enumerate() {
+                plugin.stats[COMPONENT_EXEC_TIME_IDX].refresh(false);
+                if cur_idx == exec_plugin_idx {
+                    plugin.stats[exec_stat_idx].refresh(false);
+                    let target_exec_time = plugin.stats[exec_stat_idx].val_as_ref().as_num().unwrap();
+                    if let cflib::StatVal::Number(ref mut v) = plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_mut() {
+                        if target_exec_time > *v {
+                            *v = 0;
+                        } else {
+                            *v -= target_exec_time;
+                        }
+                    }
+                }
+            }
+        // Regular refresh
+        } else {
+            for plugin in self.plugins.iter_mut() {
+                plugin.stats[COMPONENT_EXEC_TIME_IDX].refresh(false);
+            }
+        }
     }
 
     pub fn is_alive(pid: u32, sys_info: &mut System) -> bool {

@@ -1,5 +1,5 @@
 use ::clap::{App, Arg};
-use ::crossterm::event::{poll, read, Event, KeyCode};
+use ::crossterm::event::{poll, read, Event, KeyCode, KeyModifiers};
 
 use std::error::Error;
 use std::time::{Duration, Instant};
@@ -118,6 +118,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
                         KeyCode::Down => {
                             ui.select_next_plugin();
+                        },
+                        KeyCode::Char('c') => {
+                            if event.modifiers.contains(KeyModifiers::CONTROL) {
+                                status = Ok(());
+                                break;
+                            }
                         }
                         _ => {}
                     };
