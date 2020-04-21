@@ -29,7 +29,7 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 
 |Name | Status | Description |
 |-----|--------|-------------|
-|basic| Done |Very basic set of plugins. Should be used as reference/examples. See : [basic_select](basic_select/), [basic_mutate](basic_mutate/), [basic_run](basic_run/), [basic_postrun](basic_postrun/) |
+|basic| Done |Very basic set of plugins. Should be used as reference/examples. See : [basic_select](plugins/basic_select/), [basic_mutate](plugins/basic_mutate/), [basic_run](plugins/basic_run/), [basic_postrun](plugins/basic_postrun/) |
 |afl-fuzz| TODO | Standalone plugin suite that re-implements [afl-fuzz](http://lcamtuf.coredump.cx/afl/)|
 |winafl| TODO | Implement the execution technique from [winAFL](https://github.com/ivanfratric/winafl). Re-use `afl-fuzz` plugins for the rest|
 |angora| TODO | Standalone plugin suite that re-implements [AngoraFuzz](https://github.com/AngoraFuzzer/Angora)|
