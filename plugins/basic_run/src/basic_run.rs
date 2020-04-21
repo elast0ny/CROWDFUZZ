@@ -57,7 +57,7 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
             avg_denominator: &*std::ptr::null(),
             stats: CustomStats {
                 target_exec_time: &mut *(core.add_stat(
-                    &format!("{}target_exec_time{}", cflib::TAG_PREFIX_AVERAGE_STR, cflib::NUM_POSTFIX_US_STR),
+                    cflib::STAT_TAG_TARGET_EXEC_TIME_STR,
                     NewStat::Number).unwrap() as *mut _),
             },
         })

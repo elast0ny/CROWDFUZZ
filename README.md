@@ -24,7 +24,9 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 |-----|--------|-------------|
 |cf_tui| Done | Basic terminal based UI to monitor fuzzers on a local machine|
 | ? | TODO | Web based fuzzer stat aggregator to see multiple fuzzers from multiple servers fuzzing the same project |
+
 ## List of Plugins
+
 |Name | Status | Description |
 |-----|--------|-------------|
 |basic| Done |Very basic set of plugins. Should be used as reference/examples. See : [basic_select](basic_select/), [basic_mutate](basic_mutate/), [basic_run](basic_run/), [basic_postrun](basic_postrun/) |

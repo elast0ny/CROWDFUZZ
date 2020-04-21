@@ -384,7 +384,7 @@ impl<'a> UiState<'a> {
             let mut plugin_times: Vec<&str> = Vec::with_capacity(cur_fuzzer.plugins.len());
             for plugin in cur_fuzzer.plugins.iter_mut() {
                 plugin_names.push(plugin.name.as_str());
-                plugin_times.push(plugin.stats[COMPONENT_EXEC_TIME_IDX].get_val_as_str());
+                plugin_times.push(plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_str());
             }
             let mut plugin_list = SelectableList::default()
                 .block(

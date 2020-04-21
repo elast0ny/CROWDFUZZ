@@ -2,9 +2,9 @@
 members = [
     "cflib",
     "core",
-    "basic_select",
-    "basic_mutate",
-    "basic_run",
-    "basic_postrun",
+    "plugins/basic_select",
+    "plugins/basic_mutate",
+    "plugins/basic_run",
+    "plugins/basic_postrun",
     "cf_tui",
 ]

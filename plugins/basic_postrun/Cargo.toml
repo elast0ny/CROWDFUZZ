@@ -10,6 +10,6 @@ path = "src/basic_postrun.rs"
 crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
-cflib = {path="../cflib"}
+cflib = {path="../../cflib"}
 rust-crypto = "0.*"
 

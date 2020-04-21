@@ -10,7 +10,7 @@ name = "basic_run"
 crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
-cflib = {path="../cflib"}
+cflib = {path="../../cflib"}
 cfg-if = "0.*"
 
 #[target.'cfg(windows)'.dependencies]

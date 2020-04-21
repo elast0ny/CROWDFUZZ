@@ -25,6 +25,8 @@
 /// Number is hours
 #define NUM_POSTFIX_HOUR "_h"
 
+#define STAT_TAG_TARGET_EXEC_TIME TAG_PREFIX_AVERAGE "target_exec_time" NUM_POSTFIX_US
+
 // Statistic types
 const char STAT_NEWCOMPONENT = 0;
 const char STAT_BYTES = 1;

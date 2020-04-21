@@ -14,7 +14,7 @@ use ::sysinfo::{RefreshKind, ProcessExt, System, SystemExt};
 pub const COMPONENT_EXEC_TIME_IDX: usize = 0;
 
 pub struct CachedStat {
-    stat_ref: Option<cflib::StatRef>,
+    stat_ref: cflib::StatRef,
     cache: cflib::StatVal,
     pretty_tag: String,
     tag_prefix: Option<&'static str>,
@@ -24,11 +24,10 @@ pub struct CachedStat {
 }
 impl CachedStat {
 
-    pub fn new(stat_ref: Option<cflib::StatRef>) -> Self {
-        let live_data = stat_ref.as_ref().unwrap();
-        let (pretty_tag, (tag_prefix, tag_postfix)) = cflib::strip_tag_hints(live_data.get_tag());
+    pub fn new(stat_ref: cflib::StatRef) -> Self {
+        let (pretty_tag, (tag_prefix, tag_postfix)) = cflib::strip_tag_hints(stat_ref.get_tag());
         let pretty_tag = String::from(pretty_tag);
-        let cache = live_data.to_owned();
+        let cache = stat_ref.to_owned();
         let str_repr = String::new();
         let str_repr_stale = true;
 
@@ -55,14 +54,18 @@ impl CachedStat {
     pub fn get_tag(&self) -> &str {
         self.pretty_tag.as_ref()
     }
+    pub fn get_orig_tag(&self) -> &str {
+        self.stat_ref.get_tag()
+    }
+
 
     pub fn get_type(&self) -> cflib::StatType {
-        self.stat_ref.as_ref().unwrap().get_type()
+        self.stat_ref.get_type()
     }
 
     /// Returns the current string representation of the stat data
-    /// This will update the string repr if the cached value has been updated
-    pub fn get_val_as_str(&mut self) -> &str {
+    /// Calling this might trigger an update of the internal string representation
+    pub fn val_as_str(&mut self) -> &str {
         if self.str_repr_stale {
             self.update_str_repr();
         }
@@ -79,19 +82,15 @@ impl CachedStat {
 
     /// Updates the cached value of the stat
     pub fn refresh(&mut self, force: bool) -> bool {
-        let live_data = match self.stat_ref {
-            Some(ref d) => d,
-            None => return false,
-        };
 
-        if force || !self.cache.is_equal(live_data) || 
+        if force || !self.cache.is_equal(&self.stat_ref) || 
             //Epoch values "change" as time progresses
             match self.tag_postfix {
                 Some(cflib::NUM_POSTFIX_EPOCHS_STR) => true,
                 _ => false,
             }
         {
-            self.cache.update(live_data);
+            self.cache.update(&self.stat_ref);
             // Fixup static epoch to represent number of seconds elpased
             if let Some(cflib::NUM_POSTFIX_EPOCHS_STR) = self.tag_postfix {
                 match self.cache {            
@@ -371,9 +370,9 @@ impl Fuzzer {
                 cur_plugin = cur_fuzzer.plugins.last_mut().unwrap();
             // Found new stat
             } else {
-                let new_stat = CachedStat::new(Some(cur_stat));
+                let new_stat = CachedStat::new(cur_stat);
                 if cur_fuzzer.target_exec_stat.is_none() {
-                    if new_stat.get_type() == cflib::STAT_NUMBER && new_stat.get_tag() == "target_exec_time" {
+                    if new_stat.get_type() == cflib::STAT_NUMBER && new_stat.get_orig_tag() == cflib::STAT_TAG_TARGET_EXEC_TIME_STR {
                         cur_fuzzer.target_exec_stat = Some((target_plugin_idx - 1, target_stat_idx));
                     } else {
                         target_stat_idx += 1;
