@@ -143,7 +143,7 @@ impl Plugin {
             return Ok(());
         }
 
-        match unsafe { (self.init_fn)(ctx) } {
+        match unsafe { (self.init_fn)(ctx) }  as _ {
             cflib::STATUS_SUCCESS => {
                 self.init_called = true;
                 Ok(())
@@ -163,7 +163,7 @@ impl Plugin {
             )));
         }
 
-        match unsafe { (self.validate_fn)(ctx, self.priv_data) } {
+        match unsafe { (self.validate_fn)(ctx, self.priv_data) } as _ {
             cflib::STATUS_SUCCESS => Ok(()),
             e => Err(From::from(format!(
                 "'{}'.validate() failed with error : {}",
@@ -174,7 +174,7 @@ impl Plugin {
 
     pub fn do_work(&self, ctx: &mut cflib::CoreInterface) -> Result<()> {
         //No checks for init_called for performance...
-        match unsafe { (self.work_fn)(ctx, self.priv_data) } {
+        match unsafe { (self.work_fn)(ctx, self.priv_data) } as _ {
             cflib::STATUS_SUCCESS => Ok(()),
             e => Err(From::from(format!(
                 "'{}'.work() failed with error : {}",
@@ -192,7 +192,7 @@ impl Plugin {
             )));
         }
 
-        match unsafe { (self.destroy_fn)(ctx, self.priv_data) } {
+        match unsafe { (self.destroy_fn)(ctx, self.priv_data) } as _ {
             cflib::STATUS_SUCCESS => Ok(()),
             e => Err(From::from(format!(
                 "'{}'.destroy() failed with error : {}",

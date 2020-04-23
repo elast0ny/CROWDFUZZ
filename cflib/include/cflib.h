@@ -53,10 +53,10 @@ typedef PluginStatus (*const PluginDestroyCb)(CoreInterface *core_ptr, void *pri
 #define _SYMBOL_PLUGIN_DESTROY "__PluginDestroyFnPtr"
 
 // Symbols that plugins need to define
-extern const char SYMBOL_PLUGIN_NAME;
+extern const char* SYMBOL_PLUGIN_NAME;
 extern PluginInitCb SYMBOL_PLUGIN_INIT;
 extern PluginValidateCb SYMBOL_PLUGIN_VALIDATE;
 extern PluginDoWorkCb SYMBOL_PLUGIN_DOWORK;
 extern PluginDestroyCb SYMBOL_PLUGIN_DESTROY;
 
-#endif
+#endif //__CF_PLUGIN_H_

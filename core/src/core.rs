@@ -202,14 +202,14 @@ impl Core {
         let num_plugins = self.plugin_chain.len();
 
         self.cur_plugin_id = 0;
-        self.stats.header.state = cflib::CORE_FUZZING;
+        self.stats.header.state = cflib::CORE_FUZZING as _;
         *self.stats.num_execs += 1;
         self.avg_denominator += 1;
         info!("Running through all plugins once");
         for plugin in self.plugin_chain.iter_mut() {
             if self.exiting.load(Ordering::Relaxed) {
                 self.cur_plugin_id = num_plugins;
-                self.stats.header.state = cflib::CORE_EXITING;
+                self.stats.header.state = cflib::CORE_EXITING as _;
                 return Err(From::from(format!(
                     "CTRL-C while testing plugins (about to call '{}')",
                     plugin.name()
@@ -272,7 +272,7 @@ impl Core {
             for plugin in fuzz_loop_plugins.iter_mut() {
                 if self.exiting.load(Ordering::Relaxed) {
                     self.cur_plugin_id = num_plugins;
-                    self.stats.header.state = cflib::CORE_EXITING;
+                    self.stats.header.state = cflib::CORE_EXITING  as _;
                     return Err(From::from(format!(
                         "CTRL-C while fuzzing (about to call '{}')",
                         plugin.name()

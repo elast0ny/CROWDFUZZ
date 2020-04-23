@@ -28,17 +28,17 @@
 #define STAT_TAG_TARGET_EXEC_TIME TAG_PREFIX_AVERAGE "target_exec_time" NUM_POSTFIX_US
 
 // Statistic types
-const char STAT_NEWCOMPONENT = 0;
-const char STAT_BYTES = 1;
-const char STAT_STR = 2;
-const char STAT_NUMBER = 3;
+#define STAT_NEWCOMPONENT 0
+#define STAT_BYTES 1
+#define STAT_STR 2
+#define STAT_NUMBER 3
 typedef const char StatType;
 
 // Core states
-const char CORE_INITIALIZING = 0;
-const char CORE_FUZZING = 1;
-const char CORE_EXITING = 2;
-typedef const char CoreState;
+#define CORE_INITIALIZING 0
+#define CORE_FUZZING 1
+#define CORE_EXITING 2
+typedef const unsigned int CoreState;
 
 typedef struct {
     unsigned int stat_len;
@@ -58,7 +58,8 @@ typedef struct {
     unsigned short data_len;
 } StatHeaderDyn;
 
+#define ADD_STAT(__core__, __const_tag__, ...) (__core__)->add_stat(__core__->ctx, __const_tag__, sizeof(__const_tag__) - 1, __VA_ARGS__)
 ///Requests memory space for a stat item from the core
-typedef void* (*AddStatCb)(const CoreCtx* const, const unsigned char *tag, const unsigned short tag_len, StatType stat_type, const unsigned short size_required);
+typedef void* (*AddStatCb)(const CoreCtx* const, const char *tag, const unsigned short tag_len, StatType stat_type, const unsigned short size_required);
 
 #endif

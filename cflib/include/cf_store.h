@@ -25,6 +25,8 @@
 #define KEY_CUR_EXEC_NUM "num_execs"
 /// Working directory of the project
 #define KEY_CWD "cwd"
+/// Name of the fuzzer
+#define KEY_FUZZER_ID "fuzzer_id"
 
 /// Selected file for the next fuzz iteration
 #define KEY_INPUT_PATH "input_path"
@@ -39,8 +41,11 @@
 #define KEY_NEW_INPUT_LIST "new_inputs"
 
 /// Exit status of the the target after running it with KEY_CUR_INPUT
-/// This key should be a CTuple with `first` set to the status type, and `second` set to the value
+/// This key should be a CTuple with `first` set to EXIT_STATUS_* , and `second` set to the value
 #define KEY_EXIT_STATUS "exit_status"
+#define EXIT_STATUS_NORMAL 0
+#define EXIT_STATUS_TIMEOUT 1
+#define EXIT_STATUS_CRASH 2
 
 /* Complex types that can be stored in the store */
 
@@ -62,13 +67,20 @@ typedef struct __attribute__((packed)) {
 
 /* Methods that allow interaction with the store */
 
+#define PUSH_BACK(__core__, __const_str__, ...) (__core__)->store_push_back(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
+#define PUSH_FRONT(__core__, __const_str__, ...) (__core__)->store_push_front(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
+#define POP_BACK(__core__, __const_str__, ...) (__core__)->store_pop_back(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
+#define POP_FRONT(__core__, __const_str__, ...) (__core__)->store_pop_front(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
+#define STORE_GET(__core__, __const_str__, ...) (__core__)->store_get_mut(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
+#define STORE_LEN(__core__, __const_str__) (__core__)->store_len(__core__->ctx, __const_str__, sizeof(__const_str__) - 1)
+
 ///Appends a value to key's vector
-typedef void (*StorePush)(const CoreCtx* const, const unsigned char *key, const size_t key_len, void *data_ptr);
+typedef void (*StorePush)(const CoreCtx* const, const char *key, const size_t key_len, void *data_ptr);
 ///Pops a value from key's vector
-typedef void* (*StorePop)(const CoreCtx* const, const unsigned char *key, const size_t key_len);
+typedef void* (*StorePop)(const CoreCtx* const, const char *key, const size_t key_len);
 ///Get a reference to an item at 'index' from key's vector
-typedef void* (*StoreGetMut)(const CoreCtx* const, const unsigned char *key, const size_t key_len, size_t index);
+typedef void* (*StoreGetMut)(const CoreCtx* const, const char *key, const size_t key_len, size_t index);
 ///Returns the number of elements in key's vector
-typedef size_t (*StoreLen)(const CoreCtx* const, const unsigned char *key, const size_t key_len);
+typedef size_t (*StoreLen)(const CoreCtx* const, const char *key, const size_t key_len);
 
 #endif //__CF_STORE_H_

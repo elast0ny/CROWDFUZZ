@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::{
+    collections::HashMap,
     fs,
     fs::{create_dir_all, File},
 };
@@ -12,21 +13,36 @@ use crate::Result;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Config {
+    /// Path to directory holding starting testcases
     pub input: String,
+    /// Path to the directory that will hold state data
     pub state: String,
+    /// Path where results will be stored
     pub results: String,
+    /// Path to the target binary
     pub target: String,
+    /// Arguments for the target binary
     pub target_args: Vec<String>,
+    /// List of plugins for the fuzz loop
     pub fuzz_loop: Vec<PathBuf>,
+    
+    /// Additional confif values for the plugins
+    #[serde(default = "Vec::new")]
+    pub plugin_conf: Vec<HashMap<String, String>>,
 
+    /// Plugins to be run before the fuzzing begins
     #[serde(default = "Vec::new")]
     pub pre_fuzz_loop: Vec<PathBuf>,
+    /// Working directory for the project
     #[serde(default = "String::new")]
     pub cwd: String,
+    /// Size of the memory used for statistics for UIs
     #[serde(default = "default_smem_size")]
     pub shmem_size: usize,
+    /// Path of the statistic file
     #[serde(default = "default_stats_path")]
     pub stats_file: String,
+    /// Name of the input file when fuzzing
     #[serde(default = "default_input_fname")]
     pub input_file_name: String,
 

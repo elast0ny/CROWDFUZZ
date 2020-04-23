@@ -153,32 +153,32 @@ impl CoreInterface {
     pub fn store_push_back<S: AsRef<str>, T>(&self, key: S, data: *mut T) {
         let key = key.as_ref();
         unsafe {
-            (self.store_push_back.unwrap())(self.ctx, key.as_ptr(), key.len(), data as *mut _);
+            (self.store_push_back.unwrap())(self.ctx, key.as_ptr() as _, key.len(), data as *mut _);
         }
     }
     pub fn store_push_front<S: AsRef<str>, T>(&self, key: S, data: *mut T) {
         let key = key.as_ref();
         unsafe {
-            (self.store_push_front.unwrap())(self.ctx, key.as_ptr(), key.len(), data as *mut _);
+            (self.store_push_front.unwrap())(self.ctx, key.as_ptr() as _, key.len(), data as *mut _);
         }
     }
     pub fn store_pop_back<S: AsRef<str>, T>(&self, key: S) -> *mut T {
         let key = key.as_ref();
-        unsafe { (self.store_pop_back.unwrap())(self.ctx, key.as_ptr(), key.len()) as *mut T }
+        unsafe { (self.store_pop_back.unwrap())(self.ctx, key.as_ptr() as _, key.len()) as *mut T }
     }
     pub fn store_pop_front<S: AsRef<str>, T>(&self, key: S) -> *mut T {
         let key = key.as_ref();
-        unsafe { (self.store_pop_front.unwrap())(self.ctx, key.as_ptr(), key.len()) as *mut T }
+        unsafe { (self.store_pop_front.unwrap())(self.ctx, key.as_ptr() as _, key.len()) as *mut T }
     }
     pub fn store_get_mut<S: AsRef<str>, T>(&self, key: S, index: usize) -> *mut T {
         let key = key.as_ref();
-        unsafe { (self.store_get_mut.unwrap())(self.ctx, key.as_ptr(), key.len(), index) as *mut T }
+        unsafe { (self.store_get_mut.unwrap())(self.ctx, key.as_ptr() as _, key.len(), index) as *mut T }
     }
     /// Asks the fuzzer core to log a message
     pub fn log<S: AsRef<str>>(&self, log_level: LogLevel, msg: S) {
         let msg = msg.as_ref();
         unsafe {
-            (self.log.unwrap())(self.ctx, log_level, msg.as_ptr(), msg.len());
+            (self.log.unwrap())(self.ctx, log_level, msg.as_ptr() as _, msg.len());
         }
     }
     pub fn add_stat<S: AsRef<str>>(
@@ -190,7 +190,7 @@ impl CoreInterface {
         let ptr = unsafe {
             (self.add_stat.unwrap())(
                 self.ctx,
-                tag.as_ptr(),
+                tag.as_ptr() as _,
                 tag.len() as u16,
                 stat_type.to_id(),
                 stat_type.max_len(),

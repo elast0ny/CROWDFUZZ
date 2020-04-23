@@ -82,6 +82,7 @@ pub struct CoreStats {
     pub cmd_line: *mut c_void,
     pub target_hash: *mut c_void,
 }
+
 impl CoreStats {
     pub fn new(shmem: SharedMem) -> CoreStats {
         unsafe {
@@ -107,7 +108,7 @@ impl CoreStats {
         self.header = unsafe { &mut *(shmem_base as *mut _) };
         self.header.stat_len = 0;
         self.header.pid = std::process::id();
-        self.header.state = cflib::CORE_INITIALIZING;
+        self.header.state = cflib::CORE_INITIALIZING as _;
 
         self.header.stat_len += size_of::<cflib::StatFileHeader>() as u32;
 
@@ -136,7 +137,7 @@ impl CoreStats {
         self.header.stat_len += size_of::<cflib::StatHeader>() as u32;
         let tag_ptr: *mut u8 = unsafe { shmem_base.add(self.header.stat_len as _) as *mut _ };
         // Write the header values
-        comp_header.stat_type = cflib::STAT_NEWCOMPONENT;
+        comp_header.stat_type = cflib::STAT_NEWCOMPONENT as _;
         comp_header.tag_len = plugin_name.len() as u16;
         //Write the component name
         unsafe {
@@ -165,7 +166,7 @@ impl CoreStats {
     }
 
     pub fn add(&mut self, tag: &str, new_stat: cflib::NewStat) -> Result<*mut c_void> {
-        if self.header.state != cflib::CORE_INITIALIZING {
+        if self.header.state != cflib::CORE_INITIALIZING as cflib::CoreState {
             return Err(From::from(
                 "Plugins cannot reserve stat space after initialization".to_owned(),
             ));

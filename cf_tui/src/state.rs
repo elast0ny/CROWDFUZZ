@@ -372,7 +372,7 @@ impl Fuzzer {
             } else {
                 let new_stat = CachedStat::new(cur_stat);
                 if cur_fuzzer.target_exec_stat.is_none() {
-                    if new_stat.get_type() == cflib::STAT_NUMBER && new_stat.get_orig_tag() == cflib::STAT_TAG_TARGET_EXEC_TIME_STR {
+                    if new_stat.get_type() == cflib::STAT_NUMBER as _ && new_stat.get_orig_tag() == cflib::STAT_TAG_TARGET_EXEC_TIME_STR {
                         cur_fuzzer.target_exec_stat = Some((target_plugin_idx - 1, target_stat_idx));
                     } else {
                         target_stat_idx += 1;

@@ -41,7 +41,7 @@ pub enum NewStat {
 
 impl NewStat {
     pub fn from_stat_type(stat_type: StatType, max_len: u16) -> Self {
-        let new_stat = match stat_type {
+        let new_stat = match stat_type as _ {
             STAT_BYTES => NewStat::Bytes(max_len),
             STAT_STR => NewStat::Str(max_len),
             STAT_NUMBER => NewStat::Number,
@@ -74,9 +74,9 @@ impl NewStat {
     }
     pub fn to_id(&self) -> StatType {
         match &self {
-            &NewStat::Bytes(_) => STAT_BYTES,
-            &NewStat::Str(_) => STAT_STR,
-            &NewStat::Number => STAT_NUMBER,
+            &NewStat::Bytes(_) => STAT_BYTES as _,
+            &NewStat::Str(_) => STAT_STR as _,
+            &NewStat::Number => STAT_NUMBER as _,
         }
     }
 }
@@ -86,14 +86,14 @@ impl NewStat {
 /* ---------------------------- */
 
 pub fn stat_header_size(some_val: StatType) -> u16 {
-    return match some_val {
+    return match some_val as _ {
         STAT_BYTES | STAT_STR => size_of::<StatHeaderDyn>(),
         _ => size_of::<StatHeader>(),
     } as u16;
 }
 
 pub fn stat_static_data_len(some_val: StatType) -> Option<u16> {
-    match some_val {
+    match some_val as _ {
         STAT_NEWCOMPONENT => Some(0),
         STAT_BYTES => None,
         STAT_STR => None,
@@ -252,7 +252,7 @@ impl StatRef {
         }
 
         let data_ptr;
-        if header.stat_type == STAT_NEWCOMPONENT {
+        if header.stat_type == STAT_NEWCOMPONENT as _ {
             max_data_len = header.tag_len;
             data_ptr = tag_ptr;
         } else {
@@ -306,7 +306,7 @@ impl StatRef {
     /// be big enough to hold the biggest value of the current stat
     pub fn to_owned(&self) -> StatVal {
         unsafe {
-            match self.t {
+            match self.t as _ {
                 STAT_NEWCOMPONENT => {
                     let mut res = Vec::with_capacity(self.tag_len as usize);
                     copy_nonoverlapping(self.tag_ptr, res.as_mut_ptr(), self.tag_len as usize);
@@ -332,7 +332,7 @@ impl StatRef {
     }
 
     pub fn is_component(&self) -> bool {
-        self.t == STAT_NEWCOMPONENT
+        self.t == STAT_NEWCOMPONENT as _
     }
 }
 

@@ -136,7 +136,7 @@ fn main() -> Result<()> {
             break;
         }
 
-        core.stats.header.state = cflib::CORE_FUZZING;
+        core.stats.header.state = cflib::CORE_FUZZING as _;
         info!("Core & plugins initialized succesfully");
 
         //Run through once
@@ -175,6 +175,7 @@ fn main() -> Result<()> {
         info!("Done !");
     } else {
         error!("Done !");
+        drop(core);
         std::process::exit(1);
     }
 
