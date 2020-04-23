@@ -47,6 +47,10 @@ impl Core {
         for arg in &tmp_list {
             self.store_push_back(String::from(cflib::KEY_TARGET_ARGS_STR), *arg);
         }
+        self.store_push_front(
+            String::from(cflib::KEY_FUZZER_ID_STR),
+            Box::leak(Box::new(cflib::CTuple::from_utf8(&self.config.prefix))) as *mut _ as _,
+        );
     }
 
     pub fn clear_public_store(&mut self) {
@@ -65,6 +69,8 @@ impl Core {
                 Box::from_raw(self.store_pop_front(cflib::KEY_CWD_STR) as *mut _);
             let _: Box<cflib::CTuple> =
                 Box::from_raw(self.store_pop_front(cflib::KEY_CUR_INPUT_PATH_STR) as *mut _);
+            let _: Box<cflib::CTuple> =
+                Box::from_raw(self.store_pop_front(cflib::KEY_FUZZER_ID_STR) as *mut _);
 
             let _ = self.store_pop_front(cflib::KEY_AVG_DENOMINATOR_STR) as *mut c_void;
             let _ = self.store_pop_front(cflib::KEY_CUR_EXEC_NUM_STR) as *mut c_void;
