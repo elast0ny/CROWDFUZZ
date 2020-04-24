@@ -1,6 +1,11 @@
 # CROWDFUZZ
 A plugin based fuzzer core
 
+![](cf_tui/doc/cf_tui_demo.gif)
+
+(Terminal based frontend cf_tui)
+
+
 ## Why Another Fuzzer
 This fuzzer does not bring any novel techniques to fuzzing on its own. The goal is to create a flexible and performant fuzzer __core__ that implements common functionalities that every fuzzer out there implements (folder management, UI, statistics, automation/deployement...) and allow researchers and developers to focus their efforts on fuzzing related work (file mutation, testcase generation, faster process spawning...).
 
