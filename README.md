@@ -57,9 +57,11 @@ cflib::register!(init, my_init_function);
 ```
 __C/C++__
 ```C
-#include "cflib/include/cflib.h"
+// -I cflib/include/
+#include <cflib.h>
 //<...>
-extern const char SYMBOL_PLUGIN_NAME = "my_fast_mutator";
-extern PluginInitCb SYMBOL_PLUGIN_INIT = my_init_function;
+__declspec(dllexport) const char *__PluginName = "my_better_plugin";
+__declspec(dllexport) PluginInitCb __PluginInitFnPtr = init;
+__declspec(dllexport) PluginDoWorkCb __PluginDoWorkFnPtr = do_work;
 // etc...
 ```
