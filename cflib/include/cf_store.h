@@ -27,6 +27,8 @@
 #define KEY_CWD "cwd"
 /// Name of the fuzzer
 #define KEY_FUZZER_ID "fuzzer_id"
+/// Extra plugin config values
+#define KEY_PLUGIN_CONF "plugin_conf"
 
 /// Selected file for the next fuzz iteration
 #define KEY_INPUT_PATH "input_path"
@@ -67,11 +69,11 @@ typedef struct __attribute__((packed)) {
 
 /* Methods that allow interaction with the store */
 
-#define PUSH_BACK(__core__, __const_str__, ...) (__core__)->store_push_back(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
-#define PUSH_FRONT(__core__, __const_str__, ...) (__core__)->store_push_front(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
-#define POP_BACK(__core__, __const_str__, ...) (__core__)->store_pop_back(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
-#define POP_FRONT(__core__, __const_str__, ...) (__core__)->store_pop_front(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
-#define STORE_GET(__core__, __const_str__, ...) (__core__)->store_get_mut(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __VA_ARGS__)
+#define PUSH_BACK(__core__, __const_str__, __data__) (__core__)->store_push_back(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __data__)
+#define PUSH_FRONT(__core__, __const_str__, __data__) (__core__)->store_push_front(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __data__)
+#define POP_BACK(__core__, __const_str__) (__core__)->store_pop_back(__core__->ctx, __const_str__, sizeof(__const_str__) - 1)
+#define POP_FRONT(__core__, __const_str__) (__core__)->store_pop_front(__core__->ctx, __const_str__, sizeof(__const_str__) - 1)
+#define STORE_GET(__core__, __const_str__, __idx__) (__core__)->store_get_mut(__core__->ctx, __const_str__, sizeof(__const_str__) - 1, __idx__)
 #define STORE_LEN(__core__, __const_str__) (__core__)->store_len(__core__->ctx, __const_str__, sizeof(__const_str__) - 1)
 
 ///Appends a value to key's vector

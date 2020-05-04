@@ -1,10 +1,8 @@
 "input" : "input/"
 "state" : "state/"
 "results" : "results/"
-#"target" : 'C:\Program Files\Git\usr\bin\gzip.exe'
-"target" : 'D:\Code\C\cf_wafl\bin64\test.exe'
-#"target_args" : ["-cd"]
-"target_args" : ["@@"]
+"target" : 'test.exe'
+"target_args" : ['input\test.gz']
 
 
 "fuzz_loop" : 
@@ -17,20 +15,22 @@
 
 "plugin_conf":
   # WinAFL args
-  - "DynamoRIO_dir": 'D:\Code\C\cf_wafl\DynamoRIO-Windows-7.1.0-1\bin64'
-  - "wafl_build_dir": 'D:\Code\C\cf_wafl\build'
+  - "wafl_dr_dir": 'D:\Code\C\cf_wafl\DynamoRIO-Windows-8.0.0-1\bin64'
+  - "wafl_build_dir": 'D:\Code\C\winafl\build64\bin\Release'
   # Coverage params
-  - "wafl_covtype" : "bb"
+  #- "wafl_covtype" : "branch"
   - "wafl_covmodule" : "test.exe"
   # Target function
   - "wafl_target_module" : "test.exe"
   - "wafl_nargs" : 2
-  - "wafl_target_method" : "main"
-  #- "wafl_target_offset" : 0x1234
+  #- "wafl_target_method" : "main"
+  - "wafl_target_offset" : 0x13A0
   - "wafl_fuzz_iterations" : 5000
   
   # Optional args
+  - "wafl_init_timeout" : 2000
+  - "wafl_exec_timeout" : 1000
   #- "wafl_call_convention" : "ms64"
-  #- "wafl_debug" : 0
-  #- "wafl_logdir" : "C:\\log"
+  #- "wafl_debug" : 1
+  #1- "wafl_logdir" : 'D:\Code\Rust\CROWDFUZZ\example'
   #- "wafl_thread_coverage" : ""

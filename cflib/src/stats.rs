@@ -410,40 +410,56 @@ pub fn strip_tag_postfix(tag: &str) -> (&str, Option<&'static str>) {
     return (tag, None);
 }
 
-const MS_IN_US: u64 = 1000;
-const S_IN_US: u64 = 1000 * MS_IN_US;
-const M_IN_US: u64 = 60 * S_IN_US;
-const H_IN_US: u64 = 60 * M_IN_US;
+const US_IN_MS: u64 = 1000;
+const US_IN_S: u64 = 1000 * US_IN_MS;
+const US_IN_M: u64 = 60 * US_IN_S;
+const US_IN_H: u64 = 60 * US_IN_M;
 
 // Caller must clear the string before calling
 fn format_duration(dst: &mut String, mut val: u64, unit: &str) {
     use std::fmt::Write;
+    let mut got_long_scale = false;
     // conver to us
     val *= match unit {
-        "ms" => MS_IN_US,
-        "s" => S_IN_US,
-        "m" => M_IN_US,
-        "h" => H_IN_US,
+        "ms" => US_IN_MS,
+        "s" => US_IN_S,
+        "m" => US_IN_M,
+        "h" => US_IN_H,
         _ => 1,
     };
 
-    if val > H_IN_US {
-        let _ = write!(dst, "{}h{}m{}s", val / H_IN_US, (val % H_IN_US) / M_IN_US, (val % M_IN_US) / S_IN_US);
-    } else if val > M_IN_US {
-        let _ = write!(dst, "{}m{}s", val / M_IN_US, (val % M_IN_US) / S_IN_US);
-    } else if val > S_IN_US {
-        let _ = write!(dst, "{}", val / S_IN_US);
-        let ms = (val % S_IN_US) / MS_IN_US;
-        if ms != 0 {
-            let _ = write!(dst, ".{}s", ms);
-        } else {
-            dst.push('s');
-        }
-    } else if val > MS_IN_US {
-        let _ = write!(dst, "{}.{}ms", val / MS_IN_US, (val % MS_IN_US));
-    } else {
-        let _ = write!(dst, "{}us", val);
+    if val > US_IN_H {
+        let _ = write!(dst, "{}h", val / US_IN_H);
+        val %= US_IN_H;
+        got_long_scale = true;
     }
+    if val > US_IN_M {
+        let _ = write!(dst, "{}m", val / US_IN_M);
+        val %= US_IN_M;
+        got_long_scale = true;
+    }
+    if val > US_IN_S {
+        let _ = write!(dst, "{}", val / US_IN_S);
+        val %= US_IN_S;
+        if val > US_IN_MS {
+            let _ = write!(dst, ".{}s", val / US_IN_MS);
+        } else {
+            let _ = write!(dst, "s");
+        }
+        got_long_scale = true;
+    }
+
+    // Write smaller time scales
+    if !got_long_scale {
+        if val > US_IN_MS {
+            let _ = write!(dst, "{}ms", val / US_IN_MS);
+        } else if val > 0 {
+            let _ = write!(dst, "{}us", val);
+        } else {
+            let _ = write!(dst, "[None]");
+        }
+    }
+    
 }
 
 pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
