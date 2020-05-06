@@ -1,8 +1,9 @@
-use ::clap::{App, Arg};
-use ::crossterm::event::{poll, read, Event, KeyCode, KeyModifiers};
-
 use std::error::Error;
 use std::time::{Duration, Instant};
+
+use clap::{App, Arg};
+use crossterm::event::{poll, read, Event, KeyCode, KeyModifiers};
+use env_logger::Env;
 
 pub mod ui;
 use crate::ui::*;
@@ -10,6 +11,7 @@ pub mod state;
 use crate::state::*;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::from_env(Env::default().default_filter_or("info")).init();
     let args = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))

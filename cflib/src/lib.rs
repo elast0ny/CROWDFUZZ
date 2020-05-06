@@ -5,6 +5,11 @@ pub use crate::bindings::*;
 pub mod stats;
 pub use crate::stats::*;
 
+#[cfg(feature = "stat_parser")]
+pub mod stat_parsing;
+#[cfg(feature = "stat_parser")]
+pub use crate::stat_parsing::*;
+
 use ::std::os::raw::c_void;
 
 #[macro_export]

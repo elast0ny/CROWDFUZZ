@@ -57,7 +57,9 @@ impl Core {
                 cflib::NewStat::Str(self.config.cwd.len() as u16),
             )? as *mut _)
         };
-        cflib::update_dyn_stat(self.stats.cwd as *mut _, &self.config.cwd);
+        unsafe {
+            cflib::update_dyn_stat(self.stats.cwd as *mut _, &self.config.cwd);
+        }
         // Fuzz cmdline
         let mut cmd_line: String = String::with_capacity(256);
         let fpath = Path::new(&self.config.target);
@@ -69,16 +71,21 @@ impl Core {
         self.stats.cmd_line = self
             .stats
             .add("cmd_line", cflib::NewStat::Str(cmd_line.len() as u16))?;
-        cflib::update_dyn_stat(self.stats.cmd_line as *mut _, &cmd_line);
+        unsafe {
+            cflib::update_dyn_stat(self.stats.cmd_line as *mut _, &cmd_line);
+        }
 
         //Target binary hash
         tag.clear();
         let _ = write!(&mut tag, "bin_bash{}", cflib::BYTES_POSTFIX_HEX_STR);
         self.stats.target_hash = self.stats.add("bin_hash_hex", cflib::NewStat::Bytes(4))?;
-        cflib::update_dyn_stat(
-            self.stats.target_hash as *mut _,
-            &crc::crc32::checksum_ieee(&std::fs::read(&self.config.target).unwrap()).to_le_bytes(),
-        );
+        unsafe {
+            cflib::update_dyn_stat(
+                self.stats.target_hash as *mut _,
+                &crc::crc32::checksum_ieee(&std::fs::read(&self.config.target).unwrap())
+                    .to_le_bytes(),
+            );
+        }
 
         Ok(())
     }

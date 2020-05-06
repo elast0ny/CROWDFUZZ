@@ -9,5 +9,15 @@ name = "cflib"
 
 [dependencies]
 libc = "0.2"
+log = "0.*"
+
+[dependencies.nom]
+version = "5.*"
+optional = true
+
 [build-dependencies]
 bindgen = "0.*"
+
+[features]
+default = ["stat_parser"]
+stat_parser = ["nom"]
