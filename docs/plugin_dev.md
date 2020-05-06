@@ -25,10 +25,10 @@ Every plugin can store a pointer to private data during its `init()` procedure. 
 # Examples
 
 ## Existing plugins
-- [basic_select](plugins/basic_select/)
-- [basic_mutate](plugins/basic_mutate/)
-- [basic_run](plugins/basic_run/)
-- [basic_postrun](plugins/basic_postrun/)
+- [basic_select](../plugins/basic_select/)
+- [basic_mutate](../plugins/basic_mutate/)
+- [basic_run](../plugins/basic_run/)
+- [basic_postrun](../plugins/basic_postrun/)
 
 ## Required boilerplate code
 __Rust__
