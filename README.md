@@ -41,27 +41,4 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 
 ## Developer Guide
 
-To develop your own plugins, you must use `cflib` and export the proper symbols in your compiled shared library (`.dll`, `.so`) :
-
-__Rust__
-```toml
-[lib]
-crate-type = ["cdylib"] # Compile to native lib
-[dependencies]
-cflib = "0.*"
-```
-```Rust
-cflib::register!(name, "my_better_plugin");
-cflib::register!(init, my_init_function);
-// etc...
-```
-__C/C++__
-```C
-// -I cflib/include/
-#include <cflib.h>
-//<...>
-__declspec(dllexport) const char *__PluginName = "my_better_plugin";
-__declspec(dllexport) PluginInitCb __PluginInitFnPtr = init;
-__declspec(dllexport) PluginDoWorkCb __PluginDoWorkFnPtr = do_work;
-// etc...
-```
+If you're interested in developping your own plugin, read the [plugin_dev](https://github.com/elast0ny/CROWDFUZZ/blob/master/docs/plugin_dev.md) guide.

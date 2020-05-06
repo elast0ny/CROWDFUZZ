@@ -21,3 +21,40 @@ Plugins should use `CTuple` structs when inserting buffers/strings into the stor
 
 ### __Private store__
 Every plugin can store a pointer to private data during its `init()` procedure. Subsequent calls to their other exported functions will have this pointer as the second parameter.
+
+# Examples
+
+## Existing plugins
+- [basic_select](plugins/basic_select/)
+- [basic_mutate](plugins/basic_mutate/)
+- [basic_run](plugins/basic_run/)
+- [basic_postrun](plugins/basic_postrun/)
+
+## Required boilerplate code
+__Rust__
+
+Cargo.toml
+```toml
+[lib]
+crate-type = ["cdylib"] # Compile to native lib
+[dependencies]
+cflib = "0.*"
+```
+lib.rs
+```Rust
+cflib::register!(name, "my_better_plugin");
+cflib::register!(init, my_init_function);
+// etc...
+```
+__C/C++__
+
+main.c
+```C
+// -I cflib/include/
+#include <cflib.h>
+//<...>
+__declspec(dllexport) const char *__PluginName = "my_better_plugin";
+__declspec(dllexport) PluginInitCb __PluginInitFnPtr = init;
+__declspec(dllexport) PluginDoWorkCb __PluginDoWorkFnPtr = do_work;
+// etc...
+```
