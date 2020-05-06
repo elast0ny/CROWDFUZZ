@@ -1,3 +1,4 @@
+#[allow(clippy::all)]
 pub mod bindings;
 pub use crate::bindings::*;
 
@@ -117,6 +118,7 @@ impl CFVec {
 
 impl CFUtf8 {
     /// Creates a tuple with a len & pointer to the utf8 bytes
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str<S: AsRef<str>>(src: S) -> Self {
         CFUtf8 {
             len: src.as_ref().len(),

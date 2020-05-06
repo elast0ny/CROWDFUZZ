@@ -60,16 +60,16 @@ impl NewStat {
     }
     pub fn max_len(&self) -> u16 {
         (match &self {
-            &NewStat::Bytes(v) => *v as usize,
-            &NewStat::Str(v) => *v as usize,
-            &NewStat::Number => size_of::<u64>(),
+            NewStat::Bytes(v) => *v as usize,
+            NewStat::Str(v) => *v as usize,
+            NewStat::Number => size_of::<u64>(),
         }) as u16
     }
     pub fn to_id(&self) -> StatType {
         match &self {
-            &NewStat::Bytes(_) => STAT_BYTES as _,
-            &NewStat::Str(_) => STAT_STR as _,
-            &NewStat::Number => STAT_NUMBER as _,
+            NewStat::Bytes(_) => STAT_BYTES as _,
+            NewStat::Str(_) => STAT_STR as _,
+            NewStat::Number => STAT_NUMBER as _,
         }
     }
 }
@@ -79,10 +79,10 @@ impl NewStat {
 /* ---------------------------- */
 
 pub fn stat_header_size(some_val: StatType) -> u16 {
-    return match some_val as _ {
-        STAT_BYTES | STAT_STR => size_of::<StatHeaderDyn>(),
-        _ => size_of::<StatHeader>(),
-    } as u16;
+    match some_val as _ {
+        STAT_BYTES | STAT_STR => size_of::<StatHeaderDyn>() as u16,
+        _ => size_of::<StatHeader>() as u16,
+    }
 }
 
 pub fn stat_static_data_len(some_val: StatType) -> Option<u16> {
@@ -128,7 +128,7 @@ impl StatVal {
                             src.data_ptr.add(size_of::<u16>()),
                             dst.len(),
                         );
-                        &dst.as_bytes() == &bytes
+                        dst.as_bytes() == bytes
                     }
                 }
                 StatVal::Number(v) => *v == *(src.data_ptr as *mut u64),
@@ -211,7 +211,7 @@ pub struct StatRef {
     data_ptr: *mut u8,
 }
 impl StatRef {
-    /// Prases a new stat from a raw pointer
+    /// Parses a new stat from a raw pointer
     pub fn from_base_ptr(
         base_ptr: *mut u8,
         max_bytes: usize,
@@ -286,14 +286,12 @@ impl StatRef {
     /// Returns a reference to the stat tag
     pub fn get_tag(&self) -> &str {
         //println!("{:p}[{}] = ", self.tag_ptr, self.tag_len);
-        let tag = unsafe {
+        unsafe {
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(
                 self.tag_ptr,
                 self.tag_len as usize,
             ))
-        };
-        //println!("{}", tag);
-        tag
+        }
     }
 
     pub fn get_type(&self) -> StatType {
@@ -357,7 +355,7 @@ pub fn strip_tag_prefix(tag: &str) -> (&str, Option<&'static str>) {
         }
     }
 
-    return (tag, None);
+    (tag, None)
 }
 
 pub fn strip_tag_postfix(tag: &str) -> (&str, Option<&'static str>) {
@@ -404,7 +402,7 @@ pub fn strip_tag_postfix(tag: &str) -> (&str, Option<&'static str>) {
         }
     }
 
-    return (tag, None);
+    (tag, None)
 }
 
 const US_IN_MS: u64 = 1000;
@@ -464,7 +462,7 @@ pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
     let num = src.as_num();
 
     if let Some(num) = num {
-        let unit = match tag_postfix.rfind("_") {
+        let unit = match tag_postfix.rfind('_') {
             Some(idx) => &tag_postfix[idx + 1..],
             None => "us",
         };
@@ -515,7 +513,7 @@ unsafe fn copy_dyn_stat(dst: *mut u8, src: *mut u8) -> usize {
 /// Helper to write dynamically sized stats to memory
 pub fn update_dyn_stat<B: AsRef<[u8]>>(dst: *mut u8, data: B) {
     let mut data = data.as_ref();
-    if data.len() == 0 {
+    if data.is_empty() {
         data = &[0];
     }
     let src_len = data.len();
