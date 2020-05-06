@@ -64,8 +64,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         args.value_of("dir_scan_rate")
             .unwrap()
             .parse()
-            .expect("Invalid number specified for --dir_scan_rate"))
-    ;
+            .expect("Invalid number specified for --dir_scan_rate"),
+    );
     let refresh_rate: Duration = Duration::from_millis(
         args.value_of("refresh_rate")
             .unwrap()
@@ -77,7 +77,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut ui = UiState::new(&mut state);
 
     let mut terminal = init_ui()?;
-    
+
     let mut last_scan = Instant::now();
     let status: Result<(), Box<dyn Error>>;
     loop {
@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
                             status = Ok(());
                             break;
-                        },
+                        }
                         //also allow ctrl-c
                         KeyCode::Char('c') | KeyCode::Char('C') => {
                             if event.modifiers.contains(KeyModifiers::CONTROL) {
@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
                         KeyCode::Down => {
                             ui.select_next_plugin();
-                        },
+                        }
                         _ => {}
                     };
                 }

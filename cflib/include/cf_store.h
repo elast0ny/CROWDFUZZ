@@ -32,14 +32,14 @@
 
 /// Selected file for the next fuzz iteration
 #define KEY_INPUT_PATH "input_path"
-/// Bytes from the selected input file (type CVec)
+/// Bytes from the selected input file (type CFVec)
 #define KEY_INPUT_BYTES "input_bytes"
-/// Mutated testcase ready for the target (type CVec, buffer contains a list of (len:usize, ptr:c_void) tuples pointing to chuncks of memory that need to be stitched together before passing to the target)
+/// Mutated testcase ready for the target (type CFVec, buffer contains a list of (len:usize, ptr:c_void) tuples pointing to chuncks of memory that need to be stitched together before passing to the target)
 #define KEY_CUR_INPUT_CHUNKS "cur_input_chunks"
 /// Name of the file created on disk after mutation
 #define KEY_CUR_INPUT_PATH "cur_input_path"
 
-/// List of *CVec 
+/// List of *CFVec 
 #define KEY_NEW_INPUT_LIST "new_inputs"
 
 /// Exit status of the the target after running it with KEY_CUR_INPUT
@@ -52,20 +52,33 @@
 /* Complex types that can be stored in the store */
 
 /// Desbribes a buffer of variable length and capacity
-typedef struct __attribute__((packed)) {
+typedef struct {
     /// Number of items currently in use in *data
     size_t length;
     /// Number of items available in *data
     size_t capacity;
     /// Pointer to the allocation
     void *data;
-} CVec;
+} CFVec;
 
-/// Basic struct to define tuples
-typedef struct __attribute__((packed)) {
+/// Layout of a tuple item
+typedef struct {
     size_t first;
     size_t second;
-} CTuple;
+} CFTuple;
+
+
+/// Layout of a generic buffer
+typedef struct {
+    size_t len;
+    unsigned char *buf;
+} CFBuf;
+
+/// Layout of UTF8 strings
+typedef struct {
+    size_t len;
+    char* str;
+} CFUtf8;
 
 /* Methods that allow interaction with the store */
 

@@ -21,14 +21,14 @@ struct State {
     hasher: Sha1,
     result_dir: PathBuf,
     unique_files: HashSet<[u8; 20]>,
-    pub_input_chunks: &'static CVec,
-    new_inputs: Vec<CVec>,
-    pub_new_inputs: CVec,
-    exit_status: &'static CTuple,
+    pub_input_chunks: &'static CFVec,
+    new_inputs: Vec<CFVec>,
+    pub_new_inputs: CFVec,
+    exit_status: &'static CFTuple,
 }
 
 extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
-    let core = cflib::ctx_unchecked!(core_ptr);
+    let core = cflib::cast!(core_ptr);
 
     let mut state = unsafe {
         Box::new(State {
@@ -38,7 +38,7 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
             unique_files: HashSet::new(),
             pub_input_chunks: &*std::ptr::null(),
             new_inputs: Vec::with_capacity(1),
-            pub_new_inputs: CVec {
+            pub_new_inputs: CFVec {
                 length: 0,
                 capacity: 0,
                 data: std::ptr::null_mut(),
@@ -55,13 +55,13 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
 }
 
 extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let (core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
+    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
 
     // exit_status of the last run
-    state.exit_status = cflib::store_get_ref!(mandatory, CTuple, core, KEY_EXIT_STATUS_STR, 0);
+    state.exit_status = cflib::store_get_ref!(mandatory, CFTuple, core, KEY_EXIT_STATUS_STR, 0);
     // Input contents of the last run
     state.pub_input_chunks =
-        cflib::store_get_ref!(mandatory, CVec, core, KEY_CUR_INPUT_CHUNKS_STR, 0);
+        cflib::store_get_ref!(mandatory, CFVec, core, KEY_CUR_INPUT_CHUNKS_STR, 0);
 
     state.result_dir = PathBuf::from(cflib::store_get_ref!(
         mandatory,
@@ -92,7 +92,7 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
     );
     state.result_dir.push("dummyfilename");
 
-    state.new_inputs.push(CVec {
+    state.new_inputs.push(CFVec {
         length: 0,
         capacity: 0,
         data: 0 as _,
@@ -102,7 +102,7 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
 }
 
 extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let core = cflib::ctx_unchecked!(core_ptr);
+    let core = cflib::cast!(core_ptr);
 
     let _state: Box<State> = unsafe { Box::from_raw(priv_data as *mut _) };
     let _: *mut c_void = core.store_pop_front(KEY_NEW_INPUT_LIST_STR);
@@ -112,16 +112,16 @@ extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> P
 
 ///Select random byte in input and assign random value to it
 extern "C" fn post_run(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let (core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
+    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
 
     state.hasher.reset();
 
     // Make a hash of the input bytes
-    let chunks: &[CTuple] = state.pub_input_chunks.as_slice();
+    let chunks: &[CFBuf] = state.pub_input_chunks.as_slice();
     for chunk in chunks {
         state
             .hasher
-            .input(unsafe { from_raw_parts(chunk.second as _, chunk.first) });
+            .input(unsafe { from_raw_parts(chunk.buf, chunk.len) });
     }
     state.hasher.result(&mut state.cur_hash);
 
@@ -163,7 +163,7 @@ extern "C" fn post_run(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
         };
         //Write chunks to disk
         for chunk in chunks {
-            if let Err(e) = f.write_all(unsafe { from_raw_parts(chunk.second as _, chunk.first) }) {
+            if let Err(e) = f.write_all(unsafe { from_raw_parts(chunk.buf, chunk.len) }) {
                 core.log(LOGLEVEL_ERROR, &format!("Failed to write : {}", e));
                 return STATUS_PLUGINERROR;
             }

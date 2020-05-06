@@ -12,18 +12,18 @@ cflib::register!(work, mutate_testcase);
 cflib::register!(destroy, destroy);
 
 struct State {
-    input_bytes: &'static CVec,
-    input_chunks: Vec<CTuple>,
-    chunk_list: CVec,
+    input_bytes: &'static CFVec,
+    input_chunks: Vec<CFBuf>,
+    chunk_list: CFVec,
 }
 
 extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
-    let core = cflib::ctx_unchecked!(core_ptr);
+    let core = cflib::cast!(core_ptr);
 
     let mut state = Box::new(State {
         input_bytes: unsafe { &*std::ptr::null() },
         input_chunks: Vec::with_capacity(16),
-        chunk_list: CVec {
+        chunk_list: CFVec {
             length: 0,
             capacity: 0,
             data: std::ptr::null_mut(),
@@ -37,16 +37,16 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
 }
 
 extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let (core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
+    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
 
     // A plugin must set INPUT_BYTES for us to mutate
-    state.input_bytes = cflib::store_get_ref!(mandatory, CVec, core, KEY_INPUT_BYTES_STR, 0);
+    state.input_bytes = cflib::store_get_ref!(mandatory, CFVec, core, KEY_INPUT_BYTES_STR, 0);
 
     STATUS_SUCCESS
 }
 
 extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let core = cflib::ctx_unchecked!(core_ptr);
+    let core = cflib::cast!(core_ptr);
 
     let _state: Box<State> = unsafe { Box::from_raw(priv_data as *mut _) };
     let _: *mut c_void = core.store_pop_front(KEY_CUR_INPUT_CHUNKS_STR);
@@ -59,7 +59,7 @@ extern "C" fn mutate_testcase(
     core_ptr: *mut CoreInterface,
     priv_data: *mut c_void,
 ) -> PluginStatus {
-    let (_core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
+    let (_core, state) = cflib::cast!(core_ptr, priv_data, State);
 
     let input_bytes: &mut [u8] =
         unsafe { from_raw_parts_mut(state.input_bytes.data as *mut _, state.input_bytes.length) };
@@ -79,9 +79,9 @@ extern "C" fn mutate_testcase(
 
     state.input_chunks.clear();
     // Only one chunk for now as we just modify existing data
-    state.input_chunks.push(CTuple {
-        first: input_bytes.len(),
-        second: input_bytes.as_ptr() as _,
+    state.input_chunks.push(CFBuf {
+        len: input_bytes.len(),
+        buf: input_bytes.as_ptr() as _,
     });
 
     // Make the input chunks point to our newly mutated input

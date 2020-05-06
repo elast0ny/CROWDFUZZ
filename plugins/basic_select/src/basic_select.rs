@@ -38,13 +38,13 @@ struct State {
     cur_file_idx: usize,
     cur_file: Vec<u8>,
     pub_file_path: [u8; 512],
-    pub_cur_file: CVec,
+    pub_cur_file: CFVec,
     stats: CustomStats,
-    input_providers: Vec<&'static CVec>,
+    input_providers: Vec<&'static CFVec>,
 }
 
 extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
-    let core = cflib::ctx_unchecked!(core_ptr);
+    let core = cflib::cast!(core_ptr);
 
     // Init our state struct
     let mut state: Box<State> = unsafe {
@@ -56,7 +56,7 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
             cur_file_idx: 0,
             cur_file: Vec::with_capacity(1),
             pub_file_path: [0; 512],
-            pub_cur_file: CVec {
+            pub_cur_file: CFVec {
                 length: 0,
                 capacity: 0,
                 data: std::ptr::null_mut(),
@@ -64,10 +64,12 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
             stats: CustomStats {
                 initial_input_num: &mut *(core.add_stat("initial_inputs", NewStat::Number).unwrap()
                     as *mut _),
-                generated_input_num: &mut *(core.add_stat(
-                    &format!("{}generated_inputs", cflib::TAG_PREFIX_TOTAL_STR),
-                    NewStat::Number).unwrap()
-                    as *mut _),
+                generated_input_num: &mut *(core
+                    .add_stat(
+                        &format!("{}generated_inputs", cflib::TAG_PREFIX_TOTAL_STR),
+                        NewStat::Number,
+                    )
+                    .unwrap() as *mut _),
             },
             input_providers: Vec::new(),
         })
@@ -86,7 +88,7 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
 }
 
 extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let (core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
+    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
 
     // Ensure the the required keys have been created by another plugin
     let input_dir = cflib::store_get_ref!(mandatory, str, core, KEY_INPUT_DIR_STR, 0);
@@ -136,7 +138,7 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
     // Check if any plugins registered as new_input providers
     let mut i = 0;
     loop {
-        let cur_new_input = cflib::store_get_ref!(optional, CVec, core, KEY_NEW_INPUT_LIST_STR, i);
+        let cur_new_input = cflib::store_get_ref!(optional, CFVec, core, KEY_NEW_INPUT_LIST_STR, i);
         match cur_new_input {
             Some(v) => state.input_providers.push(v),
             None => break,
@@ -151,7 +153,7 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
 }
 
 extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let core = cflib::ctx_unchecked!(core_ptr);
+    let core = cflib::cast!(core_ptr);
 
     // Clean up our values
     let _state: Box<State> = unsafe { Box::from_raw(priv_data as *mut _) };
@@ -165,7 +167,7 @@ extern "C" fn select_testcase(
     core_ptr: *mut CoreInterface,
     priv_data: *mut c_void,
 ) -> PluginStatus {
-    let (core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
+    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
 
     // Save any new inputs to disk
     if state.input_providers.len() > 0 {
@@ -298,18 +300,18 @@ impl State {
                 continue;
             }
 
-            let file_list = cur_input_provider.as_slice::<CVec>();
+            let file_list = cur_input_provider.as_slice::<CFVec>();
             for cur_file in file_list {
                 if cur_file.length == 0 {
                     continue;
                 }
 
-                let chunk_list = cur_file.as_slice::<CTuple>();
+                let chunk_list = cur_file.as_slice::<CFBuf>();
                 // Hash the file contents
                 self.hasher.reset();
                 for chunk in chunk_list {
                     self.hasher
-                        .input(unsafe { from_raw_parts(chunk.second as _, chunk.first) });
+                        .input(unsafe { from_raw_parts(chunk.buf, chunk.len) });
                 }
                 self.hasher.result(&mut cur_hash);
 
@@ -339,9 +341,7 @@ impl State {
                 };
                 //Write chunks to disk
                 for chunk in chunk_list {
-                    if let Err(e) =
-                        f.write_all(unsafe { from_raw_parts(chunk.second as _, chunk.first) })
-                    {
+                    if let Err(e) = f.write_all(unsafe { from_raw_parts(chunk.buf, chunk.len) }) {
                         core.log(LOGLEVEL_ERROR, &format!("Failed to write file : {}", e));
                         return Err(STATUS_PLUGINERROR);
                     }

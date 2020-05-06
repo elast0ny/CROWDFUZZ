@@ -34,11 +34,11 @@ macro_rules! register {
 /// Provides a no-op conversion from raw pointers to Rust references for plugin callbacks
 /// Examples :
 /// ```Rust
-/// let core = ctx_unchecked!(core_ptr); // This is always safe
+/// let core = cast!(core_ptr); // This is always safe
 /// // OR
-/// let (core, state) = ctx_unchecked!(core_ptr, priv_data, MyStateType); //This variation can lead to segfaults if no priv_data was set
+/// let (core, state) = cast!(core_ptr, priv_data, MyStateType); //This variation can lead to segfaults if no priv_data was set
 /// ```
-macro_rules! ctx_unchecked {
+macro_rules! cast {
     ($core_ptr:ident) => {
         unsafe { &mut *($core_ptr) }
     };
@@ -72,13 +72,13 @@ macro_rules! store_get_ref {
         ptr
     }};
     (mandatory, str, $core:ident, $key_str:ident, $index:expr) => {
-        store_get_ref!(mandatory, CTuple, $core, $key_str, $index).as_utf8()
+        store_get_ref!(mandatory, CFUtf8, $core, $key_str, $index).as_utf8()
     };
     (mandatory, $key_type:ty, $core:ident, $key_str:ident, $index:expr) => {
         unsafe { &*(store_get_ref!(mandatory, c_void, $core, $key_str, $index) as *mut $key_type) }
     };
     (optional, str, $core:ident, $key_str:ident, $index:expr) => {{
-        let ptr: *mut CTuple = ($core as &mut CoreInterface).store_get_mut($key_str, $index);
+        let ptr: *mut CFUtf8 = ($core as &mut CoreInterface).store_get_mut($key_str, $index);
         if ptr.is_null() {
             None
         } else {
@@ -95,8 +95,8 @@ macro_rules! store_get_ref {
     }};
 }
 
-impl CVec {
-    /// Sets the contents of the CVec to point to the values of the provided Vec
+impl CFVec {
+    /// Sets the contents of the CFVec to point to the values of the provided Vec
     pub fn update_from_vec<T>(&mut self, src: &Vec<T>) {
         self.length = src.len();
 
@@ -106,7 +106,7 @@ impl CVec {
             self.capacity = src.capacity() as _;
         }
     }
-    /// Returns the CVec as a slice of elements
+    /// Returns the CFVec as a slice of elements
     pub fn as_slice<T>(&self) -> &[T] {
         if self.length == 0 {
             return &[];
@@ -115,20 +115,25 @@ impl CVec {
     }
 }
 
-impl CTuple {
+impl CFUtf8 {
     /// Creates a tuple with a len & pointer to the utf8 bytes
-    pub fn from_utf8<S: AsRef<str>>(src: S) -> Self {
-        CTuple {
-            first: src.as_ref().len(),
-            second: src.as_ref().as_ptr() as _,
+    pub fn from_str<S: AsRef<str>>(src: S) -> Self {
+        CFUtf8 {
+            len: src.as_ref().len(),
+            str: src.as_ref().as_ptr() as _,
         }
+    }
+    /// Makes the CFUtf8 point to the given string
+    pub fn update<S: AsRef<str>>(&mut self, src: S) {
+        self.len = src.as_ref().len();
+        self.str = src.as_ref().as_ptr() as _;
     }
     /// Intepret the tuple data as a utf8 str
     pub fn as_utf8(&self) -> &str {
         unsafe {
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(
-                self.second as *const u8,
-                self.first,
+                self.str as *const u8,
+                self.len,
             ))
         }
     }
@@ -159,7 +164,12 @@ impl CoreInterface {
     pub fn store_push_front<S: AsRef<str>, T>(&self, key: S, data: *mut T) {
         let key = key.as_ref();
         unsafe {
-            (self.store_push_front.unwrap())(self.ctx, key.as_ptr() as _, key.len(), data as *mut _);
+            (self.store_push_front.unwrap())(
+                self.ctx,
+                key.as_ptr() as _,
+                key.len(),
+                data as *mut _,
+            );
         }
     }
     pub fn store_pop_back<S: AsRef<str>, T>(&self, key: S) -> *mut T {
@@ -172,7 +182,9 @@ impl CoreInterface {
     }
     pub fn store_get_mut<S: AsRef<str>, T>(&self, key: S, index: usize) -> *mut T {
         let key = key.as_ref();
-        unsafe { (self.store_get_mut.unwrap())(self.ctx, key.as_ptr() as _, key.len(), index) as *mut T }
+        unsafe {
+            (self.store_get_mut.unwrap())(self.ctx, key.as_ptr() as _, key.len(), index) as *mut T
+        }
     }
     /// Asks the fuzzer core to log a message
     pub fn log<S: AsRef<str>>(&self, log_level: LogLevel, msg: S) {

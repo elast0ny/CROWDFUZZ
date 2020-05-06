@@ -272,7 +272,7 @@ impl Core {
             for plugin in fuzz_loop_plugins.iter_mut() {
                 if self.exiting.load(Ordering::Relaxed) {
                     self.cur_plugin_id = num_plugins;
-                    self.stats.header.state = cflib::CORE_EXITING  as _;
+                    self.stats.header.state = cflib::CORE_EXITING as _;
                     return Err(From::from(format!(
                         "CTRL-C while fuzzing (about to call '{}')",
                         plugin.name()

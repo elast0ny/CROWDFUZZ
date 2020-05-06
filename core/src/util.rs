@@ -34,7 +34,6 @@ pub fn get_num_instances() -> Result<usize> {
     Ok(num_found)
 }
 
-
 #[cfg(target_os = "windows")]
 use ::affinity::set_process_affinity as set_affinity;
 #[cfg(not(target_os = "windows"))]

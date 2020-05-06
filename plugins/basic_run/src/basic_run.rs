@@ -34,14 +34,14 @@ pub struct State {
     target_args: Vec<&'static str>,
     target_input_file: Option<File>,
     last_run_time: u64,
-    exit_status: CTuple,
-    pub_chunk_list: &'static CVec,
+    exit_status: CFTuple,
+    pub_chunk_list: &'static CFVec,
     avg_denominator: &'static u64,
     stats: CustomStats,
 }
 
 extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
-    let core = cflib::ctx_unchecked!(core_ptr);
+    let core = cflib::cast!(core_ptr);
 
     let mut state = unsafe {
         Box::new(State {
@@ -49,16 +49,16 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
             target_args: Vec::new(),
             target_input_file: None,
             last_run_time: 0,
-            exit_status: CTuple {
+            exit_status: CFTuple {
                 first: 0,
                 second: 0,
             },
             pub_chunk_list: &*std::ptr::null(),
             avg_denominator: &*std::ptr::null(),
             stats: CustomStats {
-                target_exec_time: &mut *(core.add_stat(
-                    cflib::STAT_TAG_TARGET_EXEC_TIME_STR,
-                    NewStat::Number).unwrap() as *mut _),
+                target_exec_time: &mut *(core
+                    .add_stat(cflib::STAT_TAG_TARGET_EXEC_TIME_STR, NewStat::Number)
+                    .unwrap() as *mut _),
             },
         })
     };
@@ -74,7 +74,7 @@ extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
 }
 
 extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let (core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
+    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
 
     let config_input_fpath = cflib::store_get_ref!(mandatory, str, core, KEY_CUR_INPUT_PATH_STR, 0);
     state.target_path = cflib::store_get_ref!(mandatory, str, core, KEY_TARGET_PATH_STR, 0);
@@ -112,7 +112,7 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
     }
     // input bytes
     state.pub_chunk_list =
-        cflib::store_get_ref!(mandatory, CVec, core, KEY_CUR_INPUT_CHUNKS_STR, 0);
+        cflib::store_get_ref!(mandatory, CFVec, core, KEY_CUR_INPUT_CHUNKS_STR, 0);
     // Average denominator to calculate target avg exec speed
     state.avg_denominator = cflib::store_get_ref!(mandatory, u64, core, KEY_AVG_DENOMINATOR_STR, 0);
 
@@ -125,7 +125,7 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
 }
 
 extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let core = cflib::ctx_unchecked!(core_ptr);
+    let core = cflib::cast!(core_ptr);
 
     let _state: Box<State> = unsafe { Box::from_raw(priv_data as *mut _) };
     let _: *mut c_void = core.store_pop_front(KEY_EXIT_STATUS_STR);
@@ -134,7 +134,7 @@ extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> P
 }
 
 extern "C" fn run_target(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let (core, state) = cflib::ctx_unchecked!(core_ptr, priv_data, State);
+    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
 
     // Update the target exec from the last run
     update_average(
@@ -150,15 +150,14 @@ extern "C" fn run_target(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -
     //TODO .current_dir()
 
     // Get updated list of input data chunks
-    let chunks: &[CTuple] = state.pub_chunk_list.as_slice();
+    let chunks: &[CFBuf] = state.pub_chunk_list.as_slice();
 
     // Write the input to disk if required
     match state.target_input_file {
         Some(ref mut f) => {
             let _ = (f.set_len(0), f.seek(std::io::SeekFrom::Start(0)));
             for chunk in chunks {
-                let chunk_data: &[u8] =
-                    unsafe { std::slice::from_raw_parts(chunk.second as _, chunk.first) };
+                let chunk_data: &[u8] = unsafe { std::slice::from_raw_parts(chunk.buf, chunk.len) };
                 if let Err(e) = f.write_all(chunk_data) {
                     core.log(LOGLEVEL_ERROR, &format!("Failed to write input : {}", e));
                     return STATUS_PLUGINERROR;
@@ -191,8 +190,7 @@ extern "C" fn run_target(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -
     if state.target_input_file.is_none() {
         let stdin = child.stdin.as_mut().unwrap();
         for chunk in chunks {
-            let chunk_data: &[u8] =
-                unsafe { std::slice::from_raw_parts(chunk.second as _, chunk.first) };
+            let chunk_data: &[u8] = unsafe { std::slice::from_raw_parts(chunk.buf, chunk.len) };
             if let Err(_) = stdin.write_all(chunk_data) {
                 //maybe log here ? process didnt get all the input
                 break;

@@ -1,16 +1,14 @@
 use std::{
-    collections::{
-        HashSet,
-    },
+    collections::HashSet,
     error::Error,
     mem::size_of_val,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use ::shared_memory::SharedMem;
-use ::sysinfo::{RefreshKind, ProcessExt, System, SystemExt};
+use ::sysinfo::{ProcessExt, RefreshKind, System, SystemExt};
 
-// Every first stat is the exec time 
+// Every first stat is the exec time
 pub const COMPONENT_EXEC_TIME_IDX: usize = 0;
 
 pub struct CachedStat {
@@ -23,7 +21,6 @@ pub struct CachedStat {
     str_repr: String,
 }
 impl CachedStat {
-
     pub fn new(stat_ref: cflib::StatRef) -> Self {
         let (pretty_tag, (tag_prefix, tag_postfix)) = cflib::strip_tag_hints(stat_ref.get_tag());
         let pretty_tag = String::from(pretty_tag);
@@ -58,7 +55,6 @@ impl CachedStat {
         self.stat_ref.get_tag()
     }
 
-
     pub fn get_type(&self) -> cflib::StatType {
         self.stat_ref.get_type()
     }
@@ -82,8 +78,7 @@ impl CachedStat {
 
     /// Updates the cached value of the stat
     pub fn refresh(&mut self, force: bool) -> bool {
-
-        if force || !self.cache.is_equal(&self.stat_ref) || 
+        if force || !self.cache.is_equal(&self.stat_ref) ||
             //Epoch values "change" as time progresses
             match self.tag_postfix {
                 Some(cflib::NUM_POSTFIX_EPOCHS_STR) => true,
@@ -93,9 +88,15 @@ impl CachedStat {
             self.cache.update(&self.stat_ref);
             // Fixup static epoch to represent number of seconds elpased
             if let Some(cflib::NUM_POSTFIX_EPOCHS_STR) = self.tag_postfix {
-                match self.cache {            
-                    cflib::StatVal::Number(ref mut v) => *v = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - *v,
-                    _ => {},
+                match self.cache {
+                    cflib::StatVal::Number(ref mut v) => {
+                        *v = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs()
+                            - *v
+                    }
+                    _ => {}
                 };
             }
             self.set_val_changed();
@@ -110,7 +111,6 @@ impl CachedStat {
     }
 
     fn update_str_repr(&mut self) {
-
         if self.str_repr_stale {
             if let Some(postfix) = self.tag_postfix {
                 cflib::write_pretty_stat(&mut self.str_repr, &self.cache, postfix);
@@ -119,7 +119,7 @@ impl CachedStat {
             }
             self.str_repr_stale = false;
         }
-    }   
+    }
 }
 
 use std::fmt;
@@ -136,15 +136,13 @@ pub struct Plugin {
 }
 
 impl Plugin {
-
     pub fn refresh(&mut self, force: bool) {
-        for stat in  self.stats.iter_mut() {
+        for stat in self.stats.iter_mut() {
             stat.refresh(force);
         }
     }
 
     pub fn combine_stats(plugin: &mut Self, plugin_list: &[&Self], stat_idx: Option<usize>) {
-        
         if plugin_list.len() == 0 {
             return;
         }
@@ -170,9 +168,9 @@ impl Plugin {
                     *v /= num_plugins as u64;
                 }
             }
-            return;    
+            return;
         }
-        
+
         // Merge ALL stats
         for cur_plugin in plugin_list {
             for (idx, stat) in cur_plugin.stats.iter().enumerate() {
@@ -187,7 +185,7 @@ impl Plugin {
                 };
             }
         }
-        
+
         // fixup averages
         for stat in plugin.stats.iter_mut() {
             // If average, divide by number of values
@@ -199,7 +197,6 @@ impl Plugin {
         }
     }
 }
-
 
 pub struct Fuzzer {
     #[allow(unused)]
@@ -222,7 +219,7 @@ impl Fuzzer {
         cur_plugin.refresh(false);
 
         // Substract target_exec_time from the plugin time if applicable
-        if let Some((idx, stat_idx)) = self.target_exec_stat{
+        if let Some((idx, stat_idx)) = self.target_exec_stat {
             if plugin_idx != idx {
                 return cur_plugin;
             }
@@ -235,9 +232,9 @@ impl Fuzzer {
                         *v = 0;
                     }
                     cur_plugin.stats[COMPONENT_EXEC_TIME_IDX].set_val_changed();
-                },
-                _ => {},
-            };            
+                }
+                _ => {}
+            };
         }
 
         cur_plugin
@@ -254,8 +251,11 @@ impl Fuzzer {
                 plugin.stats[COMPONENT_EXEC_TIME_IDX].refresh(false);
                 if cur_idx == exec_plugin_idx {
                     plugin.stats[exec_stat_idx].refresh(false);
-                    let target_exec_time = plugin.stats[exec_stat_idx].val_as_ref().as_num().unwrap();
-                    if let cflib::StatVal::Number(ref mut v) = plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_mut() {
+                    let target_exec_time =
+                        plugin.stats[exec_stat_idx].val_as_ref().as_num().unwrap();
+                    if let cflib::StatVal::Number(ref mut v) =
+                        plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_mut()
+                    {
                         if target_exec_time > *v {
                             *v = 0;
                         } else {
@@ -348,7 +348,7 @@ impl Fuzzer {
             )?;
             shmem_idx += cur_stat.mem_len();
 
-            let cur_tag = cur_stat.get_tag();            
+            let cur_tag = cur_stat.get_tag();
             // Found new component
             if cur_stat.is_component() {
                 let name = cur_tag;
@@ -361,7 +361,7 @@ impl Fuzzer {
                 }
                 // Got all stats for last plugin, refresh them
                 cur_plugin.refresh(true);
-                
+
                 // Add plugin to list
                 cur_fuzzer.plugins.push(Plugin {
                     name: name.to_string(),
@@ -372,8 +372,11 @@ impl Fuzzer {
             } else {
                 let new_stat = CachedStat::new(cur_stat);
                 if cur_fuzzer.target_exec_stat.is_none() {
-                    if new_stat.get_type() == cflib::STAT_NUMBER as _ && new_stat.get_orig_tag() == cflib::STAT_TAG_TARGET_EXEC_TIME_STR {
-                        cur_fuzzer.target_exec_stat = Some((target_plugin_idx - 1, target_stat_idx));
+                    if new_stat.get_type() == cflib::STAT_NUMBER as _
+                        && new_stat.get_orig_tag() == cflib::STAT_TAG_TARGET_EXEC_TIME_STR
+                    {
+                        cur_fuzzer.target_exec_stat =
+                            Some((target_plugin_idx - 1, target_stat_idx));
                     } else {
                         target_stat_idx += 1;
                     }
@@ -397,16 +400,13 @@ pub struct State {
 }
 
 impl State {
-
     pub fn new(args: ::clap::ArgMatches) -> Self {
         let mut state = Self {
             unique_fuzzers: HashSet::new(),
             fuzzers: Vec::new(),
             fuzzer_prefix: String::from(args.value_of("fuzzer_prefix").unwrap()),
             stat_file_prefix: String::from(args.value_of("stats_prefix").unwrap()),
-            monitored_dir: String::from(args
-                .value_of("project_state")
-                .unwrap()),
+            monitored_dir: String::from(args.value_of("project_state").unwrap()),
             sys_info: System::new_with_specifics(
                 RefreshKind::new().with_processes().with_cpu().with_memory(),
             ),
@@ -416,7 +416,7 @@ impl State {
 
         state.sys_info.refresh_cpu();
         state.sys_info.refresh_memory();
-        
+
         state
     }
     /// Removes any dead fuzzer and scans the directories for new fuzzers
@@ -455,7 +455,6 @@ impl State {
                 }
             }
         }
-        
 
         // Try to load all the files
         for fpath in found_files.iter() {
@@ -492,9 +491,13 @@ impl State {
 
         // Compare stats to the first fuzzer
         let baseline_fuzzer = &self.fuzzers[0];
-        if baseline_fuzzer.core.stats.len() != fuzzer.core.stats.len() ||
-            baseline_fuzzer.plugins.len() != fuzzer.plugins.len() {
-            eprintln!("Ignoring fuzzer {} because of incompatible projects", fuzzer.pid);
+        if baseline_fuzzer.core.stats.len() != fuzzer.core.stats.len()
+            || baseline_fuzzer.plugins.len() != fuzzer.plugins.len()
+        {
+            eprintln!(
+                "Ignoring fuzzer {} because of incompatible projects",
+                fuzzer.pid
+            );
             return false;
         }
 
@@ -502,8 +505,14 @@ impl State {
         for (idx, stat) in fuzzer.core.stats.iter().enumerate() {
             let baseline_stat = &baseline_fuzzer.core.stats[idx];
 
-            if baseline_stat.get_tag() != stat.get_tag() || baseline_stat.get_type() != stat.get_type() {
-                eprintln!("Ignoring fuzzer {} : stat {} doesnt match", fuzzer.pid, stat.get_tag());
+            if baseline_stat.get_tag() != stat.get_tag()
+                || baseline_stat.get_type() != stat.get_type()
+            {
+                eprintln!(
+                    "Ignoring fuzzer {} : stat {} doesnt match",
+                    fuzzer.pid,
+                    stat.get_tag()
+                );
                 return false;
             }
         }
@@ -511,21 +520,32 @@ impl State {
         // Validate plugins
         for (idx, plugin) in fuzzer.plugins.iter().enumerate() {
             let baseline_plugin = &baseline_fuzzer.plugins[idx];
-            
-            if baseline_plugin.name != plugin.name || baseline_plugin.stats.len() != plugin.stats.len() {
-                eprintln!("Ignoring fuzzer {} : plugin {} doesnt match", fuzzer.pid, plugin.name);
+
+            if baseline_plugin.name != plugin.name
+                || baseline_plugin.stats.len() != plugin.stats.len()
+            {
+                eprintln!(
+                    "Ignoring fuzzer {} : plugin {} doesnt match",
+                    fuzzer.pid, plugin.name
+                );
                 return false;
             }
 
             for (idx, stat) in plugin.stats.iter().enumerate() {
                 let baseline_stat = &baseline_plugin.stats[idx];
 
-                if baseline_stat.get_tag() != stat.get_tag() || baseline_stat.get_type() != stat.get_type() {
-                    eprintln!("Ignoring fuzzer {} : stat {} doesnt match", fuzzer.pid, stat.get_tag());
+                if baseline_stat.get_tag() != stat.get_tag()
+                    || baseline_stat.get_type() != stat.get_type()
+                {
+                    eprintln!(
+                        "Ignoring fuzzer {} : stat {} doesnt match",
+                        fuzzer.pid,
+                        stat.get_tag()
+                    );
                     return false;
                 }
             }
-        }        
+        }
         return true;
     }
 
@@ -545,6 +565,6 @@ impl State {
         for idx in idx_list.iter().rev() {
             let fuzzer = self.fuzzers.remove(*idx);
             self.unique_fuzzers.remove(fuzzer.shmem.get_os_path());
-        }        
+        }
     }
 }

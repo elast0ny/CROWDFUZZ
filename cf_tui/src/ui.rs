@@ -27,7 +27,7 @@ pub struct UiState<'a> {
     pub selected_tab: usize,
     /// Index of the selected plugin for the overview window
     pub overview_plugin_idx: usize,
-    
+
     /// The height required to show fuzzer stats & plugin list
     pub fuzzer_stats_heigth: usize,
     /// The width required to show the fuzzer name and stat titles
@@ -72,7 +72,7 @@ impl<'a> UiState<'a> {
             max_plugin_stat_title,
             footer,
             footer_cpu_idx,
-            footer_mem_idx
+            footer_mem_idx,
         };
 
         state.update_fuzzers();
@@ -81,11 +81,11 @@ impl<'a> UiState<'a> {
 
     pub fn update_cached_values(&mut self) {
         use std::fmt::Write;
-        
+
         self.header_title.clear();
         let num_fuzzers = self.state.fuzzers.len();
         let _ = write!(self.header_title, "Fuzzers ({})", num_fuzzers);
-        
+
         // Make sure the tab selection is within bounds
         if self.selected_tab > num_fuzzers {
             self.selected_tab = num_fuzzers;
@@ -99,7 +99,6 @@ impl<'a> UiState<'a> {
             self.max_plugin_name = 0;
         // If we havent computed the max lengths yet
         } else if self.max_core_stat_title == 0 {
-
             // Get longest fuzzer name
             for fuzzer in self.state.fuzzers.iter() {
                 if self.max_core_stat_title < fuzzer.pretty_name.len() {
@@ -133,8 +132,8 @@ impl<'a> UiState<'a> {
                         self.max_plugin_stat_title = stat.get_tag().len();
                     }
                 }
-            }            
-            
+            }
+
             // If plugin name is longer than the longest stat title
             if self.max_plugin_name > self.max_plugin_stat_title {
                 self.max_plugin_stat_title = self.max_plugin_name;
@@ -179,7 +178,7 @@ impl<'a> UiState<'a> {
     pub fn select_next_plugin(&mut self) {
         let num_plugins: usize;
         let idx: &mut usize;
-        
+
         if self.state.fuzzers.len() == 0 {
             return;
         } else if self.selected_tab == 0 {
@@ -200,7 +199,7 @@ impl<'a> UiState<'a> {
     pub fn select_prev_plugin(&mut self) {
         let num_plugins: usize;
         let idx: &mut usize;
-        
+
         if self.state.fuzzers.len() == 0 {
             return;
         } else if self.selected_tab == 0 {
@@ -251,7 +250,7 @@ impl<'a> UiState<'a> {
         let fuzzer_tab_titles = std::iter::once("All")
             .chain(self.state.fuzzers.iter().map(|f| f.core.name.as_str()))
             .collect::<Vec<&str>>();
-        
+
         let mut fuzzer_tabs = Tabs::default()
             .block(
                 Block::default()
@@ -284,7 +283,7 @@ impl<'a> UiState<'a> {
                 f.render(&mut content, area);
                 return;
             }
-            
+
             // Refresh stat values
             for fuzzer in self.state.fuzzers.iter_mut() {
                 // Refresh main fuzzer stats
@@ -292,14 +291,21 @@ impl<'a> UiState<'a> {
                 // Refresh stats for selected plugin
                 fuzzer.refresh_plugin(selected_plugin_idx);
             }
-            
+
             // Merge stats
             let (head, tail) = self.state.fuzzers.split_at_mut(1);
             // Fuzzer stats
-            Plugin::combine_stats(&mut head[0].core, &tail.iter().map(|f| &f.core).collect::<Vec<&Plugin>>(), None);
+            Plugin::combine_stats(
+                &mut head[0].core,
+                &tail.iter().map(|f| &f.core).collect::<Vec<&Plugin>>(),
+                None,
+            );
             // Plugin stats
             for (idx, plugin) in head[0].plugins.iter_mut().enumerate() {
-                let plugin_list = &tail.iter().map(|f| &f.plugins[idx]).collect::<Vec<&Plugin>>();
+                let plugin_list = &tail
+                    .iter()
+                    .map(|f| &f.plugins[idx])
+                    .collect::<Vec<&Plugin>>();
                 if idx == selected_plugin_idx {
                     Plugin::combine_stats(plugin, plugin_list, None);
                 } else {
@@ -320,13 +326,13 @@ impl<'a> UiState<'a> {
         }
 
         let plugin_details_rect;
-        
+
         // Render the top view (fuzzer stats and plugin list)
         {
             let mut max_fuzzer_val = 0;
             let mut fuzzer_titles = Vec::new();
             let mut fuzzer_vals = Vec::new();
-            for s in cur_fuzzer.core.stats.iter_mut() {                
+            for s in cur_fuzzer.core.stats.iter_mut() {
                 let (tag, val) = s.get_tuple();
                 fuzzer_titles.push(Text::Raw(Cow::from(tag)));
                 if val.len() > max_fuzzer_val {
@@ -367,12 +373,11 @@ impl<'a> UiState<'a> {
             let plugins_time_rect = rects[3];
 
             // Render fuzzer stat titles
-            let mut core_tag_list = List::new(fuzzer_titles.drain(..))
-                .block(
-                    Block::default()
-                        .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
-                        .title(cur_tab_name),
-                );
+            let mut core_tag_list = List::new(fuzzer_titles.drain(..)).block(
+                Block::default()
+                    .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
+                    .title(cur_tab_name),
+            );
             f.render(&mut core_tag_list, core_tag_list_rect);
             // Render fuzzer stat values
             let mut core_val_list = List::new(fuzzer_vals.drain(..))
@@ -405,15 +410,15 @@ impl<'a> UiState<'a> {
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
             f.render(&mut plugin_times, plugins_time_rect);
         }
-    
+
         // Render the selected plugin details
         {
-            let cur_plugin = &mut cur_fuzzer.plugins[selected_plugin_idx];       
+            let cur_plugin = &mut cur_fuzzer.plugins[selected_plugin_idx];
 
             let mut _max_plugin_val = 0;
             let mut plugin_titles = Vec::new();
             let mut plugin_vals = Vec::new();
-            for s in cur_plugin.stats.iter_mut() {                
+            for s in cur_plugin.stats.iter_mut() {
                 let (tag, val) = s.get_tuple();
                 plugin_titles.push(Text::Raw(Cow::from(tag)));
                 if val.len() > _max_plugin_val {
@@ -421,7 +426,7 @@ impl<'a> UiState<'a> {
                 }
                 plugin_vals.push(Text::Raw(Cow::from(val)));
             }
-            
+
             // Split bottom area for currently selected plugin
             let rects = Layout::default()
                 .direction(Direction::Horizontal)
@@ -437,12 +442,11 @@ impl<'a> UiState<'a> {
             let plugin_val_list_rect = rects[1];
 
             // Render selected plugin stat names
-            let mut plugin_tag_list = List::new(plugin_titles.drain(..))
-                .block(
-                    Block::default()
-                        .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
-                        .title(cur_plugin.name.as_ref()),
-                );
+            let mut plugin_tag_list = List::new(plugin_titles.drain(..)).block(
+                Block::default()
+                    .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
+                    .title(cur_plugin.name.as_ref()),
+            );
             f.render(&mut plugin_tag_list, plugin_tag_list_rect);
             // Render selected plugin stat values
             let mut plugin_val_list = List::new(plugin_vals.drain(..))
@@ -452,48 +456,58 @@ impl<'a> UiState<'a> {
     }
 
     pub fn draw_footer<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect) {
-    
         self.state.sys_info.refresh_cpu();
         self.state.sys_info.refresh_memory();
-        let cpu_speed = self.state
+        let cpu_speed = self
+            .state
             .sys_info
             .get_processors()
             .iter()
             .fold(0f32, |t, c| t + c.get_cpu_usage()) as usize
             / self.state.sys_info.get_processors().len();
-        let mem_usage = ((self.state.sys_info.get_used_memory() * 100) / self.state.sys_info.get_total_memory()) as usize;
+        let mem_usage = ((self.state.sys_info.get_used_memory() * 100)
+            / self.state.sys_info.get_total_memory()) as usize;
         self.update_footer(cpu_speed, mem_usage);
-    
+
         // Apply color to cpu and mem
-        let footer = self.footer.iter().enumerate().map(|(idx, s)| {
-            if idx == self.footer_cpu_idx {
-                Text::styled(s, 
-                if cpu_speed > 90 {
-                    Style::default().fg(Color::Red)
-                } else if cpu_speed > 75 {
-                    Style::default().fg(Color::Yellow)
+        let footer = self
+            .footer
+            .iter()
+            .enumerate()
+            .map(|(idx, s)| {
+                if idx == self.footer_cpu_idx {
+                    Text::styled(
+                        s,
+                        if cpu_speed > 90 {
+                            Style::default().fg(Color::Red)
+                        } else if cpu_speed > 75 {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default().fg(Color::Green)
+                        },
+                    )
+                } else if idx == self.footer_mem_idx {
+                    Text::styled(
+                        s,
+                        if mem_usage > 90 {
+                            Style::default().fg(Color::Red)
+                        } else if mem_usage > 75 {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default().fg(Color::Green)
+                        },
+                    )
                 } else {
-                    Style::default().fg(Color::Green)
-                })
-            } else if idx == self.footer_mem_idx {
-                Text::styled(s, 
-                if mem_usage > 90 {
-                    Style::default().fg(Color::Red)
-                } else if mem_usage > 75 {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default().fg(Color::Green)
-                })
-            } else {
-                Text::raw(s)
-            }
-        }).collect::<Vec<Text>>();
-    
+                    Text::raw(s)
+                }
+            })
+            .collect::<Vec<Text>>();
+
         let mut bottom_stats = Paragraph::new(footer.iter())
             //.style(Style::default())
             //.alignment(Alignment::Center)
             .wrap(false);
-    
+
         f.render(&mut bottom_stats, area);
     }
 }
@@ -516,6 +530,3 @@ pub fn destroy_ui() -> Result<(), Box<dyn Error>> {
     disable_raw_mode()?;
     Ok(())
 }
-
-
-

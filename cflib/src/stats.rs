@@ -1,18 +1,13 @@
-use std::mem::size_of;
-use std::ptr::{copy_nonoverlapping};
-use std::sync::atomic::{AtomicU16, Ordering};
 use crate::*;
+use std::mem::size_of;
+use std::ptr::copy_nonoverlapping;
+use std::sync::atomic::{AtomicU16, Ordering};
 
 /// Stat tag prefixes to give hints to UIs
-static TAG_PREFIX: &[&str] = &[
-    TAG_PREFIX_TOTAL_STR,
-    TAG_PREFIX_AVERAGE_STR,
-];
+static TAG_PREFIX: &[&str] = &[TAG_PREFIX_TOTAL_STR, TAG_PREFIX_AVERAGE_STR];
 
 /// Specifies the data content type of string stats
-static STR_POSTFIX: &[&str] = &[
-    STR_POSTFIX_DIR_STR,
-];
+static STR_POSTFIX: &[&str] = &[STR_POSTFIX_DIR_STR];
 
 /// Specifies the data content type of number stats
 static NUM_POSTFIX: &[&str] = &[
@@ -25,9 +20,7 @@ static NUM_POSTFIX: &[&str] = &[
 ];
 
 /// Sepcifies the data content type of byte stats
-pub static BYTES_POSTFIX: &[&str] = &[
-    BYTES_POSTFIX_HEX_STR,
-];
+pub static BYTES_POSTFIX: &[&str] = &[BYTES_POSTFIX_HEX_STR];
 
 /// Used to request new stat space from the core. Dynamic type
 /// require a max length for the stat value.
@@ -113,45 +106,50 @@ pub enum StatVal {
 
 impl StatVal {
     pub fn is_equal(&self, src: &StatRef) -> bool {
-        unsafe{
-        match self {
-            StatVal::Component(_) => true,
-            StatVal::Bytes(dst) => {
-                if *(src.data_ptr as *mut u16) as usize != dst.len() {
-                    false
-                } else {
-                    let bytes = std::slice::from_raw_parts(src.data_ptr.add(size_of::<u16>()), dst.len());
-                    dst == &bytes
+        unsafe {
+            match self {
+                StatVal::Component(_) => true,
+                StatVal::Bytes(dst) => {
+                    if *(src.data_ptr as *mut u16) as usize != dst.len() {
+                        false
+                    } else {
+                        let bytes = std::slice::from_raw_parts(
+                            src.data_ptr.add(size_of::<u16>()),
+                            dst.len(),
+                        );
+                        dst == &bytes
+                    }
                 }
-            },
-            StatVal::Str(dst) => {
-                if *(src.data_ptr as *mut u16) as usize != dst.len() {
-                    false
-                } else {
-                    let bytes = std::slice::from_raw_parts(src.data_ptr.add(size_of::<u16>()), dst.len());
-                    &dst.as_bytes() == &bytes
+                StatVal::Str(dst) => {
+                    if *(src.data_ptr as *mut u16) as usize != dst.len() {
+                        false
+                    } else {
+                        let bytes = std::slice::from_raw_parts(
+                            src.data_ptr.add(size_of::<u16>()),
+                            dst.len(),
+                        );
+                        &dst.as_bytes() == &bytes
+                    }
                 }
-            },
-            StatVal::Number(v) => {*v == *(src.data_ptr as *mut u64)},
+                StatVal::Number(v) => *v == *(src.data_ptr as *mut u64),
+            }
         }
-        }
-
     }
     pub fn update(&mut self, src: &StatRef) {
         unsafe {
-        match self {
-            StatVal::Component(_) => {},
-            StatVal::Bytes(dst) => {
-                let cur_len = copy_dyn_stat(dst.as_mut_ptr(), src.data_ptr);
-                dst.set_len(cur_len);
-            },
-            StatVal::Str(dst) => {
-                let dst = dst.as_mut_vec();
-                let cur_len = copy_dyn_stat(dst.as_mut_ptr(), src.data_ptr);
-                dst.set_len(cur_len);
-            },
-            StatVal::Number(v) => {*v = *(src.data_ptr as *mut u64)},
-        }
+            match self {
+                StatVal::Component(_) => {}
+                StatVal::Bytes(dst) => {
+                    let cur_len = copy_dyn_stat(dst.as_mut_ptr(), src.data_ptr);
+                    dst.set_len(cur_len);
+                }
+                StatVal::Str(dst) => {
+                    let dst = dst.as_mut_vec();
+                    let cur_len = copy_dyn_stat(dst.as_mut_ptr(), src.data_ptr);
+                    dst.set_len(cur_len);
+                }
+                StatVal::Number(v) => *v = *(src.data_ptr as *mut u64),
+            }
         }
     }
     pub fn write_str(&self, dst: &mut String) {
@@ -164,7 +162,7 @@ impl StatVal {
                     let _ = write!(dst, "{:02X}", byte);
                 }
                 Ok(())
-            },
+            }
             StatVal::Str(v) => write!(dst, "{}", v),
             StatVal::Number(v) => write!(dst, "{}", v),
         };
@@ -259,7 +257,7 @@ impl StatRef {
             data_ptr = unsafe { base_ptr.add(shmem_idx) as *mut _ };
             shmem_idx += max_data_len as usize;
         }
-        
+
         if shmem_idx > max_bytes {
             return Err(From::from(
                 "Not enough bytes left for the stat data".to_owned(),
@@ -312,19 +310,19 @@ impl StatRef {
                     copy_nonoverlapping(self.tag_ptr, res.as_mut_ptr(), self.tag_len as usize);
                     res.set_len(self.tag_len as usize);
                     StatVal::Component(String::from_utf8_unchecked(res))
-                },
+                }
                 STAT_BYTES => {
                     let mut res = Vec::with_capacity(self.max_data_len as usize);
                     let cur_len = copy_dyn_stat(res.as_mut_ptr(), self.data_ptr);
                     res.set_len(cur_len);
                     StatVal::Bytes(res)
-                },
+                }
                 STAT_STR => {
                     let mut res = Vec::with_capacity(self.max_data_len as usize);
                     let cur_len = copy_dyn_stat(res.as_mut_ptr(), self.data_ptr);
                     res.set_len(cur_len);
                     StatVal::Str(String::from_utf8_unchecked(res))
-                },
+                }
                 STAT_NUMBER => StatVal::Number(*(self.data_ptr as *mut u64)),
                 t => panic!("Invalid StatType given '{}' ...", t),
             }
@@ -338,7 +336,6 @@ impl StatRef {
 
 /// Removes known prefixes and postfixes
 pub fn strip_tag_hints(tag: &str) -> (&str, (Option<&'static str>, Option<&'static str>)) {
-
     let (res_tag, prefix) = strip_tag_prefix(tag);
     let (res_tag, postfix) = strip_tag_postfix(res_tag);
 
@@ -365,7 +362,7 @@ pub fn strip_tag_prefix(tag: &str) -> (&str, Option<&'static str>) {
 
 pub fn strip_tag_postfix(tag: &str) -> (&str, Option<&'static str>) {
     let tag_len = tag.len();
-    
+
     // Numbers
     for postfix in NUM_POSTFIX {
         let postfix_len = postfix.len();
@@ -388,9 +385,9 @@ pub fn strip_tag_postfix(tag: &str) -> (&str, Option<&'static str>) {
 
         if &tag[tag_len - postfix_len..] == *postfix {
             if *postfix == STR_POSTFIX_DIR_STR {
-                return (tag, Some(*postfix));    
+                return (tag, Some(*postfix));
             } else {
-                return (&tag[..tag_len - postfix_len], Some(*postfix));       
+                return (&tag[..tag_len - postfix_len], Some(*postfix));
             }
         }
     }
@@ -459,7 +456,6 @@ fn format_duration(dst: &mut String, mut val: u64, unit: &str) {
             let _ = write!(dst, "[None]");
         }
     }
-    
 }
 
 pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
@@ -469,13 +465,12 @@ pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
 
     if let Some(num) = num {
         let unit = match tag_postfix.rfind("_") {
-            Some(idx) => &tag_postfix[idx+1..],
+            Some(idx) => &tag_postfix[idx + 1..],
             None => "us",
         };
-        
+
         dst.clear();
         format_duration(dst, num, unit);
-        
     } else if let Some(mut s) = src.as_str() {
         dst.clear();
         if tag_postfix == STR_POSTFIX_DIR_STR {
@@ -501,7 +496,6 @@ pub fn write_pretty_stat(dst: &mut String, src: &StatVal, tag_postfix: &str) {
 /// of at least max_data_len bytes.
 /// Returns the number of bytes written
 unsafe fn copy_dyn_stat(dst: *mut u8, src: *mut u8) -> usize {
-    
     let atom_cur_len: &mut AtomicU16 = &mut *(src as *mut AtomicU16);
     let mut cur_len;
     // Busy loop until we set the length to 0
@@ -520,7 +514,6 @@ unsafe fn copy_dyn_stat(dst: *mut u8, src: *mut u8) -> usize {
 
 /// Helper to write dynamically sized stats to memory
 pub fn update_dyn_stat<B: AsRef<[u8]>>(dst: *mut u8, data: B) {
-
     let mut data = data.as_ref();
     if data.len() == 0 {
         data = &[0];
@@ -536,7 +529,7 @@ pub fn update_dyn_stat<B: AsRef<[u8]>>(dst: *mut u8, data: B) {
             cur_len = *(dst as *mut u16);
             // Set length to 0 if not already 0
             match atom_cur_len.compare_exchange(cur_len, 0, Ordering::Acquire, Ordering::Acquire) {
-                Ok(_)  => break,
+                Ok(_) => break,
                 _ => continue,
             };
         }
@@ -544,4 +537,3 @@ pub fn update_dyn_stat<B: AsRef<[u8]>>(dst: *mut u8, data: B) {
         atom_cur_len.store(src_len as u16, Ordering::Release);
     }
 }
-

@@ -143,7 +143,7 @@ impl Plugin {
             return Ok(());
         }
 
-        match unsafe { (self.init_fn)(ctx) }  as _ {
+        match unsafe { (self.init_fn)(ctx) } as _ {
             cflib::STATUS_SUCCESS => {
                 self.init_called = true;
                 Ok(())

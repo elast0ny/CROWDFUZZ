@@ -25,7 +25,7 @@ pub struct Config {
     pub target_args: Vec<String>,
     /// List of plugins for the fuzz loop
     pub fuzz_loop: Vec<PathBuf>,
-    
+
     /// Additional confif values for the plugins
     #[serde(default = "Vec::new")]
     pub plugin_conf: Vec<HashMap<String, String>>,
