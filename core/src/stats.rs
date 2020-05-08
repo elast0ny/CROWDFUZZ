@@ -4,7 +4,7 @@ use std::path::Path;
 use std::ptr::null_mut;
 
 use ::log::*;
-use ::shared_memory::SharedMem;
+use ::shared_memory::Shmem;
 
 use crate::core::Core;
 use crate::plugin::*;
@@ -93,7 +93,7 @@ impl Core {
 
 pub struct CoreStats {
     prefix: String,
-    pub stats_memory: SharedMem,
+    pub stats_memory: Shmem,
     pub header: &'static mut cflib::StatFileHeader,
     pub start_time: &'static mut u64,
     pub cwd: *mut c_void,
@@ -105,7 +105,7 @@ pub struct CoreStats {
 }
 
 impl CoreStats {
-    pub fn new(shmem: SharedMem) -> CoreStats {
+    pub fn new(shmem: Shmem) -> CoreStats {
         unsafe {
             CoreStats {
                 prefix: String::new(),
@@ -124,23 +124,21 @@ impl CoreStats {
 
     pub fn init(&mut self, core_name: &str) -> Result<()> {
         self.prefix = core_name.to_string();
-        let shmem_base: *mut u8 = self.stats_memory.get_ptr() as *mut _;
+        let shmem_base: *mut u8 = self.stats_memory.as_ptr();
         // Init the stats header
         self.header = unsafe { &mut *(shmem_base as *mut _) };
         self.header.stat_len = 0;
         self.header.pid = std::process::id();
         self.header.state = cflib::CORE_INITIALIZING as _;
-
         self.header.stat_len += size_of::<cflib::StatFileHeader>() as u32;
 
         // Add the stats for the "core" component
         self.add_component(None)?;
-
         Ok(())
     }
 
     pub fn add_component(&mut self, plugin: Option<&mut Plugin>) -> Result<()> {
-        let shmem_base: *mut u8 = self.stats_memory.get_ptr() as *mut _;
+        let shmem_base: *mut u8 = self.stats_memory.as_ptr();
 
         let plugin_name: &str = match plugin {
             None => &self.prefix,
@@ -148,9 +146,9 @@ impl CoreStats {
         };
 
         if self.header.stat_len as usize + size_of::<cflib::StatHeader>() + plugin_name.len()
-            >= self.stats_memory.get_size()
+            >= self.stats_memory.len()
         {
-            return Err(From::from(format!("No more space to allocate stats... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", self.stats_memory.get_size())));
+            return Err(From::from(format!("No more space to allocate stats... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", self.stats_memory.len())));
         }
 
         let comp_header: &mut cflib::StatHeader =
@@ -200,17 +198,17 @@ impl CoreStats {
             max_data_len += size_of::<u16>();
         }
 
-        if header_len + tag.len() + max_data_len >= self.stats_memory.get_size() {
+        if header_len + tag.len() + max_data_len >= self.stats_memory.len() {
             return Err(
                 From::from(
                     format!(
-                        "No more space to allocate stat {:?}... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", new_stat, self.stats_memory.get_size()
+                        "No more space to allocate stat {:?}... you can increase this value through the 'shmem_size' config. (Current value {} bytes)", new_stat, self.stats_memory.len()
                     )
                 )
             );
         }
 
-        let shmem_base: *mut u8 = self.stats_memory.get_ptr() as *mut _;
+        let shmem_base: *mut u8 = self.stats_memory.as_ptr();
         let header_ptr: *mut u8 =
             unsafe { &mut *(shmem_base.add(self.header.stat_len as _) as *mut _) };
         self.header.stat_len += header_len as u32;

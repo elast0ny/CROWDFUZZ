@@ -10,7 +10,7 @@ use std::sync::{
 use std::time::Instant;
 
 use ::log::*;
-use ::shared_memory::*;
+use ::shared_memory::ShmemConf;
 
 use crate::Result;
 
@@ -51,9 +51,9 @@ impl Core {
             "Allocating space for fuzzer statistics '{}'",
             config.stats_file
         );
-        let shmem = match SharedMemConf::default()
-            .set_link_path(&config.stats_file)
-            .set_size(config.shmem_size)
+        let shmem = match ShmemConf::new()
+            .flink(&config.stats_file)
+            .size(config.shmem_size)
             .create()
         {
             Ok(m) => m,

@@ -27,6 +27,8 @@ pub struct UiState<'a> {
     pub selected_tab: usize,
     /// Index of the selected plugin for the overview window
     pub overview_plugin_idx: usize,
+    /// List state for plugin list
+    pub plugins_list_state: ListState,
 
     /// The height required to show fuzzer stats & plugin list
     pub fuzzer_stats_heigth: usize,
@@ -61,11 +63,15 @@ impl<'a> UiState<'a> {
         let max_plugin_stat_title = 0;
         let max_plugin_name = 0;
 
+        let mut plugins_list_state = ListState::default();
+        plugins_list_state.select(Some(0));
+
         let mut state = Self {
             state,
             header_title: String::from("Fuzzers (0)"),
             selected_tab: 0,
             overview_plugin_idx: 0,
+            plugins_list_state,
             fuzzer_stats_heigth,
             max_core_stat_title,
             max_plugin_name,
@@ -89,6 +95,8 @@ impl<'a> UiState<'a> {
         // Make sure the tab selection is within bounds
         if self.selected_tab > num_fuzzers {
             self.selected_tab = num_fuzzers;
+            self.plugins_list_state = ListState::default();
+            self.plugins_list_state.select(Some(0));
         }
 
         // If no more fuzzer, reset cached max lengths
@@ -165,6 +173,12 @@ impl<'a> UiState<'a> {
         if self.selected_tab == self.state.fuzzers.len() + 1 {
             self.selected_tab = 0;
         }
+        self.plugins_list_state = ListState::default();
+        self.plugins_list_state
+            .select(Some(match self.selected_tab {
+                0 => self.overview_plugin_idx,
+                _ => self.state.fuzzers[self.selected_tab-1].cur_plugin_idx,
+            }));
     }
 
     pub fn select_prev_fuzzer(&mut self) {
@@ -173,6 +187,13 @@ impl<'a> UiState<'a> {
         } else {
             self.selected_tab -= 1;
         }
+
+        self.plugins_list_state = ListState::default();
+        self.plugins_list_state
+            .select(Some(match self.selected_tab {
+                0 => self.overview_plugin_idx,
+                _ => self.state.fuzzers[self.selected_tab-1].cur_plugin_idx,
+            }));
     }
 
     pub fn select_next_plugin(&mut self) {
@@ -194,6 +215,8 @@ impl<'a> UiState<'a> {
         if *idx == num_plugins {
             *idx = 0;
         }
+
+        self.plugins_list_state.select(Some(*idx));
     }
 
     pub fn select_prev_plugin(&mut self) {
@@ -216,6 +239,8 @@ impl<'a> UiState<'a> {
         } else {
             *idx -= 1;
         }
+
+        self.plugins_list_state.select(Some(*idx));
     }
 
     pub fn draw_self<B: Backend>(ui: &mut UiState, mut f: Frame<B>) {
@@ -251,7 +276,7 @@ impl<'a> UiState<'a> {
             .chain(self.state.fuzzers.iter().map(|f| f.core.name.as_str()))
             .collect::<Vec<&str>>();
 
-        let mut fuzzer_tabs = Tabs::default()
+        let fuzzer_tabs = Tabs::default()
             .block(
                 Block::default()
                     .borders(Borders::ALL)
@@ -260,7 +285,7 @@ impl<'a> UiState<'a> {
             .highlight_style(Style::default().fg(Color::Yellow))
             .titles(&fuzzer_tab_titles)
             .select(self.selected_tab);
-        f.render(&mut fuzzer_tabs, area);
+        f.render_widget(fuzzer_tabs, area);
     }
 
     /// Draws the view when a fuzzer is selected
@@ -275,12 +300,12 @@ impl<'a> UiState<'a> {
             selected_plugin_idx = self.overview_plugin_idx;
             if self.state.fuzzers.len() == 0 {
                 let text = &[Text::raw(Cow::from("<No fuzzers>"))];
-                let mut content = Paragraph::new(text.iter())
+                let content = Paragraph::new(text.iter())
                     .block(fuzzer_details)
                     .style(Style::default().fg(Color::Red))
                     .alignment(tui::layout::Alignment::Center)
                     .wrap(false);
-                f.render(&mut content, area);
+                f.render_widget(content, area);
                 return;
             }
 
@@ -373,42 +398,45 @@ impl<'a> UiState<'a> {
             let plugins_time_rect = rects[3];
 
             // Render fuzzer stat titles
-            let mut core_tag_list = List::new(fuzzer_titles.drain(..)).block(
+            let core_tag_list = List::new(fuzzer_titles.drain(..)).block(
                 Block::default()
                     .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
                     .title(cur_tab_name),
             );
-            f.render(&mut core_tag_list, core_tag_list_rect);
+            f.render_widget(core_tag_list, core_tag_list_rect);
             // Render fuzzer stat values
-            let mut core_val_list = List::new(fuzzer_vals.drain(..))
+            let core_val_list = List::new(fuzzer_vals.drain(..))
                 .block(Block::default().borders(Borders::TOP | Borders::BOTTOM));
-            f.render(&mut core_val_list, core_val_list_rect);
+            f.render_widget(core_val_list, core_val_list_rect);
 
             // Render list of plugin names
-            let mut plugin_names: Vec<&str> = Vec::with_capacity(cur_fuzzer.plugins.len());
-            let mut plugin_times: Vec<&str> = Vec::with_capacity(cur_fuzzer.plugins.len());
+            let mut plugin_names = Vec::with_capacity(cur_fuzzer.plugins.len());
+            let mut plugin_times = Vec::with_capacity(cur_fuzzer.plugins.len());
             for plugin in cur_fuzzer.plugins.iter_mut() {
-                plugin_names.push(plugin.name.as_str());
-                plugin_times.push(plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_str());
+                plugin_names.push(Text::Raw(Cow::from(plugin.name.as_str())));
+                plugin_times.push(Text::Raw(Cow::from(
+                    plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_str(),
+                )));
             }
-            let mut plugin_list = SelectableList::default()
+            let plugin_list = List::new(plugin_names.drain(..))
                 .block(
                     Block::default()
                         .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
                         .title("Plugins"),
                 )
-                .items(&plugin_names)
-                .select(Some(selected_plugin_idx))
                 .highlight_symbol(">")
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
-            f.render(&mut plugin_list, plugins_list_rect);
+            f.render_stateful_widget(plugin_list, plugins_list_rect, &mut self.plugins_list_state);
+
             // Render each average exec time for the plugin list
-            let mut plugin_times = SelectableList::default()
+            let plugin_times = List::new(plugin_times.drain(..))
                 .block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT))
-                .items(&plugin_times)
-                .select(Some(selected_plugin_idx))
                 .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
-            f.render(&mut plugin_times, plugins_time_rect);
+            f.render_stateful_widget(
+                plugin_times,
+                plugins_time_rect,
+                &mut self.plugins_list_state,
+            );
         }
 
         // Render the selected plugin details
@@ -442,16 +470,16 @@ impl<'a> UiState<'a> {
             let plugin_val_list_rect = rects[1];
 
             // Render selected plugin stat names
-            let mut plugin_tag_list = List::new(plugin_titles.drain(..)).block(
+            let plugin_tag_list = List::new(plugin_titles.drain(..)).block(
                 Block::default()
                     .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
                     .title(cur_plugin.name.as_ref()),
             );
-            f.render(&mut plugin_tag_list, plugin_tag_list_rect);
+            f.render_widget(plugin_tag_list, plugin_tag_list_rect);
             // Render selected plugin stat values
-            let mut plugin_val_list = List::new(plugin_vals.drain(..))
+            let plugin_val_list = List::new(plugin_vals.drain(..))
                 .block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT));
-            f.render(&mut plugin_val_list, plugin_val_list_rect);
+            f.render_widget(plugin_val_list, plugin_val_list_rect);
         }
     }
 
@@ -503,12 +531,12 @@ impl<'a> UiState<'a> {
             })
             .collect::<Vec<Text>>();
 
-        let mut bottom_stats = Paragraph::new(footer.iter())
+        let bottom_stats = Paragraph::new(footer.iter())
             //.style(Style::default())
             //.alignment(Alignment::Center)
             .wrap(false);
 
-        f.render(&mut bottom_stats, area);
+        f.render_widget(bottom_stats, area);
     }
 }
 

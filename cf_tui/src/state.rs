@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use ::shared_memory::SharedMem;
+use ::shared_memory::{Shmem, ShmemConf};
 use ::sysinfo::{ProcessExt, RefreshKind, System, SystemExt};
 
 // Every first stat is the exec time
@@ -199,7 +199,7 @@ impl Plugin {
 
 pub struct Fuzzer {
     #[allow(unused)]
-    shmem: SharedMem,
+    shmem: Shmem,
     pub cur_plugin_idx: usize,
     pub pid: u32,
     pub pretty_name: String,
@@ -278,8 +278,8 @@ impl Fuzzer {
         }
     }
 
-    pub fn new(shmem: SharedMem, sys_info: &mut System) -> Result<Self, Box<dyn Error>> {
-        let shmem_base: *mut u8 = shmem.get_ptr() as *mut u8;
+    pub fn new(shmem: Shmem, sys_info: &mut System) -> Result<Self, Box<dyn Error>> {
+        let shmem_base: *mut u8 = shmem.as_ptr();
         let mut core = unsafe { cflib::FuzzerStats::from_ptr(shmem_base)? };
 
         // Make sure the fuzzer is still alive
@@ -395,10 +395,10 @@ impl State {
 
         // Try to load all the files
         for fpath in found_files.iter() {
-            let shmem = match SharedMem::open_linked(&fpath) {
+            let shmem = match ShmemConf::new().flink(&fpath).open() {
                 Ok(m) => {
                     // we already are tracking this fuzzer
-                    if self.unique_fuzzers.contains(m.get_os_path()) {
+                    if self.unique_fuzzers.contains(m.get_os_id()) {
                         continue;
                     }
                     m
@@ -490,7 +490,7 @@ impl State {
         self.changed = true;
 
         self.unique_fuzzers
-            .insert(fuzzer.shmem.get_os_path().to_string());
+            .insert(fuzzer.shmem.get_os_id().to_string());
 
         if self.is_valid_fuzzer(&fuzzer) {
             self.fuzzers.push(fuzzer);
@@ -501,7 +501,7 @@ impl State {
         self.changed = true;
         for idx in idx_list.iter().rev() {
             let fuzzer = self.fuzzers.remove(*idx);
-            self.unique_fuzzers.remove(fuzzer.shmem.get_os_path());
+            self.unique_fuzzers.remove(fuzzer.shmem.get_os_id());
         }
     }
 }
