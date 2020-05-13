@@ -20,9 +20,6 @@ cflib::register!(validate, validate);
 cflib::register!(work, select_testcase);
 cflib::register!(destroy, destroy);
 
-/// This plugin randomly selects a file from a list gathered from the input folders.
-/// It also supports basic file duplicate detection and saving new inputs.
-
 /// Custom stats owned by the plugin
 struct CustomStats {
     initial_input_num: &'static mut usize,

@@ -1,15 +1,15 @@
 [package]
-name = "basic_select"
+name = "save_result"
 version = "0.0.1"
 authors = ["Elast0ny <Elast0ny00@gmail.com>"]
 edition = "2018"
 
 [lib]
-name = "basic_select"
-path = "src/basic_select.rs"
+name = "save_result"
+path = "src/save_result.rs"
 crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
-cflib = {path='../../cflib'}
-rand = "0.*"
+cflib = {path="../../cflib"}
 rust-crypto = "0.*"
+

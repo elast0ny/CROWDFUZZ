@@ -1,5 +1,5 @@
 use ::bindgen;
-use ::bindgen::callbacks::{MacroParsingBehavior, ParseCallbacks};
+use ::bindgen::callbacks::{MacroParsingBehavior, ParseCallbacks, IntKind};
 use std::path::PathBuf;
 
 use std::collections::HashMap;
@@ -9,11 +9,10 @@ use std::str::from_utf8;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
-struct StringMacroCallback {
+struct MacroCallback {
     macros: Arc<Mutex<HashMap<String, String>>>,
 }
-
-impl ParseCallbacks for StringMacroCallback {
+impl ParseCallbacks for MacroCallback {
     fn will_parse_macro(&self, _name: &str) -> MacroParsingBehavior {
         //if name.starts_with("_SYMBOL") || name.starts_with("SYMBOL") || name.starts_with("KEY") {
         //    MacroParsingBehavior::Ignore
@@ -33,6 +32,14 @@ impl ParseCallbacks for StringMacroCallback {
         }
         macros.insert(new_name, String::from(from_utf8(value).unwrap()));
     }
+
+    fn int_macro(&self, name: &str, _value: i64) -> Option<IntKind> {
+        if name == "CF_TRUE" || name == "CF_FALSE" {
+            Some(IntKind::UChar)
+        } else {
+            None
+        }
+    }
 }
 
 fn main() {
@@ -44,7 +51,7 @@ fn main() {
         .rustfmt_bindings(true)
         .blacklist_item("wchar_t")
         .blacklist_item("max_align_t")
-        .parse_callbacks(Box::new(StringMacroCallback {
+        .parse_callbacks(Box::new(MacroCallback {
             macros: extra_macros.clone(),
         }))
         .generate()

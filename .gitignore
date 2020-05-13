@@ -2,3 +2,5 @@
 /target/
 **/*.rs.bk
 fuzzer_stats_*
+example/results/*
+example/state/*

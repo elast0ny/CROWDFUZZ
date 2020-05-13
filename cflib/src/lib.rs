@@ -57,10 +57,10 @@ macro_rules! cast {
 /// Helper to extract values from the core store
 ///
 /// ```Rust
-/// state.exit_status = store_get_ref!(mandatory, CTuple, core, KEY_EXIT_STATUS_STR, 0);
+/// state.exit_status = store_get_ref!(mandatory, CFTuple, core, KEY_EXIT_STATUS_STR, 0);
 /// state.dir = store_get_ref!(mandatory, str, core, KEY_SOME_PATH_STR, 0);
 ///
-/// if store_get_ref!(optional, CTuple, core, KEY_EXIT_STATUS_STR, 0).is_some() {
+/// if store_get_ref!(optional, CFTuple, core, KEY_EXIT_STATUS_STR, 0).is_some() {
 ///     //....
 /// }
 /// ```

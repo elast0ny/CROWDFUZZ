@@ -25,31 +25,50 @@
 #define KEY_CUR_EXEC_NUM "num_execs"
 /// Working directory of the project
 #define KEY_CWD "cwd"
-/// Name of the fuzzer
+/// Name of the fuzzer (type size_t)
 #define KEY_FUZZER_ID "fuzzer_id"
 /// Extra plugin config values
 #define KEY_PLUGIN_CONF "plugin_conf"
 
 /// Selected file for the next fuzz iteration
 #define KEY_INPUT_PATH "input_path"
+
 /// Bytes from the selected input file (type CFVec)
 #define KEY_INPUT_BYTES "input_bytes"
-/// Mutated testcase ready for the target (type CFVec, buffer contains a list of (len:usize, ptr:c_void) tuples pointing to chuncks of memory that need to be stitched together before passing to the target)
+/// Mutated testcase ready for the target (type CFVec<CFBuf> )
 #define KEY_CUR_INPUT_CHUNKS "cur_input_chunks"
+
 /// Name of the file created on disk after mutation
 #define KEY_CUR_INPUT_PATH "cur_input_path"
+
+/// Set by post-run plugins to inform that an input should be kept
+#define KEY_SAVE_INPUT "save_input"
 
 /// List of *CFVec 
 #define KEY_NEW_INPUT_LIST "new_inputs"
 
+/// When this is set to 1, any plugins other than the target exec plugin
+/// should not perform any actions. This can be used in conjunction with
+/// custom plugin keys to 'reserve' a fuzz iteration to perform special
+/// actions.
+#define KEY_ONLY_EXEC_MODE "only_exec"
+
+/// Target execution time in us
+#define KEY_TARGET_EXEC_US "target_exec_us"
+
 /// Exit status of the the target after running it with KEY_CUR_INPUT
-/// This key should be a CTuple with `first` set to EXIT_STATUS_* , and `second` set to the value
+/// This key should be a CFTuple with `first` set to EXIT_STATUS_* , and `second` set to the value
 #define KEY_EXIT_STATUS "exit_status"
 #define EXIT_STATUS_NORMAL 0
 #define EXIT_STATUS_TIMEOUT 1
 #define EXIT_STATUS_CRASH 2
 
 /* Complex types that can be stored in the store */
+
+typedef unsigned char CFBool;
+#define CF_TRUE (1)
+#define CF_FALSE (0)
+
 
 /// Desbribes a buffer of variable length and capacity
 typedef struct {

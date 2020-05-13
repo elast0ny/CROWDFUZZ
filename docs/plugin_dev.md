@@ -17,7 +17,7 @@ Plugins can share data between themselves through the public store. The store's 
 
 Plugins are expected to add the items they own/output during their `init()` procedure and should validate that their required inputs are present in their `validate()` procedure. Plugins should also cleanup the items they own in their `destroy()` procedure.
 
-Plugins should use `CTuple` structs when inserting buffers/strings into the store with the `CTuple.first` containing the buffer length and `.second` containing a pointer to the buffer. `CFVec` is also available to store lists.
+Plugins should use `CFTuple` structs when inserting buffers/strings into the store with the `CFTuple.first` containing the buffer length and `.second` containing a pointer to the buffer. `CFVec` is also available to store lists.
 
 ### __Private store__
 Every plugin can store a pointer to private data during its `init()` procedure. Subsequent calls to their other exported functions will have this pointer as the second parameter.
