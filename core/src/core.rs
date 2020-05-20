@@ -169,7 +169,7 @@ impl Core {
 
             debug!("\t\"{}\"->validate()", plugin.name());
             if let Err(e) = plugin.validate(&mut self.core_if) {
-                warn!("Error while \"{}\".validate()", plugin.name());
+                warn!("Error in plugin \"{}\"'s validate()", plugin.name());
                 return Err(e);
             }
         }

@@ -51,7 +51,7 @@
 /// should not perform any actions. This can be used in conjunction with
 /// custom plugin keys to 'reserve' a fuzz iteration to perform special
 /// actions.
-#define KEY_ONLY_EXEC_MODE "only_exec"
+#define KEY_EXEC_ONLY_MODE "exec_only"
 
 /// Target execution time in us
 #define KEY_TARGET_EXEC_US "target_exec_us"

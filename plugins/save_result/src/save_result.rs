@@ -96,7 +96,7 @@ extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> 
     state.store.cur_input =
         cflib::store_get_ref!(mandatory, CFVec, core, KEY_CUR_INPUT_CHUNKS_STR, 0);
     state.store.exec_only =
-        cflib::store_get_ref!(mandatory, CFBool, core, KEY_ONLY_EXEC_MODE_STR, 0);
+        cflib::store_get_ref!(mandatory, CFBool, core, KEY_EXEC_ONLY_MODE_STR, 0);
 
     state.crash_dir = PathBuf::from(state.store.result_dir.as_utf8());
     state.timeout_dir = state.crash_dir.clone();

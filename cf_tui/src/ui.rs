@@ -1,6 +1,7 @@
 use ::crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    cursor::{Hide, DisableBlinking, Show, EnableBlinking},
 };
 use ::sysinfo::{ProcessorExt, SystemExt};
 use ::tui::{
@@ -545,7 +546,7 @@ pub fn init_ui() -> Result<Terminal<CrosstermBackend<Stdout>>, Box<dyn Error>> {
     enable_raw_mode()?;
     let mut stdout = stdout();
     #[allow(deprecated)]
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, Hide, DisableBlinking)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.hide_cursor()?;
@@ -554,7 +555,7 @@ pub fn init_ui() -> Result<Terminal<CrosstermBackend<Stdout>>, Box<dyn Error>> {
 
 pub fn destroy_ui() -> Result<(), Box<dyn Error>> {
     #[allow(deprecated)]
-    execute!(stdout(), LeaveAlternateScreen)?;
+    execute!(stdout(), EnableBlinking, Show, LeaveAlternateScreen)?;
     disable_raw_mode()?;
     Ok(())
 }

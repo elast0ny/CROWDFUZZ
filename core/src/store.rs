@@ -42,6 +42,14 @@ impl Core {
         for arg in &tmp_list {
             self.store_push_back(String::from(KEY_TARGET_ARGS_STR), *arg);
         }
+
+        let exec_only = Box::new(CF_FALSE);
+        // Exec only key
+        self.store_push_front(
+            String::from(KEY_EXEC_ONLY_MODE_STR),
+            Box::leak(exec_only) as *mut _ as _,
+        );
+
         // Input file name
         self.store_push_front(
             String::from(KEY_CUR_INPUT_PATH_STR),
@@ -91,6 +99,7 @@ impl Core {
             let _: Box<CFUtf8> =
                 Box::from_raw(self.store_pop_front(KEY_CUR_INPUT_PATH_STR) as *mut _);
             let _: Box<CFUtf8> = Box::from_raw(self.store_pop_front(KEY_FUZZER_ID_STR) as *mut _);
+            let _: Box<u8> = Box::from_raw(self.store_pop_front(KEY_EXEC_ONLY_MODE_STR) as *mut _);
 
             let _ = self.store_pop_front(KEY_AVG_DENOMINATOR_STR) as *mut c_void;
             let _ = self.store_pop_front(KEY_CUR_EXEC_NUM_STR) as *mut c_void;
