@@ -1,0 +1,16 @@
+[package]
+name = "cflib_rs"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+build = "build.rs"
+
+[lib]
+name = "cflib_rs"
+
+[dependencies]
+log = "0.*"
+simple_parse = "*"
+
+[build-dependencies]
+rustc_version = "*"

@@ -1,7 +1,9 @@
 [workspace]
 members = [
     "cflib",
+    "cflib_rs",
     "core",
+    "plugins/test_plugin",
     "plugins/random_select",
     "plugins/basic_mutate",
     "plugins/basic_run",

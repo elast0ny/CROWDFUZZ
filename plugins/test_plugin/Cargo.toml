@@ -1,0 +1,13 @@
+[package]
+name = "test_plugin"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[lib]
+path = "src/test_plugin.rs"
+name = "test_plugin"
+crate-type = ["cdylib"] # Compile to native lib
+
+[dependencies]
+cflib_rs = {path="../../cflib_rs"}
