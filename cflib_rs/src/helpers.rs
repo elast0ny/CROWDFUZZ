@@ -20,14 +20,14 @@ pub fn release(lock: &mut AtomicU8) {
 }
 
 #[derive(Debug)]
-pub(crate) struct GenericBuf<'a> {
-    capacity: &'a mut u64,
-    len: &'a mut u64,
+pub(crate) struct GenericBuf {
+    capacity: &'static mut u64,
+    len: &'static mut u64,
     /// Slice of 'capacity' bytes
-    buf: &'a mut [u8],
+    buf: &'static mut [u8],
 }
 
-impl<'a> GenericBuf<'a> {
+impl GenericBuf {
     pub fn capacity(&self) -> u64 {
         *self.capacity
     }
@@ -48,12 +48,12 @@ impl<'a> GenericBuf<'a> {
     }
 
     /// Returns the current contents of the buf
-    pub fn get(&'a self) -> &'a [u8] {
+    pub fn get(&self) -> &[u8] {
         &self.buf[..*self.len as usize]
     }
 }
 
-impl<'a> SpRead<'a> for GenericBuf<'a> {
+impl<'a> SpRead<'a> for GenericBuf {
     fn inner_from_bytes(
         input: &'a [u8],
         _is_input_le: bool,
@@ -89,7 +89,7 @@ impl<'a> SpRead<'a> for GenericBuf<'a> {
     }
 }
 
-impl<'a> SpRead<'a> for StatNum<'a> {
+impl<'a> SpRead<'a> for StatNum {
     fn inner_from_bytes(
         input: &'a [u8],
         _is_input_le: bool,
@@ -115,7 +115,7 @@ impl<'a> SpRead<'a> for StatNum<'a> {
     }
 }
 
-impl<'a> SpRead<'a> for StatStr<'a> {
+impl<'a> SpRead<'a> for StatStr {
     fn inner_from_bytes(
         input: &'a [u8],
         _is_input_le: bool,
@@ -142,7 +142,7 @@ impl<'a> SpRead<'a> for StatStr<'a> {
     }
 }
 
-impl<'a> SpRead<'a> for StatBytes<'a> {
+impl<'a> SpRead<'a> for StatBytes {
     fn inner_from_bytes(
         input: &'a [u8],
         _is_input_le: bool,

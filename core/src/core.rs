@@ -103,7 +103,7 @@ impl<'a> Core<'a> {
         /*
         core.init_public_store();
         */
-        return Ok(core);
+        Ok(core)
     }
 
     

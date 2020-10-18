@@ -26,7 +26,7 @@ pub type PluginFuzzCb = fn(ctx: &dyn PluginInterface) -> PluginStatus;
 pub type PluginUnLoadCb = fn(ctx: &dyn PluginInterface) -> PluginStatus;
 
 #[no_mangle]
-pub static RUSTC_VERSION: &'static str = concat!(env!("RUSTC_VERSION"), "\0"); // To set this, copy cflib/res/build.rs into your crate's root
+pub static RUSTC_VERSION: &str = concat!(env!("RUSTC_VERSION"), "\0"); // To set this, copy cflib/res/build.rs into your crate's root
 
 pub const RUSTC_SYM: &[u8] = b"RUSTC_VERSION\0";
 pub const NAME_SYM: &[u8] = b"__PluginName\0";

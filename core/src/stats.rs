@@ -22,13 +22,13 @@ pub struct CoreStats<'a> {
     num_stats_idx: usize,
     // The number of stats the current plugin has
     cur_num_stats: u32,
-    start_time: cflib::StatNum<'a>,
-    cwd: cflib::StatStr<'a>,
-    total_exec_time: cflib::StatNum<'a>,
-    core_exec_time: cflib::StatNum<'a>,
-    num_execs: cflib::StatNum<'a>,
-    cmd_line: cflib::StatStr<'a>,
-    target_hash: cflib::StatStr<'a>,
+    start_time: cflib::StatNum,
+    cwd: cflib::StatStr,
+    total_exec_time: cflib::StatNum,
+    core_exec_time: cflib::StatNum,
+    num_execs: cflib::StatNum,
+    cmd_line: cflib::StatStr,
+    target_hash: cflib::StatStr,
 }
 
 impl<'a> CoreStats<'a> {
@@ -115,7 +115,7 @@ impl<'a> CoreStats<'a> {
         Ok(())
     }
 
-    pub fn new_stat(&mut self, stat: NewStat) -> Result<StatVal<'a>> {
+    pub fn new_stat(&mut self, stat: NewStat) -> Result<StatVal> {
         let buf = self.buf.as_mut_ptr();
         let mut tmp: Vec<u8> = Vec::with_capacity(stat.tag.len());
         let num_plugins = unsafe { &mut *(buf.add(self.num_plugin_idx) as *mut u16) };
@@ -140,7 +140,7 @@ impl<'a> CoreStats<'a> {
             copy_nonoverlapping(tmp.as_ptr(), buf.add(self.end_idx), tag_len);
             self.end_idx += tag_len;
         }
-
+        debug!("stats[{}..{}] = {}", self.end_idx - tag_len, self.end_idx, stat.tag);
         let stat_val_idx = self.end_idx;
         let mut max_sz;
         //Stat.val
@@ -151,14 +151,51 @@ impl<'a> CoreStats<'a> {
                 }
                 unsafe {
                     // id
-                    *(buf.add(self.end_idx) as *mut u8) = 1;
+                    *(buf.add(self.end_idx) as *mut u8) = 0;
                     self.end_idx += size_of::<u8>();
                     //StatNum::num
                     *(buf.add(self.end_idx) as *mut u64) = val;
                     self.end_idx += size_of::<u64>();
                 }
+                debug!("stats[{}..{}] = 0x{:X}", self.end_idx - (size_of::<u8>() + size_of::<u64>()), self.end_idx, val);
             }
             NewStatVal::Bytes { max_size, init_val } => {
+                max_sz = max_size;
+                if init_val.len() > max_sz {
+                    max_sz = init_val.len();
+                }
+                if self.buf.len()
+                    < self.end_idx
+                        + size_of::<u8>()
+                        + size_of::<AtomicU8>()
+                        + size_of::<u64>()
+                        + size_of::<u64>()
+                        + max_size
+                {
+                    return Err(From::from("Stats memory is too small".to_string()));
+                }
+                unsafe {
+                    // id
+                    *(buf.add(self.end_idx) as *mut u8) = 1;
+                    self.end_idx += size_of::<u8>();
+                    // lock
+                    *(buf.add(self.end_idx) as *mut u8) = 0;
+                    self.end_idx += size_of::<u8>();
+
+                    // capacity
+                    *(buf.add(self.end_idx) as *mut u64) = max_size as u64;
+                    self.end_idx += size_of::<u64>();
+                    // len
+                    *(buf.add(self.end_idx) as *mut u64) = init_val.len() as u64;
+                    self.end_idx += size_of::<u64>();
+                    // buf
+                    copy_nonoverlapping(init_val.as_ptr(), buf.add(self.end_idx), init_val.len());
+                    self.end_idx += init_val.len();
+                }
+
+                debug!("stats[{}..{}] = {:X?}", stat_val_idx - self.end_idx, self.end_idx, init_val);
+            }
+            NewStatVal::Str { max_size, init_val } => {
                 max_sz = max_size;
                 if init_val.len() > max_sz {
                     max_sz = init_val.len();
@@ -180,40 +217,6 @@ impl<'a> CoreStats<'a> {
                     // lock
                     *(buf.add(self.end_idx) as *mut u8) = 0;
                     self.end_idx += size_of::<u8>();
-
-                    // capacity
-                    *(buf.add(self.end_idx) as *mut u64) = max_size as u64;
-                    self.end_idx += size_of::<u64>();
-                    // len
-                    *(buf.add(self.end_idx) as *mut u64) = init_val.len() as u64;
-                    self.end_idx += size_of::<u64>();
-                    // buf
-                    copy_nonoverlapping(init_val.as_ptr(), buf.add(self.end_idx), init_val.len());
-                    self.end_idx += init_val.len();
-                }
-            }
-            NewStatVal::Str { max_size, init_val } => {
-                max_sz = max_size;
-                if init_val.len() > max_sz {
-                    max_sz = init_val.len();
-                }
-                if self.buf.len()
-                    < self.end_idx
-                        + size_of::<u8>()
-                        + size_of::<AtomicU8>()
-                        + size_of::<u64>()
-                        + size_of::<u64>()
-                        + max_size
-                {
-                    return Err(From::from("Stats memory is too small".to_string()));
-                }
-                unsafe {
-                    // id
-                    *(buf.add(self.end_idx) as *mut u8) = 3;
-                    self.end_idx += size_of::<u8>();
-                    // lock
-                    *(buf.add(self.end_idx) as *mut u8) = 0;
-                    self.end_idx += size_of::<u8>();
                     // capacity
                     *(buf.add(self.end_idx) as *mut u64) = max_size as u64;
                     self.end_idx += size_of::<u64>();
@@ -224,10 +227,12 @@ impl<'a> CoreStats<'a> {
                     copy_nonoverlapping(init_val.as_ptr(), buf.add(self.end_idx), init_val.len());
                     self.end_idx += init_val.len();
                 }
+                debug!("stats[{}..{}] = {}", stat_val_idx - self.end_idx, self.end_idx, init_val);
             }
         }
 
-        let stat_val = StatVal::from_bytes(&self.buf[stat_val_idx..])?.1;
+        debug!("stats[{}..{}] = {:X?}", stat_val_idx, self.end_idx, &self.buf[stat_val_idx..self.end_idx]);
+        let stat_val = StatVal::from_bytes(&self.buf[stat_val_idx..self.end_idx])?.1;
 
         *num_stats += 1;
         Ok(stat_val)
@@ -256,7 +261,9 @@ impl<'a> Core<'a> {
             .as_secs())
         }) {
             Ok(StatVal::Num(v)) => v,
-            _ => return Err(From::from(format!("Failed to create core stat {}", tag)))
+            Err(e) => return Err(From::from(format!("Failed to create core stat {} : {}", tag, e))),
+            _ => panic!("Rested Stat::num but got different"),
+            
         };
 
         /*

@@ -10,5 +10,5 @@ name = "test_plugin"
 crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
-cflib_rs = {path="../../cflib_rs"}
+cflib = {package = "cflib_rs", path="../../cflib_rs"}
 log = "0.*"

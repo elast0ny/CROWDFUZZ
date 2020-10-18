@@ -26,44 +26,44 @@ pub enum CoreState {
 }
 
 #[derive(SpRead, Debug)]
-pub struct StatHeader<'a> {
+pub struct StatHeader {
     pid: u32,
     state: CoreState,
     num_plugins: u16,
     #[sp(count = "num_plugins")]
-    plugins: Vec<PluginStats<'a>>,
+    plugins: Vec<PluginStats>,
 }
 
 #[derive(SpRead, Debug)]
-pub struct PluginStats<'a> {
+pub struct PluginStats {
     name: String,
     num_stats: u32,
     #[sp(count = "num_stats")]
-    stats: Vec<Stat<'a>>,
+    stats: Vec<Stat>,
 }
 
 #[derive(SpRead, Debug)]
-pub struct Stat<'a> {
+pub struct Stat {
     tag: String,
-    val: StatVal<'a>,
+    val: StatVal,
 }
 
 #[derive(SpRead, Debug)]
 #[sp(id_type = "u8")]
-pub enum StatVal<'a> {
+pub enum StatVal {
     #[sp(id = "0")]
-    Num(StatNum<'a>),
+    Num(StatNum),
     #[sp(id = "1")]
-    Bytes(StatBytes<'a>),
+    Bytes(StatBytes),
     #[sp(id = "2")]
-    Str(StatStr<'a>),
+    Str(StatStr),
 }
 
 #[derive(Debug)]
-pub struct StatNum<'a> {
-    pub(crate) val: &'a mut u64,
+pub struct StatNum {
+    pub(crate) val: &'static mut u64,
 }
-impl<'a> StatNum<'a> {
+impl StatNum {
     pub fn set(&mut self, new_val: u64) {
         *self.val = new_val
     }
@@ -73,17 +73,17 @@ impl<'a> StatNum<'a> {
 }
 
 #[derive(Debug)]
-pub struct StatStr<'a> {
-    pub(crate) lock: &'a mut AtomicU8,
-    pub(crate) val: GenericBuf<'a>,
+pub struct StatStr {
+    pub(crate) lock: &'static mut AtomicU8,
+    pub(crate) val: GenericBuf,
 }
-impl<'a> StatStr<'a> {
+impl StatStr {
     pub fn set(&mut self, new_val: &str) {
         acquire(self.lock);
         self.val.set(new_val.as_bytes());
         release(self.lock);
     }
-    pub fn get(&'a mut self) -> LockGuard<'a, &'a str> {
+    pub fn get<'a>(&'a mut self) -> LockGuard<&'a str> {
         acquire(self.lock);
         
         // Convert current buf to a utf8 str
@@ -97,18 +97,18 @@ impl<'a> StatStr<'a> {
 }
 
 #[derive(Debug)]
-pub struct StatBytes<'a> {
-    pub(crate) lock: &'a mut AtomicU8,
-    pub(crate) val: GenericBuf<'a>,
+pub struct StatBytes {
+    pub(crate) lock: &'static mut AtomicU8,
+    pub(crate) val: GenericBuf,
 }
 
-impl<'a> StatBytes<'a> {
+impl StatBytes {
     pub fn set(&mut self, new_val: &[u8]) {
         acquire(self.lock);
         self.val.set(new_val);
         release(self.lock);
     }
-    pub fn get(&'a mut self) -> LockGuard<'a, &'a [u8]> {
+    pub fn get<'a>(&'a mut self) -> LockGuard<&'a [u8]> {
         acquire(self.lock);
         LockGuard::new(self.lock, self.val.get())
     }
