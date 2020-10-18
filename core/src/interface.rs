@@ -1,123 +1,24 @@
-use std::ffi::c_void;
 
-use crate::core::Core;
-use ::log::*;
+use std::collections::{HashMap, VecDeque};
 
-pub extern "C" fn store_push_back_cb(
-    ctx: *const cflib::CoreCtx,
-    key: *const i8,
-    key_len: usize,
-    data: *mut c_void,
-) {
-    let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
-    let store_key: String = String::from(unsafe {
-        std::str::from_utf8_unchecked(std::slice::from_raw_parts(key as _, key_len))
-    });
+use cflib::*;
+use crate::*;
 
-    core.store_push_back(store_key, data);
-}
-pub extern "C" fn store_push_front_cb(
-    ctx: *const cflib::CoreCtx,
-    key: *const i8,
-    key_len: usize,
-    data: *mut c_void,
-) {
-    let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
-    let store_key: String = String::from(unsafe {
-        std::str::from_utf8_unchecked(std::slice::from_raw_parts(key as _, key_len))
-    });
 
-    core.store_push_front(store_key, data);
-}
-
-pub extern "C" fn store_pop_back_cb(
-    ctx: *const cflib::CoreCtx,
-    key: *const i8,
-    key_len: usize,
-) -> *mut c_void {
-    let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
-    let store_key: &str =
-        unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(key as _, key_len)) };
-
-    core.store_pop_back(store_key)
-}
-pub extern "C" fn store_pop_front_cb(
-    ctx: *const cflib::CoreCtx,
-    key: *const i8,
-    key_len: usize,
-) -> *mut c_void {
-    let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
-    let store_key: &str =
-        unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(key as _, key_len)) };
-
-    core.store_pop_front(store_key)
-}
-pub extern "C" fn store_get_mut_cb(
-    ctx: *const cflib::CoreCtx,
-    key: *const i8,
-    key_len: usize,
-    index: usize,
-) -> *mut c_void {
-    let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
-    let store_key: &str =
-        unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(key as _, key_len)) };
-
-    core.store_get_mut(store_key, index)
-}
-pub extern "C" fn store_len_cb(
-    ctx: *const cflib::CoreCtx,
-    key: *const i8,
-    key_len: usize,
-) -> usize {
-    let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
-    let store_key: &str =
-        unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(key as _, key_len)) };
-
-    core.store_len(store_key)
-}
-
-pub extern "C" fn log_cb(
-    ctx: *const cflib::CoreCtx,
-    log_level: cflib::LogLevel,
-    msg: *const i8,
-    msg_len: usize,
-) {
-    let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
-    let log_msg: &str =
-        unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(msg as _, msg_len)) };
-    let plugin_name: &str = (unsafe { core.plugin_chain.get_unchecked(core.cur_plugin_id) }).name();
-
-    match log_level as _ {
-        cflib::LOGLEVEL_INFO => info!("[{}] {}", plugin_name, log_msg),
-        cflib::LOGLEVEL_WARN => warn!("[{}] {}", plugin_name, log_msg),
-        cflib::LOGLEVEL_ERROR => error!("[{}] {}", plugin_name, log_msg),
-        cflib::LOGLEVEL_DEBUG => debug!("[{}] {}", plugin_name, log_msg),
-        cflib::LOGLEVEL_TRACE => trace!("[{}] {}", plugin_name, log_msg),
-        _ => error!(
-            "[{}] [INVALID LOG LEVEL : {}] {}",
-            plugin_name, log_level, log_msg
-        ),
+impl<'a> PluginInterface for Core<'a> {
+    fn set_ctx(&mut self, plugin_ctx: *mut u8) {
+        
     }
-}
+    fn get_ctx(&self) -> *mut u8 {
+        std::ptr::null_mut()
+    }
+    fn get_store(&mut self) -> &mut HashMap<String, VecDeque<*mut u8>> {
+        &mut self.store
+    }
+    fn log(&self, level: ::log::Level, msg: &str) {
 
-pub extern "C" fn add_stat_cb(
-    ctx: *const cflib::CoreCtx,
-    tag_ptr: *const i8,
-    tag_len: u16,
-    stat_type: cflib::StatType,
-    max_len: u16,
-) -> *mut c_void {
-    let core: &mut Core = unsafe { &mut *(ctx as *mut Core) };
-    let tag_copy = unsafe {
-        std::str::from_utf8_unchecked(std::slice::from_raw_parts(tag_ptr as _, tag_len as usize))
-    };
-
-    let new_stat = cflib::NewStat::from_stat_type(stat_type, max_len);
-    match core.stats.add(tag_copy, new_stat) {
-        Ok(p) => p,
-        Err(e) => {
-            warn!("Error adding stat : {:?}", e);
-            std::ptr::null_mut()
-        }
+    }
+    fn add_stat(&mut self, stat: NewStat) -> Result<Stat> {
+        return Err(From::from("Not implemented yet".to_string()));
     }
 }

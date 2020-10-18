@@ -1,4 +1,3 @@
-use ::cflib_rs as cflib;
 use cflib::*;
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
@@ -8,7 +7,8 @@ cflib::register!(fuzz, fuzz);
 cflib::register!(unload, destroy);
 
 // Initialize our plugin
-fn init(_ctx: &dyn PluginInterface) -> PluginStatus {
+fn init(ctx: &dyn PluginInterface) -> PluginStatus {
+    ctx.log(::log::Level::Info, "test_plugin !");
     PluginStatus::Success
 }
 

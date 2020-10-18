@@ -1,20 +1,265 @@
 use std::ffi::c_void;
-use std::mem::size_of;
+use std::mem::{size_of, MaybeUninit};
 use std::path::Path;
-use std::ptr::null_mut;
+use std::ptr::{copy_nonoverlapping, null_mut};
+use std::sync::atomic::AtomicU8;
 
+use ::cflib::*;
 use ::log::*;
 use ::shared_memory::Shmem;
+use ::simple_parse::{SpRead, SpWrite};
 
 use crate::core::Core;
 use crate::plugin::*;
 use crate::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-//const UPTIME_EPOCH: &str = concat!(cflib::TAG_PREFIX_TOTAL_STR, "uptime", cflib::NUM_POSTFIX_EPOCHS_STR);
+pub struct CoreStats<'a> {
+    buf: &'a mut [u8],
+    end_idx: usize,
+    num_plugin_idx: usize,
+    // Points to the current plugin's num_stats field
+    num_stats_idx: usize,
+    // The number of stats the current plugin has
+    cur_num_stats: u32,
+    start_time: cflib::StatNum<'a>,
+    cwd: cflib::StatStr<'a>,
+    total_exec_time: cflib::StatNum<'a>,
+    core_exec_time: cflib::StatNum<'a>,
+    num_execs: cflib::StatNum<'a>,
+    cmd_line: cflib::StatStr<'a>,
+    target_hash: cflib::StatStr<'a>,
+}
 
-impl Core {
+impl<'a> CoreStats<'a> {
+    pub fn new(buf: &'a mut [u8]) -> Result<Self>
+    where
+        Self: 'a,
+    {
+        let mut res = unsafe {
+            Self {
+                buf,
+                end_idx: 0,
+                num_plugin_idx: 0,
+                num_stats_idx: 0,
+                cur_num_stats: 0,
+                start_time: MaybeUninit::zeroed().assume_init(),
+                cwd: MaybeUninit::zeroed().assume_init(),
+                total_exec_time: MaybeUninit::zeroed().assume_init(),
+                core_exec_time: MaybeUninit::zeroed().assume_init(),
+                num_execs: MaybeUninit::zeroed().assume_init(),
+                cmd_line: MaybeUninit::zeroed().assume_init(),
+                target_hash: MaybeUninit::zeroed().assume_init(),
+            }
+        };
+
+        let cur = res.buf.as_mut_ptr();
+
+        // Init the cflib::StatHeader
+        unsafe {
+            //StatHeader.pid
+            *(cur.add(res.end_idx) as *mut u32) = std::process::id();
+            res.end_idx += size_of::<u32>();
+
+            //StatHeader.state
+            *(cur.add(res.end_idx) as *mut cflib::CoreState) = cflib::CoreState::Initializing;
+            res.end_idx += size_of::<cflib::CoreState>();
+            //StatHeader.num_plugins
+            res.num_plugin_idx = res.end_idx;
+            *(cur.add(res.num_plugin_idx) as *mut u16) = 0;
+            res.end_idx += size_of::<u16>();
+        }
+
+        Ok(res)
+    }
+
+    pub fn new_plugin(&mut self, name: &str) -> Result<()> {
+        let buf = self.buf.as_mut_ptr();
+        let mut tmp: Vec<u8> = Vec::with_capacity(name.len());
+
+        let num_plugins = unsafe { &mut *(buf.add(self.num_plugin_idx) as *mut u16) };
+
+        // Update the number of stats for the previous plugin
+        if *num_plugins != 0 {
+            let num_stats = unsafe { &mut *(buf.add(self.num_stats_idx) as *mut u32) };
+            *num_stats = self.cur_num_stats;
+        }
+
+        *num_plugins += 1;
+
+        let name_len = match name.to_bytes(&mut tmp) {
+            Ok(l) => l,
+            Err(_) => unreachable!(),
+        };
+
+        if self.buf.len() < self.end_idx + name_len {
+            return Err(From::from("Stats memory is too small".to_string()));
+        }
+
+        //PluginStats.name
+        unsafe {
+            copy_nonoverlapping(tmp.as_ptr(), buf.add(self.end_idx), name_len);
+            self.end_idx += name_len;
+        }
+
+        if self.buf.len() < self.end_idx + size_of::<u32>() {
+            return Err(From::from("Stats memory is too small".to_string()));
+        }
+        //PluginStats.num_stats
+        self.num_stats_idx = self.end_idx;
+        unsafe {
+            *(buf.add(self.num_stats_idx) as *mut u32) = 0;
+        }
+        self.end_idx += size_of::<u32>();
+
+        Ok(())
+    }
+
+    pub fn new_stat(&mut self, stat: NewStat) -> Result<StatVal<'a>> {
+        let buf = self.buf.as_mut_ptr();
+        let mut tmp: Vec<u8> = Vec::with_capacity(stat.tag.len());
+        let num_plugins = unsafe { &mut *(buf.add(self.num_plugin_idx) as *mut u16) };
+        let num_stats = unsafe { &mut *(buf.add(self.num_stats_idx) as *mut u32) };
+
+        // Update the number of stats for the previous plugin
+        if *num_plugins == 0 {
+            return Err(From::from("new_stat called before new_plugin".to_string()));
+        }
+
+        let tag_len = match stat.tag.to_bytes(&mut tmp) {
+            Ok(l) => l,
+            Err(_) => unreachable!(),
+        };
+
+        if self.buf.len() < self.end_idx + tag_len {
+            return Err(From::from("Stats memory is too small".to_string()));
+        }
+
+        //Stat.tag
+        unsafe {
+            copy_nonoverlapping(tmp.as_ptr(), buf.add(self.end_idx), tag_len);
+            self.end_idx += tag_len;
+        }
+
+        let stat_val_idx = self.end_idx;
+        let mut max_sz;
+        //Stat.val
+        match stat.val {
+            NewStatVal::Num(val) => {
+                if self.buf.len() < self.end_idx + size_of::<u8>() + size_of::<u64>() {
+                    return Err(From::from("Stats memory is too small".to_string()));
+                }
+                unsafe {
+                    // id
+                    *(buf.add(self.end_idx) as *mut u8) = 1;
+                    self.end_idx += size_of::<u8>();
+                    //StatNum::num
+                    *(buf.add(self.end_idx) as *mut u64) = val;
+                    self.end_idx += size_of::<u64>();
+                }
+            }
+            NewStatVal::Bytes { max_size, init_val } => {
+                max_sz = max_size;
+                if init_val.len() > max_sz {
+                    max_sz = init_val.len();
+                }
+                if self.buf.len()
+                    < self.end_idx
+                        + size_of::<u8>()
+                        + size_of::<AtomicU8>()
+                        + size_of::<u64>()
+                        + size_of::<u64>()
+                        + max_size
+                {
+                    return Err(From::from("Stats memory is too small".to_string()));
+                }
+                unsafe {
+                    // id
+                    *(buf.add(self.end_idx) as *mut u8) = 2;
+                    self.end_idx += size_of::<u8>();
+                    // lock
+                    *(buf.add(self.end_idx) as *mut u8) = 0;
+                    self.end_idx += size_of::<u8>();
+
+                    // capacity
+                    *(buf.add(self.end_idx) as *mut u64) = max_size as u64;
+                    self.end_idx += size_of::<u64>();
+                    // len
+                    *(buf.add(self.end_idx) as *mut u64) = init_val.len() as u64;
+                    self.end_idx += size_of::<u64>();
+                    // buf
+                    copy_nonoverlapping(init_val.as_ptr(), buf.add(self.end_idx), init_val.len());
+                    self.end_idx += init_val.len();
+                }
+            }
+            NewStatVal::Str { max_size, init_val } => {
+                max_sz = max_size;
+                if init_val.len() > max_sz {
+                    max_sz = init_val.len();
+                }
+                if self.buf.len()
+                    < self.end_idx
+                        + size_of::<u8>()
+                        + size_of::<AtomicU8>()
+                        + size_of::<u64>()
+                        + size_of::<u64>()
+                        + max_size
+                {
+                    return Err(From::from("Stats memory is too small".to_string()));
+                }
+                unsafe {
+                    // id
+                    *(buf.add(self.end_idx) as *mut u8) = 3;
+                    self.end_idx += size_of::<u8>();
+                    // lock
+                    *(buf.add(self.end_idx) as *mut u8) = 0;
+                    self.end_idx += size_of::<u8>();
+                    // capacity
+                    *(buf.add(self.end_idx) as *mut u64) = max_size as u64;
+                    self.end_idx += size_of::<u64>();
+                    // len
+                    *(buf.add(self.end_idx) as *mut u64) = init_val.len() as u64;
+                    self.end_idx += size_of::<u64>();
+                    // str
+                    copy_nonoverlapping(init_val.as_ptr(), buf.add(self.end_idx), init_val.len());
+                    self.end_idx += init_val.len();
+                }
+            }
+        }
+
+        let stat_val = StatVal::from_bytes(&self.buf[stat_val_idx..])?.1;
+
+        *num_stats += 1;
+        Ok(stat_val)
+    }
+}
+
+impl<'a> Core<'a> {
     pub fn init_stats(&mut self) -> Result<()> {
+        use std::fmt::Write;
+
+        // Add a plugin for the core stats
+        self.stats.new_plugin(&self.config.prefix)?;
+
+        let mut tag = format!(
+            "{}uptime{}",
+            cflib::TAG_PREFIX_TOTAL,
+            cflib::TAG_POSTFIX_EPOCHS
+        );
+
+
+        self.stats.start_time = match self.stats.new_stat(NewStat {
+            tag: &tag,
+            val: NewStatVal::Num(SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs())
+        }) {
+            Ok(StatVal::Num(v)) => v,
+            _ => return Err(From::from(format!("Failed to create core stat {}", tag)))
+        };
+
+        /*
         use std::fmt::Write;
         self.stats.init(&self.config.prefix)?;
         let mut tag = format!(
@@ -86,11 +331,11 @@ impl Core {
                     .to_le_bytes(),
             );
         }
-
+        */
         Ok(())
     }
 }
-
+/*
 pub struct CoreStats {
     prefix: String,
     pub stats_memory: Shmem,
@@ -249,3 +494,4 @@ impl CoreStats {
         Ok(data_ptr)
     }
 }
+*/

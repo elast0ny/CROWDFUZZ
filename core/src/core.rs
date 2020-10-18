@@ -19,13 +19,14 @@ use crate::interface::*;
 use crate::plugin::*;
 use crate::stats::*;
 
-pub struct Core {
+pub struct Core<'a> {
     /// Information pulled from the input config file
     pub config: Config,
     /// Set to true when an exit event happens (ctrl-c)
     pub exiting: Arc<AtomicBool>,
+    pub shmem: shared_memory::Shmem,
     /// Statistic about the fuzzer that live in the shared memory
-    pub stats: CoreStats,
+    pub stats: CoreStats<'a>,
 
     /// current plugin being executed
     pub cur_plugin_id: usize,
@@ -35,15 +36,12 @@ pub struct Core {
     pub fuzz_loop_start: usize,
 
     /// Public plugin data store
-    pub store: HashMap<String, VecDeque<*mut c_void>>,
+    pub store: HashMap<String, VecDeque<*mut u8>>,
     pub avg_denominator: u64,
-
-    ///Holds context information available to plugins
-    pub core_if: cflib::CoreInterface,
 }
 
-impl Core {
-    pub fn init(prefix: &str, config_path: &str) -> Result<Pin<Box<Core>>> {
+impl<'a> Core<'a> {
+    pub fn init(prefix: &str, config_path: &str) -> Result<Self> {
         info!("Loading project config");
         let config = Config::new(prefix, config_path)?;
 
@@ -74,7 +72,7 @@ impl Core {
             debug!("Loading pre_fuzz_loop plugins");
             for f_path in &config.pre_fuzz_loop {
                 let cur_plugin: Plugin = Plugin::new(&f_path)?;
-                debug!("\t{}", cur_plugin.name());
+                //debug!("\t{}", cur_plugin.name());
                 plugin_chain.push(cur_plugin);
             }
         }
@@ -82,49 +80,38 @@ impl Core {
         debug!("Loading fuzz_loop plugins");
         for f_path in &config.fuzz_loop {
             let cur_plugin: Plugin = Plugin::new(&f_path)?;
-            info!("\t- {}", cur_plugin.name());
+            //info!("\t- {}", cur_plugin.name());
             plugin_chain.push(cur_plugin);
         }
         info!("Loaded {} plugin(s)", plugin_chain.len());
 
-        let mut core = Box::pin(Core {
+        let buf: &mut [u8] = unsafe{std::slice::from_raw_parts_mut(shmem.as_ptr(), shmem.len())};
+
+        let mut core = Core {
             config: config,
-            stats: CoreStats::new(shmem),
-
+            stats: CoreStats::new(buf)?,
             exiting: Arc::new(AtomicBool::new(false)),
-
             cur_plugin_id: plugin_chain.len(),
             plugin_chain: plugin_chain,
             store: HashMap::new(),
             fuzz_loop_start: fuzz_loop_start_idx,
             avg_denominator: 0,
-            core_if: cflib::CoreInterface {
-                priv_data: null_mut(),
-                store_push_back: Some(store_push_back_cb),
-                store_push_front: Some(store_push_front_cb),
-                store_pop_back: Some(store_pop_back_cb),
-                store_pop_front: Some(store_pop_front_cb),
-                store_get_mut: Some(store_get_mut_cb),
-                store_len: Some(store_len_cb),
-                add_stat: Some(add_stat_cb),
-                log: Some(log_cb),
-                ctx: null_mut(),
-            },
-        });
-
-        //Link the opaque core ptr for the plugin interface callbacks
-        core.core_if.ctx = (&(*core)) as *const Core as *const _;
+            shmem,
+        };
 
         core.init_stats()?;
+        /*
         core.init_public_store();
-
+        */
         return Ok(core);
     }
 
+    
     pub fn exiting(&self) -> bool {
         self.exiting.load(Ordering::Relaxed)
     }
 
+    /*
     pub fn init_plugins(&mut self) -> Result<()> {
         info!("Initializing plugins");
 
@@ -177,7 +164,8 @@ impl Core {
         self.cur_plugin_id = self.plugin_chain.len();
         Ok(())
     }
-
+    */
+    /*
     pub fn destroy_plugins(&mut self) {
         debug!("Destroying plugins");
         for (plugin_id, plugin) in self.plugin_chain.iter().rev().enumerate() {
@@ -307,11 +295,12 @@ impl Core {
             );
         }
     }
+    */
 }
 
-impl Drop for Core {
+impl<'a> Drop for Core<'a> {
     fn drop(&mut self) -> () {
-        self.clear_public_store();
+        //self.clear_public_store();
 
         for (key, vec) in self.store.iter() {
             if vec.len() != 0 {

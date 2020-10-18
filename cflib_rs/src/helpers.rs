@@ -1,86 +1,201 @@
-use simple_parse::{SpRead, SpWrite};
+use simple_parse::*;
 use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+use crate::stats::*;
+
 /// Crappy busy loop over a u8
-pub fn acquire(lock: &u8) {
-    #[allow(clippy::cast_ref_to_mut)]
-    let atomic_lock: &mut AtomicU8 = unsafe{&mut *(lock as *const _ as *mut _)};
+pub fn acquire(lock: &mut AtomicU8) {
     loop {
         // If currently 0, set to 1
-        match atomic_lock.compare_exchange(0, 1, Ordering::Acquire, Ordering::Acquire) {
+        match lock.compare_exchange(0, 1, Ordering::Acquire, Ordering::Acquire) {
             Ok(_) => break,
             _ => continue,
         };
     }
 }
 /// Sets the lock to its unlocked state
-pub fn release(lock: &u8) {
-    #[allow(clippy::cast_ref_to_mut)]
-    let atomic_lock: &mut AtomicU8 = unsafe{&mut *(lock as *const _ as *mut _)};
-    atomic_lock.store(0, Ordering::Release);
+pub fn release(lock: &mut AtomicU8) {
+    lock.store(0, Ordering::Release);
 }
 
-#[derive(SpRead, SpWrite, Debug)]
-pub struct GenericBuf<'a> {
-    capacity: &'a u64,
-    len: &'a u64,
-    start: &'a u8,
+#[derive(Debug)]
+pub(crate) struct GenericBuf<'a> {
+    capacity: &'a mut u64,
+    len: &'a mut u64,
+    /// Slice of 'capacity' bytes
+    buf: &'a mut [u8],
 }
-impl GenericBuf<'_> {
+
+impl<'a> GenericBuf<'a> {
+    pub fn capacity(&self) -> u64 {
+        *self.capacity
+    }
+
+    /// Updates the contents of the buf
+    /// If new_val is too big, it gets truncated to self.capacity()
     pub fn set(&mut self, new_val: &[u8]) {
-        #[allow(clippy::cast_ref_to_mut)]
-        let buf_len: &mut u64 = unsafe{&mut *(self.len as *const _ as *mut _)};
-        let mut write_len = new_val.len();
-        if write_len > *self.capacity as usize {
-            write_len = *self.capacity as usize;
+        let mut new_len = self.capacity();
+        if (new_val.len() as u64) < self.capacity() {
+            new_len = new_val.len() as u64;
         }
-        *buf_len = 0;
-        // copy the bytes into
+
+        *self.len = 0;
         unsafe {
-            copy_nonoverlapping(new_val.as_ptr(), self.start as *const _ as *mut u8, write_len);
+            copy_nonoverlapping(new_val.as_ptr(), self.buf.as_mut_ptr(), new_len as usize);
         }
-        *buf_len = write_len as u64;
+        *self.len = new_len;
     }
 
-    pub fn get(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(self.start as *const u8, *self.len as _)
-        }
+    /// Returns the current contents of the buf
+    pub fn get(&'a self) -> &'a [u8] {
+        &self.buf[..*self.len as usize]
     }
 }
 
-pub struct LockGuard<'a, T: Sized> {
+impl<'a> SpRead<'a> for GenericBuf<'a> {
+    fn inner_from_bytes(
+        input: &'a [u8],
+        _is_input_le: bool,
+        _count: Option<usize>,
+    ) -> Result<(&'a [u8], Self), SpError>
+    where
+        Self: 'a + Sized,
+    {
+        if input.len() < std::mem::size_of::<u64>() + std::mem::size_of::<u64>() {
+            return Err(SpError::NotEnoughBytes);
+        }
+        let (val, rest) = input.split_at(std::mem::size_of::<u64>());
+        let capacity = unsafe { &mut *(val.as_ptr() as *const u64 as *mut u64) };
+        let (val, rest) = rest.split_at(std::mem::size_of::<u64>());
+        let len = unsafe { &mut *(val.as_ptr() as *const u64 as *mut u64) };
+
+        if *capacity > rest.len() as u64 || *len > *capacity {
+            return Err(SpError::NotEnoughBytes);
+        }
+
+        let (val, rest) = rest.split_at(*capacity as usize);
+        let buf = unsafe {
+            std::slice::from_raw_parts_mut(val.as_ptr() as *const u8 as *mut u8, *capacity as usize)
+        };
+        Ok((rest, Self { capacity, len, buf }))
+    }
+
+    fn from_bytes(input: &'a [u8]) -> Result<(&'a [u8], Self), SpError>
+    where
+        Self: 'a + Sized,
+    {
+        Self::inner_from_bytes(input, true, None)
+    }
+}
+
+impl<'a> SpRead<'a> for StatNum<'a> {
+    fn inner_from_bytes(
+        input: &'a [u8],
+        _is_input_le: bool,
+        _count: Option<usize>,
+    ) -> Result<(&'a [u8], Self), SpError>
+    where
+        Self: 'a + Sized,
+    {
+        if input.len() < std::mem::size_of::<u64>() {
+            return Err(SpError::NotEnoughBytes);
+        }
+        let (typ_bytes, rest) = input.split_at(std::mem::size_of::<u64>());
+        let val = unsafe { &mut *(typ_bytes.as_ptr() as *const u64 as *mut u64) };
+
+        Ok((rest, Self { val }))
+    }
+
+    fn from_bytes(input: &'a [u8]) -> Result<(&'a [u8], Self), SpError>
+    where
+        Self: 'a + Sized,
+    {
+        Self::inner_from_bytes(input, true, None)
+    }
+}
+
+impl<'a> SpRead<'a> for StatStr<'a> {
+    fn inner_from_bytes(
+        input: &'a [u8],
+        _is_input_le: bool,
+        _count: Option<usize>,
+    ) -> Result<(&'a [u8], Self), SpError>
+    where
+        Self: 'a + Sized,
+    {
+        if input.len() < std::mem::size_of::<AtomicU8>() {
+            return Err(SpError::NotEnoughBytes);
+        }
+        let (typ_bytes, rest) = input.split_at(std::mem::size_of::<AtomicU8>());
+        let lock = unsafe { &mut *(typ_bytes.as_ptr() as *const AtomicU8 as *mut AtomicU8) };
+        let r = GenericBuf::from_bytes(rest)?;
+
+        Ok((r.0, Self { lock, val: r.1 }))
+    }
+
+    fn from_bytes(input: &'a [u8]) -> Result<(&'a [u8], Self), SpError>
+    where
+        Self: 'a + Sized,
+    {
+        Self::inner_from_bytes(input, true, None)
+    }
+}
+
+impl<'a> SpRead<'a> for StatBytes<'a> {
+    fn inner_from_bytes(
+        input: &'a [u8],
+        _is_input_le: bool,
+        _count: Option<usize>,
+    ) -> Result<(&'a [u8], Self), SpError>
+    where
+        Self: 'a + Sized,
+    {
+        if input.len() < std::mem::size_of::<AtomicU8>() {
+            return Err(SpError::NotEnoughBytes);
+        }
+        let (typ_bytes, rest) = input.split_at(std::mem::size_of::<AtomicU8>());
+        let lock = unsafe { &mut *(typ_bytes.as_ptr() as *const AtomicU8 as *mut AtomicU8) };
+        let r = GenericBuf::from_bytes(rest)?;
+
+        Ok((r.0, Self { lock, val: r.1 }))
+    }
+
+    fn from_bytes(input: &'a [u8]) -> Result<(&'a [u8], Self), SpError>
+    where
+        Self: 'a + Sized,
+    {
+        Self::inner_from_bytes(input, true, None)
+    }
+}
+
+pub struct LockGuard<'a, T>
+where
+    T: 'a,
+{
+    lock: &'a mut AtomicU8,
     val: T,
-    lock: &'a u8,
 }
-impl<'a, T> LockGuard<'a, T> {
-    pub fn new(val: T, lock: &'a u8) -> Self {
-        Self {
-            val,
-            lock,
-        }
+
+use std::ops::Deref;
+impl<'t, T> LockGuard<'t, T> {
+    pub fn new(lock: &'t mut AtomicU8, val: T) -> Self
+    where
+        T: 't,
+    {
+        Self { lock, val }
     }
 }
-impl<'a, T> Drop for LockGuard<'a, T> {
+
+impl<'t, T> Drop for LockGuard<'t, T> {
     fn drop(&mut self) {
         release(self.lock);
     }
 }
 
-use std::ops::{Deref, DerefMut};
-impl<T> Deref for LockGuard<'_, T>
-where T: Sized {
+impl<'t, T> Deref for LockGuard<'t, T> {
     type Target = T;
-
-    fn deref(&self) -> &T {
+    fn deref(&self) -> &Self::Target {
         &self.val
-    }
-}
-impl<T> DerefMut for LockGuard<'_, T>
-where T: Sized
-{
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.val
     }
 }

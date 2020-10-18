@@ -6,17 +6,19 @@ pub use ::log::{debug, error, info, log, trace, warn};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+pub mod util;
+pub mod log;
 pub mod config;
 pub mod core;
-pub mod interface;
-pub mod log;
 pub mod plugin;
+pub mod interface;
 pub mod stats;
-pub mod store;
-pub mod util;
 
-use crate::core::Core;
+/*
+pub mod store;
 use crate::log::*;
+*/
+use crate::core::Core;
 
 fn main() -> Result<()> {
     let mut name = String::from(env!("CARGO_PKG_NAME"));
@@ -71,9 +73,9 @@ fn main() -> Result<()> {
         .get_matches();
 
     // Set up the logger
-    set_log_level(&(args.occurrences_of("verbose") as usize), "info");
+    crate::log::set_log_level(&(args.occurrences_of("verbose") as usize), "info");
     env_logger::Builder::from_default_env()
-        .format(log_format)
+        .format(crate::log::log_format)
         .init();
 
     info!("==== {}-{} ====", &name, env!("CARGO_PKG_VERSION"));
@@ -129,12 +131,15 @@ fn main() -> Result<()> {
     }
     debug!("Handler for [ctrl+c] initialized...");
 
+    /*
     loop {
         //Call every plugin's init function
         if let Err(e) = core.init_plugins() {
             error!("{}", e);
             break;
         }
+        break;
+    }
 
         core.stats.header.state = cflib::CORE_FUZZING as _;
         info!("Core & plugins initialized succesfully");
@@ -178,6 +183,6 @@ fn main() -> Result<()> {
         drop(core);
         std::process::exit(1);
     }
-
+    */
     Ok(())
 }

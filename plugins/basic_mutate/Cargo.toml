@@ -10,5 +10,5 @@ name = "basic_mutate"
 crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
-cflib = {path="../../cflib"}
+cflib_rs = {path="../../cflib_rs"}
 rand = "0.*"

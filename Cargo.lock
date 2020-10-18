@@ -317,7 +317,7 @@ name = "crowdfuzz"
 version = "0.0.1"
 dependencies = [
  "affinity",
- "cflib",
+ "cflib_rs",
  "clap",
  "crc",
  "ctrlc",
@@ -329,6 +329,7 @@ dependencies = [
  "serde_derive",
  "serde_yaml",
  "shared_memory",
+ "simple_parse",
  "sysinfo",
 ]
 
@@ -1049,8 +1050,6 @@ dependencies = [
 [[package]]
 name = "simple_parse"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "762b09d804f9648bb09437f31906ca8e6b0de2dc94f607e4d69fd77a3cfd2aec"
 dependencies = [
  "simple_parse_derive",
 ]
@@ -1058,8 +1057,6 @@ dependencies = [
 [[package]]
 name = "simple_parse_derive"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36d253e06e385b67ad8e04946f3ff7eae1988d9242c4c09117d930b7929d8f9f"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1143,6 +1140,7 @@ name = "test_plugin"
 version = "0.0.1"
 dependencies = [
  "cflib_rs",
+ "log",
 ]
 
 [[package]]

@@ -1,14 +1,20 @@
-use simple_parse::{SpRead, SpWrite};
+use simple_parse::*;
+use std::sync::atomic::AtomicU8;
 
 use crate::*;
 
-pub enum NewStat<'a> {
+pub struct NewStat<'a> {
+    pub tag: &'a str,
+    pub val: NewStatVal<'a>,
+}
+
+pub enum NewStatVal<'a> {
     Num(u64),
     Bytes { max_size: usize, init_val: &'a [u8] },
     Str { max_size: usize, init_val: &'a str },
 }
 
-#[derive(SpRead, SpWrite, Debug)]
+#[derive(SpRead, Debug)]
 #[sp(id_type = "u8")]
 pub enum CoreState {
     #[sp(id = "0")]
@@ -19,96 +25,105 @@ pub enum CoreState {
     Exiting,
 }
 
-#[derive(SpRead, SpWrite, Debug)]
+#[derive(SpRead, Debug)]
 pub struct StatHeader<'a> {
     pid: u32,
     state: CoreState,
     num_plugins: u16,
-    plugins: &'a [PluginStats<'a>],
+    #[sp(count = "num_plugins")]
+    plugins: Vec<PluginStats<'a>>,
 }
 
-#[derive(SpRead, SpWrite, Debug)]
+#[derive(SpRead, Debug)]
 pub struct PluginStats<'a> {
-    name: &'a str,
+    name: String,
     num_stats: u32,
-    stats: &'a [PluginStats<'a>],
+    #[sp(count = "num_stats")]
+    stats: Vec<Stat<'a>>,
 }
 
-#[derive(SpRead, SpWrite, Debug)]
+#[derive(SpRead, Debug)]
+pub struct Stat<'a> {
+    tag: String,
+    val: StatVal<'a>,
+}
+
+#[derive(SpRead, Debug)]
 #[sp(id_type = "u8")]
-pub enum Stat<'a> {
+pub enum StatVal<'a> {
     #[sp(id = "0")]
-    PluginHeader(&'a str),
-    #[sp(id = "1")]
     Num(StatNum<'a>),
-    #[sp(id = "2")]
+    #[sp(id = "1")]
     Bytes(StatBytes<'a>),
-    #[sp(id = "3")]
+    #[sp(id = "2")]
     Str(StatStr<'a>),
 }
 
-#[derive(SpRead, SpWrite, Debug)]
+#[derive(Debug)]
 pub struct StatNum<'a> {
-    val: &'a u64,
+    pub(crate) val: &'a mut u64,
 }
-impl StatNum<'_> {
-    pub fn set(&'_ mut self, new_val: u64) {
-        #[allow(clippy::cast_ref_to_mut)]
-        unsafe {
-            *(self.val as *const u64 as *mut u64) = new_val
-        }
+impl<'a> StatNum<'a> {
+    pub fn set(&mut self, new_val: u64) {
+        *self.val = new_val
     }
     pub fn get(&self) -> &u64 {
         self.val
     }
 }
 
-#[derive(SpRead, SpWrite, Debug)]
-pub struct StatBytes<'a> {
-    lock: &'a u8,
-    buf: GenericBuf<'a>,
-}
-impl<'b> StatBytes<'b> {
-    pub fn set(&mut self, new_val: &[u8]) {
-        acquire(self.lock);
-        self.buf.set(new_val);
-        release(self.lock);
-    }
-    pub fn get(&'b self) -> LockGuard<'b, &'b [u8]> {
-        acquire(self.lock);
-        LockGuard::new(self.buf.get(), self.lock)
-    }
-    #[allow(clippy::should_implement_trait)]
-    pub fn clone(&self) -> Vec<u8> {
-        let s = self.get();
-        s.to_vec()
-    }
-}
-
-#[derive(SpRead, SpWrite, Debug)]
+#[derive(Debug)]
 pub struct StatStr<'a> {
-    lock: &'a u8,
-    buf: GenericBuf<'a>,
+    pub(crate) lock: &'a mut AtomicU8,
+    pub(crate) val: GenericBuf<'a>,
 }
-impl StatStr<'_> {
+impl<'a> StatStr<'a> {
     pub fn set(&mut self, new_val: &str) {
         acquire(self.lock);
-        self.buf.set(new_val.as_bytes());
+        self.val.set(new_val.as_bytes());
         release(self.lock);
     }
-    pub fn get(&self) -> LockGuard<'_, &str> {
+    pub fn get(&'a mut self) -> LockGuard<'a, &'a str> {
         acquire(self.lock);
-        let bytes = self.buf.get();
-        let s = match std::str::from_utf8(bytes) {
+        
+        // Convert current buf to a utf8 str
+        let s = match std::str::from_utf8(self.val.get()) {
             Ok(s) => s,
             Err(_) => "<INVALID UTF8>",
         };
-        LockGuard::new(s, self.lock)
-    }
-    #[allow(clippy::should_implement_trait)]
-    pub fn clone(&self) -> String {
-        let s = self.get();
-        s.to_string()
+        
+        LockGuard::new(self.lock, s)
     }
 }
 
+#[derive(Debug)]
+pub struct StatBytes<'a> {
+    pub(crate) lock: &'a mut AtomicU8,
+    pub(crate) val: GenericBuf<'a>,
+}
+
+impl<'a> StatBytes<'a> {
+    pub fn set(&mut self, new_val: &[u8]) {
+        acquire(self.lock);
+        self.val.set(new_val);
+        release(self.lock);
+    }
+    pub fn get(&'a mut self) -> LockGuard<'a, &'a [u8]> {
+        acquire(self.lock);
+        LockGuard::new(self.lock, self.val.get())
+    }
+}
+
+
+pub const TAG_PREFIX_TOTAL : &str = "total_";
+pub const TAG_PREFIX_AVG : &str = "avg_";
+pub const TAG_POSTFIX_HEX : &str = "_hex";
+pub const TAG_POSTFIX_STR_DIR : &str = "_dir";
+pub const TAG_POSTFIX_EPOCHS : &str = "_epoch_s";
+pub const TAG_POSTFIX_US : &str = "_us";
+pub const TAG_POSTFIX_MS : &str = "_ms";
+pub const TAG_POSTFIX_SEC : &str = "_s";
+pub const TAG_POSTFIX_MIN : &str = "_m";
+pub const TAG_POSTFIX_HOUR : &str = "_h";
+
+pub const STAT_TARGET_EXEC_TIME : &str = concat!("avg_target_exec_time_us");

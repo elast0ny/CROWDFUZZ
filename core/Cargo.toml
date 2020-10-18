@@ -7,9 +7,10 @@ edition = "2018"
 [dependencies]
 libc = "0.*"
 shared_memory = "0.*"
+simple_parse = {path = "../../simple_parse"}
 env_logger = "0.*"
 log = "0.*"
-cflib = {path="../cflib"}
+cflib = {package = "cflib_rs", path="../cflib_rs"}
 
 clap = "2.*"
 serde = "1.*"

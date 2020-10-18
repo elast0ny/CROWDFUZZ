@@ -10,7 +10,7 @@ name = "cflib_rs"
 
 [dependencies]
 log = "0.*"
-simple_parse = "*"
+simple_parse = {version = "*", path = "../../simple_parse"}
 
 [build-dependencies]
 rustc_version = "*"

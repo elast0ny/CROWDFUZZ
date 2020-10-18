@@ -11,3 +11,4 @@ crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
 cflib_rs = {path="../../cflib_rs"}
+log = "0.*"
