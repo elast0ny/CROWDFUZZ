@@ -3,21 +3,14 @@ name = "cflib"
 version = "0.0.1"
 authors = ["Elast0ny <Elast0ny00@gmail.com>"]
 edition = "2018"
+build = "build.rs"
 
 [lib]
 name = "cflib"
 
 [dependencies]
-libc = "0.2"
 log = "0.*"
-
-[dependencies.nom]
-version = "5.*"
-optional = true
+simple_parse = {version = "*", path = "../../simple_parse"}
 
 [build-dependencies]
-bindgen = "0.*"
-
-[features]
-default = ["stat_parser"]
-stat_parser = ["nom"]
+rustc_version = "*"

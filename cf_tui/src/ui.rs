@@ -244,7 +244,7 @@ impl<'a> UiState<'a> {
         self.plugins_list_state.select(Some(*idx));
     }
 
-    pub fn draw_self<B: Backend>(ui: &mut UiState, mut f: Frame<B>) {
+    pub fn draw_self<B: Backend>(ui: &mut UiState, f: &mut Frame<B>) {
         //Call methods on the ui object
         ui.draw(&mut f);
     }

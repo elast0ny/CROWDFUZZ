@@ -10,8 +10,11 @@ use crate::ui::*;
 pub mod state;
 use crate::state::*;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+fn main() -> Result<()> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
     let args = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -19,16 +22,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg(
             Arg::with_name("project_state")
                 .help("Path to a fuzzer's state directory")
+                .short("-s")
                 .required(true)
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("fuzzer_prefix")
-                .long("fuzzer_prefix")
-                .help("Sets the fuzzer prefix")
-                .default_value("fuzzer_stats_")
-                .hidden(true) //This shouldnt really be needed by anyone
-                .takes_value(true),
+                .takes_value(true)
+                //.multiple(true).number_of_values(1)
         )
         .arg(
             Arg::with_name("stats_prefix")
@@ -75,7 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .expect("Invalid number specified for --refresh_rate"),
     );
 
-    let mut state = State::new(args);
+    let mut state = State::new(&mut args);
     let mut ui = UiState::new(&mut state);
 
     let mut terminal = init_ui()?;

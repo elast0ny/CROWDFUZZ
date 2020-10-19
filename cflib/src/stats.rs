@@ -1,124 +1,140 @@
+use simple_parse::*;
+use std::sync::atomic::AtomicU8;
+
 use crate::*;
-use std::mem::size_of;
 
-/// Stat tag prefixes to give hints to UIs
-pub const TAG_PREFIX: &[&str] = &[TAG_PREFIX_TOTAL_STR, TAG_PREFIX_AVERAGE_STR];
+/// UIs can add up these values
+pub const TAG_PREFIX_TOTAL : &str = "total_";
+/// UIs can combine these values into an average
+pub const TAG_PREFIX_AVG : &str = "avg_";
+pub const TAG_POSTFIX_HEX : &str = "_hex";
+pub const TAG_POSTFIX_STR_DIR : &str = "_dir";
+pub const TAG_POSTFIX_EPOCHS : &str = "_epoch_s";
+pub const TAG_POSTFIX_US : &str = "_us";
+pub const TAG_POSTFIX_MS : &str = "_ms";
+pub const TAG_POSTFIX_SEC : &str = "_s";
+pub const TAG_POSTFIX_MIN : &str = "_m";
+pub const TAG_POSTFIX_HOUR : &str = "_h";
 
-/// Specifies the data content type of string stats
-pub const STR_POSTFIX: &[&str] = &[STR_POSTFIX_DIR_STR];
+/// Plugins that execute a target binary should use this name for consistency
+pub const STAT_TARGET_EXEC_TIME : &str = concat!("avg_target_exec_time_us");
 
-/// Specifies the data content type of number stats
-pub const NUM_POSTFIX: &[&str] = &[
-    NUM_POSTFIX_EPOCHS_STR,
-    NUM_POSTFIX_US_STR,
-    NUM_POSTFIX_MS_STR,
-    NUM_POSTFIX_SEC_STR,
-    NUM_POSTFIX_MIN_STR,
-    NUM_POSTFIX_HOUR_STR,
-];
-
-/// Sepcifies the data content type of byte stats
-pub const BYTES_POSTFIX: &[&str] = &[BYTES_POSTFIX_HEX_STR];
-
-/// Used to request new stat space from the core. Dynamic type
-/// require a max length for the stat value.
-#[derive(Debug)]
-pub enum NewStat {
-    #[doc(hidden)]
-    Bytes(u16),
-    Str(u16),
-    Number,
+/// Struct used to request stat memory for specific stat types
+pub enum NewStat<'a> {
+    Num(u64),
+    Bytes { max_size: usize, init_val: &'a [u8] },
+    Str { max_size: usize, init_val: &'a str },
 }
 
-impl NewStat {
-    pub fn from_stat_type(stat_type: StatType, max_len: u16) -> Self {
-        let new_stat = match stat_type as _ {
-            STAT_BYTES => NewStat::Bytes(max_len),
-            STAT_STR => NewStat::Str(max_len),
-            STAT_NUMBER => NewStat::Number,
-            _ => panic!("Unknown stat type {} (max_len {})", stat_type, max_len),
-        };
+/// The states that the fuzzer core can have
+#[derive(SpRead, Debug)]
+#[sp(id_type = "u8")]
+pub enum CoreState {
+    /// The core is in this state during load() and pre_fuzz()
+    /// Stats should not be used when in this state
+    #[sp(id = "0")]
+    Initializing,
+    /// During fuzz(). Stats memory is safe to read.
+    #[sp(id = "1")]
+    Fuzzing,
+    #[sp(id = "2")]
+    Exiting,
+}
 
-        if max_len != new_stat.max_len() {
-            panic!(
-                "Requested max stat length {} doesnt match the stat {:?}(max_len {})",
-                max_len,
-                new_stat,
-                new_stat.max_len()
-            );
-        }
+/// Describes the statistic layout of a CROWDFUZZ instance
+/// Use simple_parse::SpRead to instanciate : CfStats::from_bytes(...)
+#[derive(SpRead, Debug)]
+pub struct CfStats {
+    pub state: CoreState,
+    pub pid: u32,
+    num_plugins: u16,
+    #[sp(count = "num_plugins")]
+    pub plugins: Vec<PluginStats>,
+}
 
-        new_stat
+/// Describes a plugin and its stats
+#[derive(SpRead, Debug)]
+pub struct PluginStats {
+    pub name: String,
+    num_stats: u32,
+    #[sp(count = "num_stats")]
+    pub stats: Vec<Stat>,
+}
+
+/// Holds a stat tag and its value
+#[derive(SpRead, Debug)]
+pub struct Stat {
+    pub tag: String,
+    pub val: StatVal,
+}
+
+/// Different types of statistics
+#[derive(SpRead, Debug)]
+#[sp(id_type = "u8")]
+pub enum StatVal {
+    #[sp(id = "0")]
+    Num(StatNum),
+    #[sp(id = "1")]
+    Bytes(StatBytes),
+    #[sp(id = "2")]
+    Str(StatStr),
+}
+
+/// Holds a reference to a number living in shared memory
+/// This reference is valid for the lifetime of the plugin
+pub struct StatNum {
+    pub val: &'static mut u64,
+}
+impl StatNum {
+    pub fn set(&mut self, new_val: u64) {
+        *self.val = new_val
     }
-    pub fn header_len(&self) -> usize {
-        match &self {
-            &NewStat::Bytes(_) | &NewStat::Str(_) => size_of::<StatHeaderDyn>(),
-            _ => size_of::<StatHeader>(),
-        }
-    }
-    pub fn max_len(&self) -> u16 {
-        (match &self {
-            NewStat::Bytes(v) => *v as usize,
-            NewStat::Str(v) => *v as usize,
-            NewStat::Number => size_of::<u64>(),
-        }) as u16
-    }
-    pub fn to_id(&self) -> StatType {
-        match &self {
-            NewStat::Bytes(_) => STAT_BYTES as _,
-            NewStat::Str(_) => STAT_STR as _,
-            NewStat::Number => STAT_NUMBER as _,
-        }
+    pub fn get(&self) -> &u64 {
+        self.val
     }
 }
 
-use std::ptr::copy_nonoverlapping;
-use std::sync::atomic::{AtomicU16, Ordering};
-
-/// Safely reads the content of a dynamicaly sized stat buffer
-/// WARNING : dst must point to an allocation of at least max_data_len bytes.
-/// Returns the number of bytes written
-/// # Safety
-/// This function is unsafe as is dereferences/wrties to arbitrary addresses
-pub unsafe fn copy_dyn_stat(dst: *mut u8, src: *mut u8) -> usize {
-    let atom_cur_len: &mut AtomicU16 = &mut *(src as *mut AtomicU16);
-    let mut cur_len;
-    // Busy loop until we set the length to 0
-    loop {
-        cur_len = *(src as *mut u16);
-        // Set length to 0 if not already 0
-        match atom_cur_len.compare_exchange(cur_len, 0, Ordering::Acquire, Ordering::Acquire) {
-            Ok(_) => break,
-            _ => continue,
-        };
+/// Holds a reference to a string living in shared memory
+/// The get/set function use a spinlock to safely manage access to this data
+/// This reference is valid for the lifetime of the plugin
+pub struct StatStr {
+    pub(crate) lock: &'static mut AtomicU8,
+    pub(crate) val: GenericBuf,
+}
+impl StatStr {
+    pub fn set(&mut self, new_val: &str) {
+        acquire(self.lock);
+        self.val.set(new_val.as_bytes());
+        release(self.lock);
     }
-    copy_nonoverlapping(src.add(size_of::<u16>()), dst, cur_len as usize);
-    atom_cur_len.store(cur_len, Ordering::Release);
-    cur_len as usize
+    pub fn get<'a>(&'a mut self) -> LockGuard<&'a str> {
+        acquire(self.lock);
+        
+        // Convert current buf to a utf8 str
+        let s = match std::str::from_utf8(self.val.get()) {
+            Ok(s) => s,
+            Err(_) => "<INVALID UTF8>",
+        };
+        
+        LockGuard::new(self.lock, s)
+    }
 }
 
-/// Safely overwrites the content of a dynamicaly sized stat buffer
-/// # Safety
-/// This function is unsafe as is dereferences an arbitrary address
-pub unsafe fn update_dyn_stat<B: AsRef<[u8]>>(dst: *mut u8, data: B) {
-    let mut data = data.as_ref();
-    if data.is_empty() {
-        data = &[0];
+/// Holds a reference to bytes living in shared memory
+/// The get/set function use a spinlock to safely manage access to this data
+/// This reference is valid for the lifetime of the plugin
+pub struct StatBytes {
+    pub(crate) lock: &'static mut AtomicU8,
+    pub(crate) val: GenericBuf,
+}
+impl StatBytes {
+    pub fn set(&mut self, new_val: &[u8]) {
+        acquire(self.lock);
+        self.val.set(new_val);
+        release(self.lock);
     }
-    let src_len = data.len();
-    let src = data.as_ptr();
-
-    let atom_cur_len: &mut AtomicU16 = &mut *(dst as *mut AtomicU16);
-    let mut cur_len;
-    // Busy loop until we set the length to 0
-    loop {
-        cur_len = *(dst as *mut u16);
-        // Set length to 0 if not already 0
-        match atom_cur_len.compare_exchange(cur_len, 0, Ordering::Acquire, Ordering::Acquire) {
-            Ok(_) => break,
-            _ => continue,
-        };
+    pub fn get<'a>(&'a mut self) -> LockGuard<&'a [u8]> {
+        acquire(self.lock);
+        LockGuard::new(self.lock, self.val.get())
     }
-    copy_nonoverlapping(src, dst.add(size_of::<u16>()), src_len);
-    atom_cur_len.store(src_len as u16, Ordering::Release);
 }

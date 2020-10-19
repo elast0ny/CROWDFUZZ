@@ -10,7 +10,7 @@ shared_memory = "0.*"
 simple_parse = {path = "../../simple_parse"}
 env_logger = "0.*"
 log = "0.*"
-cflib = {package = "cflib_rs", path="../cflib_rs"}
+cflib = {path="../cflib"}
 
 clap = "2.*"
 serde = "1.*"

@@ -33,12 +33,12 @@ fn validate(core: &dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u
 }
 
 // Perform our task in the fuzzing loop
-fn fuzz(core: &dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
+fn fuzz(_core: &dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
     let ctx = box_ref!(plugin_ctx, State);
 
     ctx.num_iter += 1;
 
-    core.log(::log::Level::Info, &format!("fuzzing {}", ctx.num_iter));
+    std::thread::sleep(std::time::Duration::from_secs(5));
     
     Ok(())
 }

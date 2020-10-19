@@ -7,7 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cflib = {path='../cflib', features = ["stat_parser"]}
+cflib = {path='../cflib'}
+simple_parse = {path = "../../simple_parse"}
+
 log = "*"
 env_logger = "*"
 
