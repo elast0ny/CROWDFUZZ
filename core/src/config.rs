@@ -27,8 +27,8 @@ pub struct Config {
     pub fuzz_loop: Vec<PathBuf>,
 
     /// Additional confif values for the plugins
-    #[serde(default = "Vec::new")]
-    pub plugin_conf: Vec<HashMap<String, String>>,
+    #[serde(default = "HashMap::new")]
+    pub plugin_conf: HashMap<String, String>,
 
     /// Plugins to be run before the fuzzing begins
     #[serde(default = "Vec::new")]

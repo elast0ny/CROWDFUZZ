@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::sync::{
@@ -17,7 +16,7 @@ use crate::config::*;
 use crate::plugin::*;
 use crate::stats::*;
 
-pub struct Core<'a> {
+pub struct CfCore<'a> {
     /// Information pulled from the input config file
     pub config: Config,
     /// Set to true when an exit event happens (ctrl-c)
@@ -30,11 +29,12 @@ pub struct Core<'a> {
     pub plugin_chain: Vec<Plugin>,
     /// Index of the first plugin of the fuzz loop
     pub fuzz_loop_start: usize,
-
-    pub stats: CoreStats,
+    pub stats: CfCoreStats,
+    /// Public plugin data store
+    pub store: cflib::CfStore,
 }
 
-pub struct CoreStats {
+pub struct CfCoreStats {
     /// How many values are included in averages
     pub avg_denominator: u64,
     /// EPOCHS on startup
@@ -49,8 +49,8 @@ pub struct CoreStats {
     pub cmd_line: cflib::StatStr,
     pub target_hash: cflib::StatBytes,
 }
-impl CoreStats {
-    pub fn new() -> Self {
+impl Default for CfCoreStats {
+    fn default() -> Self {
         // This gets initialized properly before being used in init_stats()
         #[allow(invalid_value)]
         unsafe {
@@ -68,7 +68,7 @@ impl CoreStats {
     }
 }
 
-impl<'a> Core<'a> {
+impl<'a> CfCore<'a> {
     pub fn init(prefix: &str, config_path: &str) -> Result<Self> {
         info!("Loading project config");
         let config = Config::new(prefix, config_path)?;
@@ -118,25 +118,24 @@ impl<'a> Core<'a> {
 
         let buf: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(shmem.as_ptr(), shmem.len()) };
 
-        let mut core = Core {
-            config: config,
+        let mut core = CfCore {
+            config,
             exiting: Arc::new(AtomicBool::new(false)),
-            stats: CoreStats::new(),
+            stats: CfCoreStats::default(),
             ctx: PluginCtx {
                 plugin_data,
                 stats: Stats::new(buf)?,
-                cur_plugin_id: plugin_chain.len(),
-                store: HashMap::new(),
+                cur_plugin_id: plugin_chain.len(),  
             },
-            plugin_chain: plugin_chain,
+            plugin_chain,
             fuzz_loop_start: fuzz_loop_start_idx,
             shmem,
+            store: HashMap::new(),
         };
 
         core.init_stats()?;
-        /*
         core.init_public_store();
-        */
+        
         Ok(core)
     }
 
@@ -146,14 +145,15 @@ impl<'a> Core<'a> {
 
     pub fn init_plugins(&mut self) -> Result<()> {
         info!("Initializing plugins");
-
+        let num_plugins = self.plugin_chain.len();
         // Call init()
-        for plugin_id in 0..self.plugin_chain.len() {
+        for plugin_id in 0..num_plugins {
             if self.exiting.load(Ordering::Relaxed) {
+                self.ctx.cur_plugin_id = num_plugins;
                 return Err(From::from(format!(
                     "CTRL-C while initializing plugins ({}/{} initialized)",
                     plugin_id,
-                    self.plugin_chain.len()
+                    num_plugins
                 )));
             }
             self.ctx.cur_plugin_id = plugin_id;
@@ -161,15 +161,17 @@ impl<'a> Core<'a> {
             let plugin: &mut Plugin =
                 unsafe { self.plugin_chain.get_unchecked_mut(self.ctx.cur_plugin_id) };
 
+            // Add new plugin to stats
             self.ctx.stats.new_plugin(plugin.name())?;
-            plugin.exec_time = match self.ctx.stats.new_stat(NewStat {
-                tag: &format!(
+            // Every plugin gets an exec_time
+            plugin.exec_time = match self.ctx.stats.new_stat(
+                &format!(
                     "{}exec_time{}",
                     cflib::TAG_PREFIX_AVG,
                     cflib::TAG_POSTFIX_US
                 ),
-                val: NewStatVal::Num(0),
-            }) {
+                NewStat::Num(0),
+            ) {
                 Ok(StatVal::Num(v)) => v,
                 Err(e) => {
                     return Err(From::from(format!(
@@ -182,19 +184,20 @@ impl<'a> Core<'a> {
             };
 
             debug!("\t\"{}\"->load()", plugin.name());
-            if let Err(e) = plugin.init(&self.ctx as &dyn cflib::PluginInterface) {
+            if let Err(e) = plugin.init(&self.ctx, &mut self.store) {
                 warn!("Error initializing \"{}\"", plugin.name());
                 return Err(e);
             }
         }
 
         // Call validate()
-        for plugin_id in 0..self.plugin_chain.len() {
+        for plugin_id in 0..num_plugins {
             if self.exiting.load(Ordering::Relaxed) {
+                self.ctx.cur_plugin_id = num_plugins;
                 return Err(From::from(format!(
                     "CTRL-C while running plugin validation ({}/{} validated)",
                     plugin_id,
-                    self.plugin_chain.len()
+                    num_plugins
                 )));
             }
             self.ctx.cur_plugin_id = plugin_id;
@@ -202,30 +205,32 @@ impl<'a> Core<'a> {
                 unsafe { self.plugin_chain.get_unchecked_mut(self.ctx.cur_plugin_id) };
 
             debug!("\t\"{}\"->validate()", plugin.name());
-            if let Err(e) = plugin.validate(&self.ctx as &dyn cflib::PluginInterface) {
+            if let Err(e) = plugin.validate(&self.ctx, &mut self.store) {
                 warn!("Error in plugin \"{}\"'s validate()", plugin.name());
                 return Err(e);
             }
         }
         // Init is done
         self.ctx.stats.set_state(CoreState::Fuzzing);
-        self.ctx.cur_plugin_id = self.plugin_chain.len();
+        self.ctx.cur_plugin_id = num_plugins;
+
         Ok(())
     }
 
     pub fn destroy_plugins(&mut self) {
         debug!("Destroying plugins");
-        for (plugin_id, plugin) in self.plugin_chain.iter().rev().enumerate() {
-            if !plugin.init_called {
+        let num_plugins = self.plugin_chain.len();
+        for (plugin_id, plugin) in self.plugin_chain.iter_mut().rev().enumerate() {
+            if !plugin.is_init {
                 continue;
             }
-            self.ctx.cur_plugin_id = self.plugin_chain.len() - 1 - plugin_id;
+            self.ctx.cur_plugin_id = num_plugins - 1 - plugin_id;
             debug!("\"{}\"->unload()", plugin.name());
-            if let Err(e) = plugin.destroy(&self.ctx as &dyn cflib::PluginInterface) {
+            if let Err(e) = plugin.destroy(&self.ctx, &mut self.store) {
                 warn!("Error destroying \"{}\" : {}", plugin.name(), e);
             }
         }
-        self.ctx.cur_plugin_id = self.plugin_chain.len();
+        self.ctx.cur_plugin_id = num_plugins;
     }
 
     ///Runs all plugins once
@@ -256,7 +261,7 @@ impl<'a> Core<'a> {
             debug!("\t\"{}\"->fuzz()", plugin.name());
 
             plugin_start = Instant::now();
-            plugin.do_work(&self.ctx as &dyn cflib::PluginInterface)?;
+            plugin.do_work(&self.ctx, &mut self.store)?;
             time_elapsed = plugin_start.elapsed().as_micros() as u64;
 
             total_plugin_time += time_elapsed;
@@ -286,12 +291,11 @@ impl<'a> Core<'a> {
             time_elapsed - total_plugin_time,
             *self.stats.num_execs.val,
         );
-        debug!("\tCore time : {} us", *self.stats.exec_time.val);
+        debug!("\tCfCore time : {} us", *self.stats.exec_time.val);
 
         info!("Ready to go !");
         Ok(())
     }
-    
     pub fn fuzz_loop(&mut self) -> Result<()> {
         info!("Fuzzing...");
         let num_plugins = self.plugin_chain.len();
@@ -321,11 +325,15 @@ impl<'a> Core<'a> {
 
                 // run the plugin
                 plugin_start = Instant::now();
-                plugin.do_work(&self.ctx as &dyn cflib::PluginInterface)?;
+                plugin.do_work(&self.ctx, &mut self.store)?;
                 time_elapsed = plugin_start.elapsed().as_micros() as u64;
 
                 total_plugin_time += time_elapsed;
-                cflib::update_average(plugin.exec_time.val, time_elapsed, self.stats.avg_denominator);
+                cflib::update_average(
+                    plugin.exec_time.val,
+                    time_elapsed,
+                    self.stats.avg_denominator,
+                );
                 self.ctx.cur_plugin_id += 1;
             }
 
@@ -349,8 +357,14 @@ impl<'a> Core<'a> {
     }
 }
 
-impl<'a> Drop for Core<'a> {
-    fn drop(&mut self) -> () {
-        //self.clear_public_store();
+impl<'a> Drop for CfCore<'a> {
+    fn drop(&mut self) {
+        self.clear_public_store();
+
+        for (k, v) in self.store.drain() {
+            if !v.is_empty() {
+                error!("store['{}'] has {} leaked value(s)...", k, v.len());
+            }
+        }
     }
 }

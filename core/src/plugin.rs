@@ -1,23 +1,19 @@
 use ::log::*;
 
 use cflib::*;
-use std::collections::{HashMap, VecDeque};
-use std::ffi::{c_void, CStr};
+use std::ffi::CStr;
 use std::path::PathBuf;
 use std::ptr::null_mut;
-
 use crate::stats::Stats;
 use crate::Result;
 
 pub struct PluginData {
     name: String,
-    priv_data: *mut u8,
 }
 impl PluginData {
     pub fn new(name: &str) -> Self {
         Self {
             name: String::from(name),
-            priv_data: null_mut(),
         }
     }
 }
@@ -29,45 +25,21 @@ pub struct PluginCtx<'a> {
     pub plugin_data: Vec<PluginData>,
     /// current plugin being executed
     pub cur_plugin_id: usize,
-    /// Public plugin data store
-    pub store: HashMap<String, VecDeque<*mut u8>>,
-}
-impl<'a> Drop for PluginCtx<'a> {
-    fn drop(&mut self) {
-        for (key, vec) in self.store.iter() {
-            if vec.len() != 0 {
-                error!("Store key '{}' has {} leaked item(s)...", key, vec.len());
-            }
-        }
-    }
 }
 
 impl<'a> PluginInterface for PluginCtx<'a> {
-    fn set_ctx(&mut self, plugin_ctx: *mut u8) {
-        unsafe {
-            self.plugin_data
-                .get_unchecked_mut(self.cur_plugin_id)
-                .priv_data = plugin_ctx;
-        }
-    }
-    fn get_ctx(&self) -> *mut u8 {
-        unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id).priv_data }
-    }
-    fn get_store(&mut self) -> &mut HashMap<String, VecDeque<*mut u8>> {
-        &mut self.store
-    }
     fn log(&self, level: ::log::Level, msg: &str) {
         let plugin = unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id) };
         log!(level, "[{}] {}", &plugin.name, msg);
     }
-    fn add_stat(&mut self, stat: NewStat) -> Result<StatVal> {
-        self.stats.new_stat(stat)
+    fn add_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal> {
+        self.stats.new_stat(tag, stat)
     }
 }
 
 pub struct Plugin {
-    pub init_called: bool,
-    pub priv_data: *mut c_void,
+    pub is_init: bool,
+    pub ctx: *mut u8,
     pub has_stats: bool,
     pub exec_time: cflib::StatNum,
 
@@ -137,7 +109,7 @@ impl Plugin {
                 )));
             }
         };
-        if rustc_version != &cflib::RUSTC_VERSION[..cflib::RUSTC_VERSION.len() - 1] {
+        if rustc_version != cflib::RUSTC_VERSION[..cflib::RUSTC_VERSION.len() - 1] {
             return Err(From::from(format!(
                 "Plugin version '{}' for '{}' does not match CROWDFUZZ version : '{}'",
                 rustc_version,
@@ -179,12 +151,12 @@ impl Plugin {
 
         #[allow(invalid_value)]
         Ok(Plugin {
-            init_called: false,
+            is_init: false,
             has_stats: false,
-            priv_data: null_mut(),
+            ctx: null_mut(),
             exec_time: unsafe { std::mem::MaybeUninit::zeroed().assume_init() },
             module,
-            name: plugin_name.clone(),
+            name: plugin_name,
             load_fn,
             pre_fuzz_fn,
             fuzz_fn,
@@ -192,73 +164,81 @@ impl Plugin {
         })
     }
 
-    pub fn name<'a>(&'a self) -> &'a str {
-        return &self.name;
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
-    pub fn init(&mut self, ctx: &dyn cflib::PluginInterface) -> Result<()> {
+    pub fn init(&mut self, interface: &dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
         //Call init at most once
-        if self.init_called {
+        if self.is_init {
             return Ok(());
         }
 
-        match (self.load_fn)(ctx) {
-            cflib::PluginStatus::Success => {
-                self.init_called = true;
-                Ok(())
+        let plugin_ctx = match (self.load_fn)(interface, store) {
+            Ok(p) => p,
+            Err(e) => {
+                return Err(From::from(format!(
+                    "'{}'.load() failed with error : {}",
+                    self.name, e
+                )))
             }
-            e => Err(From::from(format!(
-                "'{}'.load() failed with error : {:?}",
-                self.name, e
-            ))),
-        }
+        };
+
+        self.ctx = plugin_ctx;
+        self.is_init = true;
+        Ok(())
     }
 
-    pub fn validate(&mut self, ctx: &dyn cflib::PluginInterface) -> Result<()> {
-        if !self.init_called {
+    pub fn validate(&mut self, interface: &dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+        if !self.is_init {
             return Err(From::from(format!(
-                "Tried to call '{}'.validate() before init()",
+                "Tried to call '{}'.pre_fuzz_fn() before init()",
                 self.name
             )));
         }
 
-        match (self.pre_fuzz_fn)(ctx) {
-            cflib::PluginStatus::Success => Ok(()),
-            e => Err(From::from(format!(
-                "'{}'.validate() failed with error : {:?}",
+        if let Err(e) = (self.pre_fuzz_fn)(interface, store, self.ctx) {
+            return Err(From::from(format!(
+                "'{}'.pre_fuzz_fn() failed with error : {}",
                 self.name, e
-            ))),
+            )));
         }
+        
+        Ok(())
     }
 
-    pub fn do_work(&self, ctx: &dyn cflib::PluginInterface) -> Result<()> {
-        //No checks for init_called for performance...
-        match (self.fuzz_fn)(ctx) {
-            cflib::PluginStatus::Success => Ok(()),
-            e => Err(From::from(format!(
-                "'{}'.fuzz() failed with error : {:?}",
+    pub fn do_work(&self, interface: &dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+        //No checks for is_init for performance...
+        
+        if let Err(e) = (self.fuzz_fn)(interface, store, self.ctx) {
+            return Err(From::from(format!(
+                "'{}'.fuzz() failed with error : {}",
                 self.name, e
-            ))),
+            )));
         }
+
+        Ok(())
     }
 
-    pub fn destroy(&self, ctx: &dyn cflib::PluginInterface) -> Result<()> {
+    pub fn destroy(&mut self, interface: &dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
         //Call init at most once
-        if !self.init_called {
+        if !self.is_init {
             return Err(From::from(format!(
                 "Tried to call '{}'.unload() before init()",
                 self.name
             )));
         }
 
-        match (self.unload_fn)(ctx) {
-            cflib::PluginStatus::Success => {
-                Ok(())
-            }
-            e => Err(From::from(format!(
-                "'{}'.unload() failed with error : {:?}",
+        if let Err(e) = (self.unload_fn)(interface, store, self.ctx) {
+            return Err(From::from(format!(
+                "'{}'.unload() failed with error : {}",
                 self.name, e
-            ))),
+            )));
         }
+
+        self.ctx = null_mut();
+        self.is_init = false;
+
+        Ok(())
     }
 }

@@ -61,7 +61,7 @@ pub fn bind_to_core(target_core: isize) -> Result<usize> {
 
     set_affinity(&[target_core_id])?;
 
-    return Ok(target_core_id);
+    Ok(target_core_id)
 }
 
 /// Spawns another instance of the fuzzer

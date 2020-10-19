@@ -6,18 +6,16 @@ pub use ::log::*;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+pub mod util;
+pub mod log;
+
 pub mod config;
 pub mod core;
-pub mod log;
 pub mod plugin;
 pub mod stats;
-pub mod util;
-
-/*
 pub mod store;
-use crate::log::*;
-*/
-use crate::core::Core;
+
+use crate::core::CfCore;
 
 fn main() -> Result<()> {
     let mut name = String::from(env!("CARGO_PKG_NAME"));
@@ -79,14 +77,20 @@ fn main() -> Result<()> {
 
     info!("==== {}-{} ====", &name, env!("CARGO_PKG_VERSION"));
 
-    let num_instances: isize = args.value_of("instances").unwrap().parse().expect(&format!(
-        "Invalid number provided for --instances : {}",
-        args.value_of("instances").unwrap()
-    ));
+    let num_instances: isize = match args.value_of("instances").unwrap().parse() {
+        Ok(n) => n,
+        Err(e) => {
+            return Err(From::from(format!(
+                "Invalid number provided for --instances {} : {}",
+                args.value_of("instances").unwrap(),
+                e
+            )))
+        }
+    };
     let bind_cpu_id: Option<isize> = match args.value_of("bind_cpu") {
         None => {
             info!("Automatically selecting cpu core");
-            Some(util::get_num_instances()? as isize * -1)
+            Some(-(util::get_num_instances()? as isize))
         }
         Some(v) => {
             let v = v
@@ -101,7 +105,7 @@ fn main() -> Result<()> {
     };
 
     // Initialize the fuzzer core based on the yaml config
-    let mut core = Core::init(
+    let mut core = CfCore::init(
         args.value_of("prefix").unwrap(),
         args.value_of("config").unwrap(),
     )?;
@@ -130,6 +134,7 @@ fn main() -> Result<()> {
     }
     debug!("Handler for [ctrl+c] initialized...");
 
+    #[allow(clippy::never_loop)]
     loop {
         //Call every plugin's init function
         if let Err(e) = core.init_plugins() {
@@ -137,7 +142,7 @@ fn main() -> Result<()> {
             break;
         }
 
-        info!("Core & plugins initialized succesfully");
+        info!("CfCore & plugins initialized succesfully");
 
         //Run through once
         if let Err(e) = core.single_run() {
@@ -145,40 +150,40 @@ fn main() -> Result<()> {
             break;
         }
 
-          if args.is_present("single_run") {
-              info!("Exiting before fuzz loop because of --single_run");
-              core.exiting
-                  .store(true, std::sync::atomic::Ordering::Relaxed);
-              break;
-          }
+        if args.is_present("single_run") {
+            info!("Exiting before fuzz loop because of --single_run");
+            core.exiting
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            break;
+        }
 
-          //Start fuzzing
-          if let Err(e) = core.fuzz_loop() {
-              warn!("{}", e);
-              break;
-          }
+        //Start fuzzing
+        if let Err(e) = core.fuzz_loop() {
+            warn!("{}", e);
+            break;
+        }
 
-          break;
-      }
-      
-      core.ctx.stats.set_state(cflib::CoreState::Exiting);
+        break;
+    }
 
-      //Planned stop ?
-      if core.exiting() {
-          info!("Tearing down");
-      } else {
-          error!("Tearing down");
-      }
+    core.ctx.stats.set_state(cflib::CoreState::Exiting);
 
-      core.destroy_plugins();
+    //Planned stop ?
+    if core.exiting() {
+        info!("Tearing down");
+    } else {
+        error!("Tearing down");
+    }
 
-      if core.exiting() {
-          info!("Done !");
-      } else {
-          error!("Done !");
-          drop(core);
-          std::process::exit(1);
-      }
+    core.destroy_plugins();
+
+    if core.exiting() {
+        info!("Done !");
+    } else {
+        error!("Done !");
+        drop(core);
+        std::process::exit(1);
+    }
 
     Ok(())
 }

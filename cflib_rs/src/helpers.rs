@@ -114,6 +114,11 @@ impl<'a> SpRead<'a> for StatNum {
         Self::inner_from_bytes(input, true, None)
     }
 }
+impl std::fmt::Debug for StatNum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "0x{:X}", self.val)
+    }
+}
 
 impl<'a> SpRead<'a> for StatStr {
     fn inner_from_bytes(
@@ -141,6 +146,11 @@ impl<'a> SpRead<'a> for StatStr {
         Self::inner_from_bytes(input, true, None)
     }
 }
+impl std::fmt::Debug for StatStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}/{}] '{}'", self.val.len, self.val.capacity(), unsafe{std::str::from_utf8_unchecked(self.val.get())})
+    }
+}
 
 impl<'a> SpRead<'a> for StatBytes {
     fn inner_from_bytes(
@@ -166,6 +176,11 @@ impl<'a> SpRead<'a> for StatBytes {
         Self: 'a + Sized,
     {
         Self::inner_from_bytes(input, true, None)
+    }
+}
+impl std::fmt::Debug for StatBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}/{}] {:X?}", self.val.len, self.val.capacity(), self.val.get())
     }
 }
 

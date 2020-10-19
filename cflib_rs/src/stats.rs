@@ -3,30 +3,48 @@ use std::sync::atomic::AtomicU8;
 
 use crate::*;
 
-pub struct NewStat<'a> {
-    pub tag: &'a str,
-    pub val: NewStatVal<'a>,
-}
+/// UIs can add up these values
+pub const TAG_PREFIX_TOTAL : &str = "total_";
+/// UIs can combine these values into an average
+pub const TAG_PREFIX_AVG : &str = "avg_";
+pub const TAG_POSTFIX_HEX : &str = "_hex";
+pub const TAG_POSTFIX_STR_DIR : &str = "_dir";
+pub const TAG_POSTFIX_EPOCHS : &str = "_epoch_s";
+pub const TAG_POSTFIX_US : &str = "_us";
+pub const TAG_POSTFIX_MS : &str = "_ms";
+pub const TAG_POSTFIX_SEC : &str = "_s";
+pub const TAG_POSTFIX_MIN : &str = "_m";
+pub const TAG_POSTFIX_HOUR : &str = "_h";
 
-pub enum NewStatVal<'a> {
+/// Plugins that execute a target binary should use this name for consistency
+pub const STAT_TARGET_EXEC_TIME : &str = concat!("avg_target_exec_time_us");
+
+/// Struct used to request stat memory for specific stat types
+pub enum NewStat<'a> {
     Num(u64),
     Bytes { max_size: usize, init_val: &'a [u8] },
     Str { max_size: usize, init_val: &'a str },
 }
 
+/// The states that the fuzzer core can have
 #[derive(SpRead, Debug)]
 #[sp(id_type = "u8")]
 pub enum CoreState {
+    /// The core is in this state during load() and pre_fuzz()
+    /// Stats should not be used when in this state
     #[sp(id = "0")]
     Initializing,
+    /// During fuzz(). Stats memory is safe to read.
     #[sp(id = "1")]
     Fuzzing,
     #[sp(id = "2")]
     Exiting,
 }
 
+/// Describes the statistic layout of a CROWDFUZZ instance
+/// Use simple_parse::SpRead to instanciate : CfStats::from_bytes(...)
 #[derive(SpRead, Debug)]
-pub struct StatHeader {
+pub struct CfStats {
     state: CoreState,
     pid: u32,
     num_plugins: u16,
@@ -34,6 +52,7 @@ pub struct StatHeader {
     plugins: Vec<PluginStats>,
 }
 
+/// Describes a plugin and its stats
 #[derive(SpRead, Debug)]
 pub struct PluginStats {
     name: String,
@@ -42,12 +61,14 @@ pub struct PluginStats {
     stats: Vec<Stat>,
 }
 
+/// Holds a stat tag and its value
 #[derive(SpRead, Debug)]
 pub struct Stat {
     tag: String,
     val: StatVal,
 }
 
+/// Different types of statistics
 #[derive(SpRead, Debug)]
 #[sp(id_type = "u8")]
 pub enum StatVal {
@@ -59,7 +80,8 @@ pub enum StatVal {
     Str(StatStr),
 }
 
-#[derive(Debug)]
+/// Holds a reference to a number living in shared memory
+/// This reference is valid for the lifetime of the plugin
 pub struct StatNum {
     pub val: &'static mut u64,
 }
@@ -72,7 +94,9 @@ impl StatNum {
     }
 }
 
-#[derive(Debug)]
+/// Holds a reference to a string living in shared memory
+/// The get/set function use a spinlock to safely manage access to this data
+/// This reference is valid for the lifetime of the plugin
 pub struct StatStr {
     pub(crate) lock: &'static mut AtomicU8,
     pub(crate) val: GenericBuf,
@@ -96,12 +120,13 @@ impl StatStr {
     }
 }
 
-#[derive(Debug)]
+/// Holds a reference to bytes living in shared memory
+/// The get/set function use a spinlock to safely manage access to this data
+/// This reference is valid for the lifetime of the plugin
 pub struct StatBytes {
     pub(crate) lock: &'static mut AtomicU8,
     pub(crate) val: GenericBuf,
 }
-
 impl StatBytes {
     pub fn set(&mut self, new_val: &[u8]) {
         acquire(self.lock);
@@ -113,17 +138,3 @@ impl StatBytes {
         LockGuard::new(self.lock, self.val.get())
     }
 }
-
-
-pub const TAG_PREFIX_TOTAL : &str = "total_";
-pub const TAG_PREFIX_AVG : &str = "avg_";
-pub const TAG_POSTFIX_HEX : &str = "_hex";
-pub const TAG_POSTFIX_STR_DIR : &str = "_dir";
-pub const TAG_POSTFIX_EPOCHS : &str = "_epoch_s";
-pub const TAG_POSTFIX_US : &str = "_us";
-pub const TAG_POSTFIX_MS : &str = "_ms";
-pub const TAG_POSTFIX_SEC : &str = "_s";
-pub const TAG_POSTFIX_MIN : &str = "_m";
-pub const TAG_POSTFIX_HOUR : &str = "_h";
-
-pub const STAT_TARGET_EXEC_TIME : &str = concat!("avg_target_exec_time_us");

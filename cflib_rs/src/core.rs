@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use crate::*;
 
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
 #[derive(Debug)]
 pub enum PluginStatus {
     Success,
@@ -9,21 +11,21 @@ pub enum PluginStatus {
 }
 
 pub trait PluginInterface {
-    fn set_ctx(&mut self, plugin_ctx: *mut u8);
-    fn get_ctx(&self) -> *mut u8;
-    fn get_store(&mut self) -> &mut HashMap<String, VecDeque<*mut u8>>;
     fn log(&self, level: log::Level, msg: &str);
-    fn add_stat(&mut self, stat: NewStat) -> Result<StatVal, Box<dyn std::error::Error>>;
+    fn add_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal>;
 }
 
-/// Initializes the plugin
-pub type PluginLoadCb = fn(ctx: &dyn PluginInterface) -> PluginStatus;
-/// Time to make sure the plugin has everything to fuzz properly
-pub type PluginPreFuzzCb = fn(ctx: &dyn PluginInterface) -> PluginStatus;
+/// Initializes the plugin.
+/// The plugin should add all of its owned values to the store and
+/// return a pointer to its state data if applicable.
+pub type PluginLoadCb = fn(core: &dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8>;
+/// During this callback, the plugin should make sure all the non-owned store
+/// values are present for its functionning.
+pub type PluginPreFuzzCb = fn(core: &dyn PluginInterface, store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()>;
 /// Perform its task for a single fuzz iteration
-pub type PluginFuzzCb = fn(ctx: &dyn PluginInterface) -> PluginStatus;
+pub type PluginFuzzCb = fn(core: &dyn PluginInterface, store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()>;
 /// Unload and free our resources
-pub type PluginUnLoadCb = fn(ctx: &dyn PluginInterface) -> PluginStatus;
+pub type PluginUnLoadCb = fn(core: &dyn PluginInterface, store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()>;
 
 pub static RUSTC_VERSION: &str = concat!(env!("RUSTC_VERSION"), "\0"); // To set this, copy cflib/res/build.rs into your crate's root
 

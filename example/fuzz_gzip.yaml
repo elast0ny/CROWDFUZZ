@@ -15,21 +15,21 @@
 
 "plugin_conf":
   # WinAFL args
-  - "wafl_dr_dir": 'D:\Code\C\cf_wafl\DynamoRIO-Windows-8.0.0-1\bin64'
-  - "wafl_build_dir": 'D:\Code\C\winafl\build64\bin\Release'
+  "wafl_dr_dir": 'D:\Code\C\cf_wafl\DynamoRIO-Windows-8.0.0-1\bin64'
+  "wafl_build_dir": 'D:\Code\C\winafl\build64\bin\Release'
   # Coverage params
   #- "wafl_covtype" : "branch"
-  - "wafl_covmodule" : "test.exe"
+  "wafl_covmodule" : "test.exe"
   # Target function
-  - "wafl_target_module" : "test.exe"
-  - "wafl_nargs" : 2
+  "wafl_target_module" : "test.exe"
+  "wafl_nargs" : 2
   #- "wafl_target_method" : "main"
-  - "wafl_target_offset" : 0x13A0
-  - "wafl_fuzz_iterations" : 5000
+  "wafl_target_offset" : 0x13A0
+  "wafl_fuzz_iterations" : 5000
   
   # Optional args
-  - "wafl_init_timeout" : 2000
-  - "wafl_exec_timeout" : 1000
+  "wafl_init_timeout" : 2000
+  "wafl_exec_timeout" : 1000
   #- "wafl_call_convention" : "ms64"
   #- "wafl_debug" : 1
   #1- "wafl_logdir" : 'D:\Code\Rust\CROWDFUZZ\example'
