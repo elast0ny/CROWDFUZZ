@@ -7,22 +7,25 @@ cflib::register!(fuzz, fuzz);
 cflib::register!(unload, destroy);
 
 // Initialize our plugin
-fn init(ctx: &dyn PluginInterface) -> PluginStatus {
-    ctx.log(::log::Level::Info, "test_plugin !");
+fn init(ctx: &dyn PluginInterface) -> PluginStatus {    
+    ctx.log(::log::Level::Info, "initializing");
     PluginStatus::Success
 }
 
 // Make sure we have everything to fuzz properly
-fn validate(_ctx: &dyn PluginInterface) -> PluginStatus {
+fn validate(ctx: &dyn PluginInterface) -> PluginStatus {
+    ctx.log(::log::Level::Info, "validating");
     PluginStatus::Success
 }
 
 // Perform our task in the fuzzing loop
-fn fuzz(_ctx: &dyn PluginInterface) -> PluginStatus {
+fn fuzz(ctx: &dyn PluginInterface) -> PluginStatus {
+    ctx.log(::log::Level::Info, "fuzzing");
     PluginStatus::Success
 }
 
 // Unload and free our resources
-fn destroy(_ctx: &dyn PluginInterface) -> PluginStatus {
+fn destroy(ctx: &dyn PluginInterface) -> PluginStatus {
+    ctx.log(::log::Level::Info, "destroying");
     PluginStatus::Success
 }

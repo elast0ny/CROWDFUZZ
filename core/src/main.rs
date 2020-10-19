@@ -2,17 +2,16 @@ use std::boxed::Box;
 use std::process::exit;
 
 use ::clap::{App, Arg};
-pub use ::log::{debug, error, info, log, trace, warn};
+pub use ::log::*;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-pub mod util;
-pub mod log;
 pub mod config;
 pub mod core;
+pub mod log;
 pub mod plugin;
-pub mod interface;
 pub mod stats;
+pub mod util;
 
 /*
 pub mod store;
@@ -131,17 +130,13 @@ fn main() -> Result<()> {
     }
     debug!("Handler for [ctrl+c] initialized...");
 
-    /*
     loop {
         //Call every plugin's init function
         if let Err(e) = core.init_plugins() {
             error!("{}", e);
             break;
         }
-        break;
-    }
 
-        core.stats.header.state = cflib::CORE_FUZZING as _;
         info!("Core & plugins initialized succesfully");
 
         //Run through once
@@ -150,39 +145,40 @@ fn main() -> Result<()> {
             break;
         }
 
-        if args.is_present("single_run") {
-            info!("Exiting before fuzz loop because of --single_run");
-            core.exiting
-                .store(true, std::sync::atomic::Ordering::Relaxed);
-            break;
-        }
+          if args.is_present("single_run") {
+              info!("Exiting before fuzz loop because of --single_run");
+              core.exiting
+                  .store(true, std::sync::atomic::Ordering::Relaxed);
+              break;
+          }
 
-        //Start fuzzing
-        if let Err(e) = core.fuzz_loop() {
-            warn!("{}", e);
-            break;
-        }
+          //Start fuzzing
+          if let Err(e) = core.fuzz_loop() {
+              warn!("{}", e);
+              break;
+          }
 
-        break;
-    }
+          break;
+      }
+      
+      core.ctx.stats.set_state(cflib::CoreState::Exiting);
 
-    //Planned stop ?
-    if core.exiting() {
-        info!("Tearing down");
-    } else {
-        error!("Tearing down");
-    }
+      //Planned stop ?
+      if core.exiting() {
+          info!("Tearing down");
+      } else {
+          error!("Tearing down");
+      }
 
-    //Allow plugins to cleanup after themselves
-    core.destroy_plugins();
+      core.destroy_plugins();
 
-    if core.exiting() {
-        info!("Done !");
-    } else {
-        error!("Done !");
-        drop(core);
-        std::process::exit(1);
-    }
-    */
+      if core.exiting() {
+          info!("Done !");
+      } else {
+          error!("Done !");
+          drop(core);
+          std::process::exit(1);
+      }
+
     Ok(())
 }

@@ -13,7 +13,7 @@ pub trait PluginInterface {
     fn get_ctx(&self) -> *mut u8;
     fn get_store(&mut self) -> &mut HashMap<String, VecDeque<*mut u8>>;
     fn log(&self, level: log::Level, msg: &str);
-    fn add_stat(&mut self, stat: NewStat) -> Result<Stat, Box<dyn std::error::Error>>;
+    fn add_stat(&mut self, stat: NewStat) -> Result<StatVal, Box<dyn std::error::Error>>;
 }
 
 /// Initializes the plugin
@@ -25,13 +25,22 @@ pub type PluginFuzzCb = fn(ctx: &dyn PluginInterface) -> PluginStatus;
 /// Unload and free our resources
 pub type PluginUnLoadCb = fn(ctx: &dyn PluginInterface) -> PluginStatus;
 
-#[no_mangle]
 pub static RUSTC_VERSION: &str = concat!(env!("RUSTC_VERSION"), "\0"); // To set this, copy cflib/res/build.rs into your crate's root
 
-pub const RUSTC_SYM: &[u8] = b"RUSTC_VERSION\0";
+pub const RUSTC_SYM: &[u8] = b"__RustcVersion\0";
 pub const NAME_SYM: &[u8] = b"__PluginName\0";
 
 pub const ONLOAD_SYM: &[u8] = b"__PluginLoadCb\0";
 pub const PRE_FUZZ_SYM: &[u8] = b"__PluginPreFuzzCb\0";
 pub const FUZZ_SYM: &[u8] = b"__PluginFuzzCb\0";
 pub const UNLOAD_SYM: &[u8] = b"__PluginUnloadCb\0";
+
+
+pub fn update_average(cur_avg: &mut u64, new_val: u64, val_num: u64) {
+    let cur_val = *cur_avg;
+    *cur_avg = if cur_val > new_val {
+        cur_val - ((cur_val - new_val) / val_num)
+    } else {
+        cur_val + ((new_val - cur_val) / val_num)
+    };
+}

@@ -1,21 +1,19 @@
-use std::boxed::Box;
-use std::collections::{HashMap, VecDeque};
-use std::ffi::c_void;
-use std::pin::Pin;
-use std::ptr::null_mut;
+
+use std::collections::HashMap;
+use std::mem::MaybeUninit;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 use std::time::Instant;
 
+use ::cflib::*;
 use ::log::*;
 use ::shared_memory::ShmemConf;
 
 use crate::Result;
 
 use crate::config::*;
-use crate::interface::*;
 use crate::plugin::*;
 use crate::stats::*;
 
@@ -24,20 +22,50 @@ pub struct Core<'a> {
     pub config: Config,
     /// Set to true when an exit event happens (ctrl-c)
     pub exiting: Arc<AtomicBool>,
+    /// The shared memory mapping used for stats
     pub shmem: shared_memory::Shmem,
-    /// Statistic about the fuzzer that live in the shared memory
-    pub stats: CoreStats<'a>,
-
-    /// current plugin being executed
-    pub cur_plugin_id: usize,
+    /// Data available to plugins
+    pub ctx: PluginCtx<'a>,
     /// List of loaded plugins
     pub plugin_chain: Vec<Plugin>,
     /// Index of the first plugin of the fuzz loop
     pub fuzz_loop_start: usize,
 
-    /// Public plugin data store
-    pub store: HashMap<String, VecDeque<*mut u8>>,
+    pub stats: CoreStats,
+}
+
+pub struct CoreStats {
+    /// How many values are included in averages
     pub avg_denominator: u64,
+    /// EPOCHS on startup
+    pub start_time: cflib::StatNum,
+    /// Number of executions since startup
+    pub num_execs: cflib::StatNum,
+    /// Time it takes for a single execution
+    pub total_exec_time: cflib::StatNum,
+    /// Time spent in the fuzzer core
+    pub exec_time: cflib::StatNum,
+    pub cwd: cflib::StatStr,
+    pub cmd_line: cflib::StatStr,
+    pub target_hash: cflib::StatBytes,
+}
+impl CoreStats {
+    pub fn new() -> Self {
+        // This gets initialized properly before being used in init_stats()
+        #[allow(invalid_value)]
+        unsafe {
+            Self {
+                avg_denominator: 0,
+                start_time: MaybeUninit::zeroed().assume_init(),
+                num_execs: MaybeUninit::zeroed().assume_init(),
+                total_exec_time: MaybeUninit::zeroed().assume_init(),
+                exec_time: MaybeUninit::zeroed().assume_init(),
+                cwd: MaybeUninit::zeroed().assume_init(),
+                cmd_line: MaybeUninit::zeroed().assume_init(),
+                target_hash: MaybeUninit::zeroed().assume_init(),
+            }
+        }
+    }
 }
 
 impl<'a> Core<'a> {
@@ -65,6 +93,7 @@ impl<'a> Core<'a> {
 
         info!("Loading plugins");
         let fuzz_loop_start_idx = config.pre_fuzz_loop.len();
+        let mut plugin_data = Vec::with_capacity(fuzz_loop_start_idx + config.fuzz_loop.len());
         let mut plugin_chain: Vec<Plugin> =
             Vec::with_capacity(fuzz_loop_start_idx + config.fuzz_loop.len());
 
@@ -73,6 +102,7 @@ impl<'a> Core<'a> {
             for f_path in &config.pre_fuzz_loop {
                 let cur_plugin: Plugin = Plugin::new(&f_path)?;
                 //debug!("\t{}", cur_plugin.name());
+                plugin_data.push(PluginData::new(cur_plugin.name()));
                 plugin_chain.push(cur_plugin);
             }
         }
@@ -81,21 +111,25 @@ impl<'a> Core<'a> {
         for f_path in &config.fuzz_loop {
             let cur_plugin: Plugin = Plugin::new(&f_path)?;
             //info!("\t- {}", cur_plugin.name());
+            plugin_data.push(PluginData::new(cur_plugin.name()));
             plugin_chain.push(cur_plugin);
         }
         info!("Loaded {} plugin(s)", plugin_chain.len());
 
-        let buf: &mut [u8] = unsafe{std::slice::from_raw_parts_mut(shmem.as_ptr(), shmem.len())};
+        let buf: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(shmem.as_ptr(), shmem.len()) };
 
         let mut core = Core {
             config: config,
-            stats: CoreStats::new(buf)?,
             exiting: Arc::new(AtomicBool::new(false)),
-            cur_plugin_id: plugin_chain.len(),
+            stats: CoreStats::new(),
+            ctx: PluginCtx {
+                plugin_data,
+                stats: Stats::new(buf)?,
+                cur_plugin_id: plugin_chain.len(),
+                store: HashMap::new(),
+            },
             plugin_chain: plugin_chain,
-            store: HashMap::new(),
             fuzz_loop_start: fuzz_loop_start_idx,
-            avg_denominator: 0,
             shmem,
         };
 
@@ -106,12 +140,10 @@ impl<'a> Core<'a> {
         Ok(core)
     }
 
-    
     pub fn exiting(&self) -> bool {
         self.exiting.load(Ordering::Relaxed)
     }
 
-    /*
     pub fn init_plugins(&mut self) -> Result<()> {
         info!("Initializing plugins");
 
@@ -124,21 +156,36 @@ impl<'a> Core<'a> {
                     self.plugin_chain.len()
                 )));
             }
-            self.cur_plugin_id = plugin_id;
+            self.ctx.cur_plugin_id = plugin_id;
 
             let plugin: &mut Plugin =
-                unsafe { self.plugin_chain.get_unchecked_mut(self.cur_plugin_id) };
+                unsafe { self.plugin_chain.get_unchecked_mut(self.ctx.cur_plugin_id) };
 
-            self.stats.add_component(Some(plugin))?;
+            self.ctx.stats.new_plugin(plugin.name())?;
+            plugin.exec_time = match self.ctx.stats.new_stat(NewStat {
+                tag: &format!(
+                    "{}exec_time{}",
+                    cflib::TAG_PREFIX_AVG,
+                    cflib::TAG_POSTFIX_US
+                ),
+                val: NewStatVal::Num(0),
+            }) {
+                Ok(StatVal::Num(v)) => v,
+                Err(e) => {
+                    return Err(From::from(format!(
+                        "Failed to create exec_time stat for {} : {}",
+                        plugin.name(),
+                        e
+                    )))
+                }
+                _ => panic!("Returned ok with invalid stat type"),
+            };
 
-            debug!("\t\"{}\"->init()", plugin.name());
-            if let Err(e) = plugin.init(&mut self.core_if) {
+            debug!("\t\"{}\"->load()", plugin.name());
+            if let Err(e) = plugin.init(&self.ctx as &dyn cflib::PluginInterface) {
                 warn!("Error initializing \"{}\"", plugin.name());
                 return Err(e);
             }
-
-            plugin.priv_data = self.core_if.priv_data;
-            self.core_if.priv_data = null_mut();
         }
 
         // Call validate()
@@ -150,35 +197,35 @@ impl<'a> Core<'a> {
                     self.plugin_chain.len()
                 )));
             }
-            self.cur_plugin_id = plugin_id;
+            self.ctx.cur_plugin_id = plugin_id;
             let plugin: &mut Plugin =
-                unsafe { self.plugin_chain.get_unchecked_mut(self.cur_plugin_id) };
+                unsafe { self.plugin_chain.get_unchecked_mut(self.ctx.cur_plugin_id) };
 
             debug!("\t\"{}\"->validate()", plugin.name());
-            if let Err(e) = plugin.validate(&mut self.core_if) {
+            if let Err(e) = plugin.validate(&self.ctx as &dyn cflib::PluginInterface) {
                 warn!("Error in plugin \"{}\"'s validate()", plugin.name());
                 return Err(e);
             }
         }
-
-        self.cur_plugin_id = self.plugin_chain.len();
+        // Init is done
+        self.ctx.stats.set_state(CoreState::Fuzzing);
+        self.ctx.cur_plugin_id = self.plugin_chain.len();
         Ok(())
     }
-    */
-    /*
+
     pub fn destroy_plugins(&mut self) {
         debug!("Destroying plugins");
         for (plugin_id, plugin) in self.plugin_chain.iter().rev().enumerate() {
             if !plugin.init_called {
                 continue;
             }
-            self.cur_plugin_id = self.plugin_chain.len() - 1 - plugin_id;
-            debug!("\"{}\"->destroy()", plugin.name());
-            if let Err(e) = plugin.destroy(&mut self.core_if) {
+            self.ctx.cur_plugin_id = self.plugin_chain.len() - 1 - plugin_id;
+            debug!("\"{}\"->unload()", plugin.name());
+            if let Err(e) = plugin.destroy(&self.ctx as &dyn cflib::PluginInterface) {
                 warn!("Error destroying \"{}\" : {}", plugin.name(), e);
             }
         }
-        self.cur_plugin_id = self.plugin_chain.len();
+        self.ctx.cur_plugin_id = self.plugin_chain.len();
     }
 
     ///Runs all plugins once
@@ -189,56 +236,62 @@ impl<'a> Core<'a> {
         let mut total_plugin_time: u64 = 0;
         let num_plugins = self.plugin_chain.len();
 
-        self.cur_plugin_id = 0;
-        self.stats.header.state = cflib::CORE_FUZZING as _;
-        *self.stats.num_execs += 1;
-        self.avg_denominator += 1;
+        self.ctx.cur_plugin_id = 0;
+
+        *self.stats.num_execs.val += 1;
+        self.stats.avg_denominator += 1;
+
         info!("Running through all plugins once");
-        for plugin in self.plugin_chain.iter_mut() {
+        for (plugin_id, plugin) in self.plugin_chain.iter_mut().enumerate() {
+            self.ctx.cur_plugin_id = plugin_id;
+
             if self.exiting.load(Ordering::Relaxed) {
-                self.cur_plugin_id = num_plugins;
-                self.stats.header.state = cflib::CORE_EXITING as _;
+                self.ctx.cur_plugin_id = num_plugins;
                 return Err(From::from(format!(
                     "CTRL-C while testing plugins (about to call '{}')",
                     plugin.name()
                 )));
             }
 
-            debug!("\t\"{}\"->work()", plugin.name());
+            debug!("\t\"{}\"->fuzz()", plugin.name());
 
             plugin_start = Instant::now();
-            plugin.do_work(&mut self.core_if)?;
+            plugin.do_work(&self.ctx as &dyn cflib::PluginInterface)?;
             time_elapsed = plugin_start.elapsed().as_micros() as u64;
 
             total_plugin_time += time_elapsed;
 
             //Adjust the plugin's exec_time average
-            cflib::update_average(plugin.exec_time, time_elapsed, *self.stats.num_execs);
-            debug!("\tTime : {} us", *plugin.exec_time);
+            cflib::update_average(
+                plugin.exec_time.val,
+                time_elapsed,
+                *self.stats.num_execs.val,
+            );
+            debug!("\tTime : {} us", *plugin.exec_time.val);
 
-            self.cur_plugin_id += 1;
+            self.ctx.cur_plugin_id += 1;
         }
 
-        self.cur_plugin_id = num_plugins;
+        self.ctx.cur_plugin_id = num_plugins;
 
         //Adjust the core's exec_time average
         time_elapsed = core_start.elapsed().as_micros() as u64;
         cflib::update_average(
-            self.stats.total_exec_time,
+            self.stats.total_exec_time.val,
             time_elapsed,
-            *self.stats.num_execs,
+            *self.stats.num_execs.val,
         );
         cflib::update_average(
-            self.stats.core_exec_time,
+            self.stats.exec_time.val,
             time_elapsed - total_plugin_time,
-            *self.stats.num_execs,
+            *self.stats.num_execs.val,
         );
-        debug!("\tCore time : {} us", *self.stats.core_exec_time);
+        debug!("\tCore time : {} us", *self.stats.exec_time.val);
 
         info!("Ready to go !");
         Ok(())
     }
-
+    
     pub fn fuzz_loop(&mut self) -> Result<()> {
         info!("Fuzzing...");
         let num_plugins = self.plugin_chain.len();
@@ -251,16 +304,15 @@ impl<'a> Core<'a> {
         loop {
             core_start = Instant::now();
             total_plugin_time = 0;
-            *self.stats.num_execs += 1;
-            if self.avg_denominator < 20 {
-                self.avg_denominator += 1;
+            *self.stats.num_execs.val += 1;
+            if self.stats.avg_denominator < 20 {
+                self.stats.avg_denominator += 1;
             }
-            self.cur_plugin_id = self.fuzz_loop_start;
+            self.ctx.cur_plugin_id = self.fuzz_loop_start;
 
             for plugin in fuzz_loop_plugins.iter_mut() {
                 if self.exiting.load(Ordering::Relaxed) {
-                    self.cur_plugin_id = num_plugins;
-                    self.stats.header.state = cflib::CORE_EXITING as _;
+                    self.ctx.cur_plugin_id = num_plugins;
                     return Err(From::from(format!(
                         "CTRL-C while fuzzing (about to call '{}')",
                         plugin.name()
@@ -269,12 +321,12 @@ impl<'a> Core<'a> {
 
                 // run the plugin
                 plugin_start = Instant::now();
-                plugin.do_work(&mut self.core_if)?;
+                plugin.do_work(&self.ctx as &dyn cflib::PluginInterface)?;
                 time_elapsed = plugin_start.elapsed().as_micros() as u64;
 
                 total_plugin_time += time_elapsed;
-                cflib::update_average(plugin.exec_time, time_elapsed, self.avg_denominator);
-                self.cur_plugin_id += 1;
+                cflib::update_average(plugin.exec_time.val, time_elapsed, self.stats.avg_denominator);
+                self.ctx.cur_plugin_id += 1;
             }
 
             //if *self.stats.num_execs == 3 {
@@ -284,28 +336,21 @@ impl<'a> Core<'a> {
 
             time_elapsed = core_start.elapsed().as_micros() as u64;
             cflib::update_average(
-                self.stats.total_exec_time,
+                self.stats.total_exec_time.val,
                 time_elapsed,
-                self.avg_denominator,
+                self.stats.avg_denominator,
             );
             cflib::update_average(
-                self.stats.core_exec_time,
+                self.stats.exec_time.val,
                 time_elapsed - total_plugin_time,
-                self.avg_denominator,
+                self.stats.avg_denominator,
             );
         }
     }
-    */
 }
 
 impl<'a> Drop for Core<'a> {
     fn drop(&mut self) -> () {
         //self.clear_public_store();
-
-        for (key, vec) in self.store.iter() {
-            if vec.len() != 0 {
-                error!("Store key '{}' has {} leaked item(s)...", key, vec.len());
-            }
-        }
     }
 }

@@ -27,8 +27,8 @@ pub enum CoreState {
 
 #[derive(SpRead, Debug)]
 pub struct StatHeader {
-    pid: u32,
     state: CoreState,
+    pid: u32,
     num_plugins: u16,
     #[sp(count = "num_plugins")]
     plugins: Vec<PluginStats>,
@@ -61,7 +61,7 @@ pub enum StatVal {
 
 #[derive(Debug)]
 pub struct StatNum {
-    pub(crate) val: &'static mut u64,
+    pub val: &'static mut u64,
 }
 impl StatNum {
     pub fn set(&mut self, new_val: u64) {
