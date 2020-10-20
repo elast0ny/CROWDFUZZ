@@ -72,21 +72,22 @@ fn main() -> Result<()> {
             .expect("Invalid number specified for --refresh_rate"),
     );
 
-    let mut state = State::new(&mut args);
-    let mut ui = UiState::new(&mut state);
+    let mut state = State::new(&args);
 
     let mut terminal = init_ui()?;
 
+    state.update_fuzzer_list();
+
     let mut last_scan = Instant::now();
-    let status: Result<(), Box<dyn Error>>;
+    let status: Result<()>;
     loop {
         // Scan fuzzer directories
         if last_scan.elapsed() > dir_scan_rate {
-            ui.update_fuzzers();
+            state.update_fuzzer_list();
             last_scan = Instant::now();
         }
         // refresh the UI
-        terminal.draw(|f| UiState::draw_self(&mut ui, f))?;
+        terminal.draw(|f| ui::draw(&mut state, f))?;
 
         if poll(refresh_rate)? {
             let read_evt = match read() {
@@ -111,19 +112,19 @@ fn main() -> Result<()> {
                             }
                         }
                         KeyCode::F(5) => {
-                            ui.update_fuzzers();
+                            state.update_fuzzer_list();
                         }
                         KeyCode::Tab | KeyCode::PageUp | KeyCode::Right => {
-                            ui.select_next_fuzzer();
+                            //ui.select_next_fuzzer();
                         }
                         KeyCode::PageDown | KeyCode::Left => {
-                            ui.select_prev_fuzzer();
+                            //ui.select_prev_fuzzer();
                         }
                         KeyCode::Up => {
-                            ui.select_prev_plugin();
+                            //ui.select_prev_plugin();
                         }
                         KeyCode::Down => {
-                            ui.select_next_plugin();
+                            //ui.select_next_plugin();
                         }
                         _ => {}
                     };

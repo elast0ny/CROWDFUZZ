@@ -27,7 +27,7 @@ pub enum NewStat<'a> {
 }
 
 /// The states that the fuzzer core can have
-#[derive(SpRead, Debug)]
+#[derive(SpRead, Debug, Clone, Copy)]
 #[sp(id_type = "u8")]
 pub enum CoreState {
     /// The core is in this state during load() and pre_fuzz()
