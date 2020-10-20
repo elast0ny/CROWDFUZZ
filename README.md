@@ -9,20 +9,20 @@ A plugin based fuzzer core
 ## Why Another Fuzzer
 This fuzzer does not bring any novel techniques to fuzzing on its own. The goal is to create a flexible and performant fuzzer __core__ that implements common functionalities that every fuzzer out there implements (folder management, UI, statistics, automation/deployement...) and allow researchers and developers to focus their efforts on fuzzing related work (file mutation, testcase generation, faster process spawning...).
 
-## Specific Goals
+## Features
+(Features provided by the core regardless of used plugins)
+- Cross platform (Tested on Windows & Linux)
+- Does not do __any__ (disk/terminal/network) I/O during fuzz loop
+- Provide basic niceties
+  - Ability to spawn itself multiple times
+  - Bind to free CPUs
+- Expose basic stats by default
+  - Runtime information (uptime, core time, plugin time, etc...)
+  - Project info (fuzz command, project folder, etc...)
+- Allow stat extensions
+  - Plugins can have their own arbitrary stats
+- Provides a store for inter-plugin data sharing
 
-* The core should be cross platform
-  * Windows & Linux to start
-* Have basic fuzzer features out of the box
-  * Have a central UI where you see all your fuzzers at once
-  * Support launching multiple instances of itself (v.s. having to launch them manually)
-  * Create a consistent folder layout for fuzz projects
-  * Provide a base set of stats that all projects would need (target speed, plugin speed, total execs, cpu usage, etc...)
-    * Allow plugins to add custom stats
-* Simple plugin development. Porting an existing fuzzer to CROWDFUZZ should be as painless as possible 
-* Provide a way for plugins to communicate
-  * Private data store
-  * Key based public store
 
 ## Frontends
 |Name | Status | Description |
@@ -37,8 +37,3 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 |basic| Done |Very basic set of plugins. Should be used as reference/examples. See : [basic_select](plugins/basic_select/), [basic_mutate](plugins/basic_mutate/), [basic_run](plugins/basic_run/), [basic_postrun](plugins/basic_postrun/) |
 |afl-fuzz| TODO | Standalone plugin suite that re-implements [afl-fuzz](http://lcamtuf.coredump.cx/afl/)|
 |winafl| Working PoC | Implement the execution technique from [winAFL](https://github.com/ivanfratric/winafl). Re-use `afl-fuzz` plugins for the rest|
-|angora| TODO | Standalone plugin suite that re-implements [AngoraFuzz](https://github.com/AngoraFuzzer/Angora)|
-
-## Developer Guide
-
-If you're interested in developping your own plugin, read the [plugin_dev](https://github.com/elast0ny/CROWDFUZZ/blob/master/docs/plugin_dev.md) guide.
