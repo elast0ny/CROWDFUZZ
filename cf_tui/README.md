@@ -1,5 +1,5 @@
 # CF_TUI
-A terminal based frontend for [CROWDFUZZ](../)
+A terminal based frontend for [CROWDFUZZ](https://github.com/elast0ny/CROWDFUZZ)
 
 ## Usage
 
