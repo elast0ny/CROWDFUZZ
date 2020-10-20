@@ -7,7 +7,7 @@ A plugin based fuzzer core
 
 
 ## Why Another Fuzzer
-This fuzzer does not bring any novel techniques to fuzzing on its own. The goal is to create a flexible and performant fuzzer __core__ that implements common functionalities that every fuzzer out there implements (folder management, UI, statistics, automation/deployement...) and allow researchers and developers to focus their efforts on fuzzing related work (file mutation, testcase generation, faster process spawning...).
+This fuzzer does not bring any novel techniques to fuzzing on its own. The goal is to create a flexible and performant fuzzer __core__ that implements common functionalities that every fuzzer out there implements (folder management, UI, statistics, automation/deployement...) and allow researchers to focus their efforts on fuzzing related work (file mutation, testcase generation, faster process spawning...).
 
 ## Features
 (Features provided by the core regardless of used plugins)
@@ -27,7 +27,7 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 ## Frontends
 |Name | Status | Description |
 |-----|--------|-------------|
-|cf_tui| Done | Basic terminal based UI to monitor fuzzers on a local machine|
+|[cf_tui](cf_tui/)| Done | Basic terminal based UI to monitor fuzzers on a local machine|
 | ? | TODO | Web based fuzzer stat aggregator to see multiple fuzzers from multiple servers fuzzing the same project |
 
 ## List of Plugins
