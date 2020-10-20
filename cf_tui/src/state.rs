@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use std::fmt::Write;
+use std::path::PathBuf;
 
 use ::cflib::{CfStats, CoreState};
 use ::shared_memory::{Shmem, ShmemConf};
@@ -12,7 +12,6 @@ pub struct State {
     watch_dir: PathBuf,
     stats_file_prefix: String,
     pub sys_info: System,
-    
     pub fuzzers: Vec<Fuzzer>,
     pub ui: UiState,
 }
@@ -25,7 +24,7 @@ impl State {
             sys_info: System::new_with_specifics(
                 RefreshKind::new().with_processes().with_cpu().with_memory(),
             ),
-            ui : UiState::default(),
+            ui: UiState::default(),
         };
 
         r.sys_info.refresh_cpu();
@@ -51,10 +50,9 @@ impl State {
         }
         for idx in to_del.iter().rev() {
             self.fuzzers.remove(*idx);
-            
             // Deleting to the left of the cursor
-            if *idx + 1 <= self.ui.selected_tab {
-                decrement_selected(&mut self.ui.selected_tab, None);
+            if *idx < self.ui.selected_tab {
+                decrement_selected(&mut self.ui.selected_tab, 0, false);
             }
             changed = true;
         }
@@ -98,10 +96,12 @@ impl State {
                 continue;
             }
 
-            // If we are already tracking this pid
-            if self.fuzzers.iter().any(|f| {
+            let existing_pid = |f: &Fuzzer| {
                 f.stats.pid == unsafe { *(cur.add(std::mem::size_of::<CoreState>()) as *mut u32) }
-            }) {
+            };
+
+            // If we are already tracking this pid
+            if self.fuzzers.iter().any(existing_pid) {
                 continue;
             }
 
@@ -126,6 +126,12 @@ impl State {
             if init_fuzzer_num != self.fuzzers.len() {
                 self.ui.tab_title.clear();
                 let _ = write!(&mut self.ui.tab_title, "Fuzzers ({})", self.fuzzers.len());
+            }
+
+            if self.fuzzers.is_empty() {
+                self.ui.clear_all();
+            } else if self.ui.plugin_list.selected().is_none() {
+                self.ui.plugin_list.select(Some(self.ui.selected_plugin));
             }
         }
 

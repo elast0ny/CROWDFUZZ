@@ -1,6 +1,6 @@
 use crate::*;
 
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Debug)]
 pub enum PluginStatus {
@@ -34,13 +34,3 @@ pub const ONLOAD_SYM: &[u8] = b"__PluginLoadCb\0";
 pub const PRE_FUZZ_SYM: &[u8] = b"__PluginPreFuzzCb\0";
 pub const FUZZ_SYM: &[u8] = b"__PluginFuzzCb\0";
 pub const UNLOAD_SYM: &[u8] = b"__PluginUnloadCb\0";
-
-
-pub fn update_average(cur_avg: &mut u64, new_val: u64, val_num: u64) {
-    let cur_val = *cur_avg;
-    *cur_avg = if cur_val > new_val {
-        cur_val - ((cur_val - new_val) / val_num)
-    } else {
-        cur_val + ((new_val - cur_val) / val_num)
-    };
-}

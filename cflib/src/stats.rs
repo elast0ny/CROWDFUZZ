@@ -7,14 +7,17 @@ use crate::*;
 pub const TAG_PREFIX_TOTAL : &str = "total_";
 /// UIs can combine these values into an average
 pub const TAG_PREFIX_AVG : &str = "avg_";
+pub (crate) const TAG_PREFIXES: &[&str] = &[TAG_PREFIX_TOTAL, TAG_PREFIX_AVG];
+
 pub const TAG_POSTFIX_HEX : &str = "_hex";
-pub const TAG_POSTFIX_STR_DIR : &str = "_dir";
+pub const TAG_POSTFIX_PATH : &str = "_dir";
 pub const TAG_POSTFIX_EPOCHS : &str = "_epoch_s";
 pub const TAG_POSTFIX_US : &str = "_us";
 pub const TAG_POSTFIX_MS : &str = "_ms";
 pub const TAG_POSTFIX_SEC : &str = "_s";
 pub const TAG_POSTFIX_MIN : &str = "_m";
 pub const TAG_POSTFIX_HOUR : &str = "_h";
+pub (crate) const TAG_POSTFIXES: &[&str] = &[TAG_POSTFIX_HEX, TAG_POSTFIX_PATH, TAG_POSTFIX_EPOCHS, TAG_POSTFIX_US, TAG_POSTFIX_MS, TAG_POSTFIX_SEC, TAG_POSTFIX_MIN, TAG_POSTFIX_HOUR];
 
 /// Plugins that execute a target binary should use this name for consistency
 pub const STAT_TARGET_EXEC_TIME : &str = concat!("avg_target_exec_time_us");

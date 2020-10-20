@@ -12,26 +12,25 @@ use ::tui::{
     widgets::*,
     Frame, Terminal,
 };
-use std::borrow::Cow;
-use std::{
-    error::Error,
-    io::{stdout, Stdout, Write},
-};
+use std::io::{stdout, Stdout, Write};
+use cflib::*;
 
 use crate::*;
-
-
 
 pub struct UiState {
     pub tab_title: String,
     pub selected_tab: usize,
     pub footer_content: Vec<String>,
     pub selected_plugin: usize,
-
     pub main_title: String,
+
+    // Cached stats
     pub main_view: Vec<(String, CachedStat)>,
     pub plugins_list_view: Vec<(String, CachedStat)>,
     pub plugins_view: Vec<(String, CachedStat)>,
+
+    // State for dynamic lists
+    pub plugin_list: ListState,
 }
 impl Default for UiState {
     fn default() -> Self {
@@ -40,9 +39,9 @@ impl Default for UiState {
             selected_tab: 0,
             footer_content: vec![
                 String::from("Load [cpu "),
-                String::new(),
+                String::new(), // 1
                 String::from(", mem "),
-                String::new(),
+                String::new(), // 3
                 String::from("]"),
             ],
             selected_plugin: 0,
@@ -50,18 +49,30 @@ impl Default for UiState {
             main_view: Vec::new(),
             plugins_list_view: Vec::new(),
             plugins_view: Vec::new(),
+            plugin_list: ListState::default(),
         }
     }
 }
+impl UiState {
+    pub fn clear_all(&mut self) {
+        // Clear all the cached values
+        self.main_view.clear();
+        self.plugins_list_view.clear();
+        self.plugins_view.clear();
 
-pub fn decrement_selected(val: &mut usize, max_loop: Option<usize>) {
+        self.selected_plugin = 0;
+        self.selected_tab = 0;
+        self.plugin_list.select(None);
+    }
+}
+
+pub fn decrement_selected(val: &mut usize, max: usize, loop_to_max: bool) {
     if *val == 0 {
-        if let Some(max_val) = max_loop {
-            *val = max_val - 1;
+        if loop_to_max {
+            *val = max - 1;
         }
         return;
     }
-
     *val -= 1;
 }
 
@@ -72,7 +83,6 @@ pub fn increment_selected(val: &mut usize, max: usize, loop_to_zero: bool) {
         }
         return;
     }
-
     *val += 1;
 }
 
@@ -94,7 +104,7 @@ pub fn draw<B: Backend>(state: &mut State, f: &mut Frame<B>) {
     // Draw main sections
     let (header_rect, content_rect, footer_rect) = (rects[0], rects[1], rects[2]);
     draw_header(state, f, header_rect);
-    //draw_fuzzer(state, f, content_rect);
+    draw_fuzzer(state, f, content_rect);
     draw_footer(state, f, footer_rect);
 }
 
@@ -123,279 +133,222 @@ pub fn draw_header<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
     f.render_widget(fuzzer_tabs, area);
 }
 
+pub fn get_or_add_cached_stat<'a>(list : &'a mut Vec<(String, CachedStat)>, idx: usize, tag: &str, stat: &mut StatVal) -> &'a mut (String, CachedStat) {
+
+    if list.len() <= idx {
+        list.push((String::from(tag), CachedStat::from(stat)))     
+    }
+    
+    if list.len() <= idx {
+        let _ = destroy_ui();
+        panic!("Trying to get cached_stat {}/{}", idx, list.len()-1);
+    }
+    let r = list.get_mut(idx).unwrap();
+    if r.0.as_str() != tag {
+        let _ = destroy_ui();
+        panic!("Fuzzers have different stats !?");
+    }
+    
+    r    
+}
+
+pub fn agregate_stat(cached_val: &mut ui::CachedStat, tag: &str, stat: &mut StatVal, total_vals: usize) {
+
+    let (cur_num, stat_num) = match (&mut cached_val.val, stat)  {
+        (CachedStatVal::Num(ref mut c), StatVal::Num(ref s)) => (c, *s.val),
+        _ => return, // Can only agregate numbers
+    };
+    
+    // Total
+    if tag.starts_with(TAG_PREFIX_TOTAL) {
+        *cur_num += stat_num;
+    // Average
+    } else if tag.starts_with(TAG_PREFIX_AVG) {
+        update_average(cur_num, stat_num, total_vals as u64);
+    }
+    
+}
+
 /// Draws the view when a fuzzer is selected
 pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) {
     use std::fmt::Write;
-
-    let cur_fuzzer;
-    let selected_plugin_idx;
-    let cur_tab_name: &str;
+    let mut fuzzer_list = Vec::with_capacity(1);
     
     state.ui.main_title.clear();
-    let mut fuzzer_list = Vec::with_capacity(1);
+
+    let fuzzer_details = Block::default().borders(Borders::ALL).title(state.ui.main_title.as_str());
+    if state.fuzzers.is_empty() {
+        let content = Paragraph::new(Span::raw("<No fuzzers>"))
+            .block(fuzzer_details)
+            .style(Style::default().fg(Color::Red))
+            .alignment(tui::layout::Alignment::Center);
+        f.render_widget(content, area);
+        return;
+    }
 
     // Add up the fuzzers for the current view
     if state.ui.selected_tab == 0 {            
         state.ui.main_title.push_str("Overview");
-
-        let fuzzer_details = Block::default().borders(Borders::ALL).title(state.ui.main_title.as_str());
-        if state.fuzzers.len() == 0 {
-            let content = Paragraph::new(Span::raw("<No fuzzers>"))
-                .block(fuzzer_details)
-                .style(Style::default().fg(Color::Red))
-                .alignment(tui::layout::Alignment::Center);
-            f.render_widget(content, area);
-            return;
-        }
-
         for fuzzer in state.fuzzers.iter_mut() {
             fuzzer_list.push(fuzzer);
         }
     } else {
         let fuzzer = state.fuzzers.get_mut(state.ui.selected_tab - 1).unwrap();
-        let _ = write!(&mut state.ui.main_title, "pid({})", fuzzer.stats.pid);
+        let _ = write!(&mut state.ui.main_title, "core({})", fuzzer.stats.pid);
         fuzzer_list.push(fuzzer);
     }
 
-    // Refresh stat values
+    // Compute stat values
     for (fuzzer_idx, fuzzer) in fuzzer_list.drain(..).enumerate() {
-        for (plugin_idx, plugin) in fuzzer.stats.plugins.iter_mut().enumerate() {
-            let cached_view = if plugin_idx == 0 {
-                &mut state.ui.main_view
-            } else {
-                &mut state.ui.plugins_view
-            };
-
+        'plugin_loop: for (plugin_idx, plugin) in fuzzer.stats.plugins.iter_mut().enumerate() {            
             for (stat_idx, stat) in plugin.stats.iter_mut().enumerate() {
-                let (cached_tag, cached_val) = match cached_view.get_mut(stat_idx) {
-                    Some(v) => {
-                        if v.0.as_str() != stat.tag {
-                            destroy_ui();
-                            panic!("Fuzzers have different stats !?");
-                        }
-                        v
-                    },
-                    None => {
-                        cached_view.push((String::from(stat.tag), CachedStat::from(&mut stat.val)));
-                        cached_view.get_mut(stat_idx).unwrap()
+                // Calculate exec time for all plugins
+                if plugin_idx != 0 && stat_idx == 0 {
+                    let (_, cached_val) = get_or_add_cached_stat(&mut state.ui.plugins_list_view, plugin_idx-1, plugin.name.as_str(), &mut stat.val);
+                    if fuzzer_idx == 0 {
+                        cached_val.set(&mut stat.val);
+                    } else {
+                        agregate_stat(cached_val, plugin.name.as_str(), &mut stat.val, fuzzer_idx + 1);
                     }
-                };
+                }
 
+                // Calculate either the main core plugin view or selected plugin view
+                let cached_view = if plugin_idx == 0 {
+                    // First plugin is for the core
+                    &mut state.ui.main_view
+                } else if plugin_idx - 1 == state.ui.selected_plugin {
+                    // This is the active plugin in the plugin_details view
+                    &mut state.ui.plugins_view
+                } else {
+                    // This plugin is not currently in view
+                    continue 'plugin_loop;
+                };
+                
+                let (_cached_tag, cached_val) = get_or_add_cached_stat(cached_view, stat_idx, stat.tag.as_str(), &mut stat.val);
                 if fuzzer_idx == 0 {
                     cached_val.set(&mut stat.val);
                 } else {
-                    let cur_val = if let CachedStat::Num(ref mut a) = cached_val {
-                        a
-                    } else {
-                        // Keep first value we got
-                        continue;
-                    };
-
-                    // Calculate averages and totals
-                    if let cflib::StatVal::Num(v) = stat.val {
-                        if stat.tag.starts_with(cflib::TAG_PREFIX_TOTAL) {
-                            *cur_val += *v.val;
-                        } else if stat.tag.starts_with(cflib::TAG_PREFIX_AVG) {
-                            cflib::update_average(cur_val, *v.val, fuzzer_idx as u64 + 1);
-                        }
-                    }
-                    // Keep first value we got
+                    agregate_stat(cached_val, stat.tag.as_str(), &mut stat.val, fuzzer_idx + 1);
                 }
             }
         }
     }
 
-    // Overview
-    if state.ui.selected_tab == 0 {
-        let fuzzer_details = Block::default().borders(Borders::ALL).title("Overview");
-        if state.fuzzers.len() == 0 {
-            let content = Paragraph::new(Span::raw("<No fuzzers>"))
-                .block(fuzzer_details)
-                .style(Style::default().fg(Color::Red))
-                .alignment(tui::layout::Alignment::Center);
-            f.render_widget(content, area);
-            return;
+    let mut max_tag_len: usize = 0;
+    let mut max_val_len: usize = 0;
+    let mut max_plugin_name_len: usize = 0;
+    let mut max_plugin_tag_len: usize = 0;
+    
+    // Generate string representations and calculate max lengths for ui splitting
+    for (tag, val) in state.ui.main_view.iter_mut() {
+        let (stripped_tag, tag_hints) =  strip_tag_hints(tag.as_str());
+        if stripped_tag.len() > max_tag_len {
+            max_tag_len = tag.len();
         }
-
-        // Refresh stat values
-        for fuzzer in state.fuzzers.iter_mut() {
-            for (plugin_idx, plugin) in fuzzer.stats.plugins.iter_mut().enumerate() {
-                let cached_view = if plugin_idx == 0 {
-                    &mut state.ui.main_view
-                } else {
-                    &mut state.ui.plugins_view
-                };
-
-                for (stat_idx, stat) in plugin.stats.iter_mut().enumerate() {
-                    
-                }
-            }
+        val.update_str_repr(tag_hints);
+        if val.str_repr.len() > max_val_len {
+            max_val_len = val.str_repr.len();
         }
-
-        // Merge stats
-        let (head, tail) = self.state.fuzzers.split_at_mut(1);
-        // Fuzzer stats
-        Plugin::combine_stats(
-            &mut head[0].core,
-            &tail.iter().map(|f| &f.core).collect::<Vec<&Plugin>>(),
-            None,
-        );
-        // Plugin stats
-        for (idx, plugin) in head[0].plugins.iter_mut().enumerate() {
-            let plugin_list = &tail
-                .iter()
-                .map(|f| &f.plugins[idx])
-                .collect::<Vec<&Plugin>>();
-            if idx == selected_plugin_idx {
-                Plugin::combine_stats(plugin, plugin_list, None);
-            } else {
-                Plugin::combine_stats(plugin, plugin_list, Some(COMPONENT_EXEC_TIME_IDX));
-            }
+    }
+    for (tag, val) in state.ui.plugins_list_view.iter_mut() {
+        if tag.len() > max_plugin_name_len {
+            max_plugin_name_len = tag.len();
         }
-        cur_fuzzer = &mut self.state.fuzzers[0];
-        cur_tab_name = "Overview"
-    // Specific fuzzer selected
-    } else {
-        cur_fuzzer = &mut self.state.fuzzers[self.selected_tab - 1];
-        selected_plugin_idx = cur_fuzzer.cur_plugin_idx;
-        // Refresh fuzzer stats
-        cur_fuzzer.refresh(false);
-        // Refresh stats for selected plugin
-        cur_fuzzer.refresh_plugin(selected_plugin_idx);
-        cur_tab_name = cur_fuzzer.pretty_name.as_str();
+        val.update_str_repr((None, Some(TAG_POSTFIX_US)));
+    }
+    for (tag, val) in state.ui.plugins_view.iter_mut() {
+        let (stripped_tag, tag_hints) =  strip_tag_hints(tag.as_str());
+        if stripped_tag.len() > max_plugin_tag_len {
+            max_plugin_tag_len = tag.len();
+        }
+        val.update_str_repr(tag_hints);
     }
 
-    let plugin_details_rect;
+    use std::cmp::max;
 
-    // Render the top view (fuzzer stats and plugin list)
-    {
-        let mut max_fuzzer_val = 0;
-        let mut fuzzer_titles = Vec::new();
-        let mut fuzzer_vals = Vec::new();
-        for s in cur_fuzzer.core.stats.iter_mut() {
-            let (tag, val) = s.get_tuple();
-            fuzzer_titles.push(Text::Raw(Cow::from(tag)));
-            if val.len() > max_fuzzer_val {
-                max_fuzzer_val = val.len();
-            }
-            fuzzer_vals.push(Text::Raw(Cow::from(val)));
-        }
-
-        // split total area into subsections
-        let details_rect = area;
+    // Split the view accordingly vertically
+    let details_rect = area;
         let rects = Layout::default()
             .direction(Direction::Vertical)
             .constraints(
                 [
-                    Constraint::Length((self.fuzzer_stats_heigth + 2) as u16),
+                    Constraint::Length((max(state.ui.main_view.len(), state.ui.plugins_list_view.len()) + 2) as u16),
                     Constraint::Percentage(100),
                 ]
                 .as_ref(),
             )
             .split(details_rect);
-        let core_details_rect = rects[0];
-        plugin_details_rect = rects[1];
-        let rects = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(
-                [
-                    Constraint::Length((self.max_core_stat_title + 2) as u16),
-                    Constraint::Length((max_fuzzer_val + 1) as u16),
-                    Constraint::Length((self.max_plugin_name + 3) as u16),
-                    Constraint::Percentage(100),
-                ]
-                .as_ref(),
-            )
-            .split(core_details_rect);
-        let core_tag_list_rect = rects[0];
-        let core_val_list_rect = rects[1];
-        let plugins_list_rect = rects[2];
-        let plugins_time_rect = rects[3];
+    let core_details_rect = rects[0];
+    let plugin_details_rect = rects[1];
+    // Split the main view for core & plugin list
+    let rects = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Length((max_tag_len + 2) as u16),
+                Constraint::Length((max_val_len + 1) as u16),
+                Constraint::Length((max_plugin_name_len + 3) as u16),
+                Constraint::Percentage(100),
+                
+            ]
+            .as_ref(),
+        )
+        .split(core_details_rect);
+    let core_tag_list_rect = rects[0];
+    let core_val_list_rect = rects[1];
+    let plugins_list_rect = rects[2];
+    let plugins_time_rect = rects[3];
+    // Split bottom area for currently selected plugin
+    let rects = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Length((max_plugin_tag_len + 2) as u16),
+                Constraint::Percentage(100),
+            ]
+            .as_ref(),
+        )
+        .split(plugin_details_rect);
+    let plugin_tag_list_rect = rects[0];
+    let plugin_val_list_rect = rects[1];
 
-        // Render fuzzer stat titles
-        let core_tag_list = List::new(fuzzer_titles.drain(..)).block(
-            Block::default()
-                .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
-                .title(cur_tab_name),
+    // core stat tags
+    let items: Vec<ListItem>= state.ui.main_view.iter().map(|i| ListItem::new(strip_tag_hints(i.0.as_str()).0)).collect();
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
+            .title(state.ui.main_title.as_str()),
         );
-        f.render_widget(core_tag_list, core_tag_list_rect);
-        // Render fuzzer stat values
-        let core_val_list = List::new(fuzzer_vals.drain(..))
-            .block(Block::default().borders(Borders::TOP | Borders::BOTTOM));
-        f.render_widget(core_val_list, core_val_list_rect);
+    f.render_widget(list, core_tag_list_rect);
+    // core stat values
+    let items: Vec<ListItem>= state.ui.main_view.iter().map(|i| ListItem::new(i.1.str_repr.as_str())).collect();
+    let list = List::new(items).block(Block::default().borders(Borders::TOP | Borders::BOTTOM));
+    f.render_widget(list, core_val_list_rect);
 
-        // Render list of plugin names
-        let mut plugin_names = Vec::with_capacity(cur_fuzzer.plugins.len());
-        let mut plugin_times = Vec::with_capacity(cur_fuzzer.plugins.len());
-        for plugin in cur_fuzzer.plugins.iter_mut() {
-            plugin_names.push(Text::Raw(Cow::from(plugin.name.as_str())));
-            plugin_times.push(Text::Raw(Cow::from(
-                plugin.stats[COMPONENT_EXEC_TIME_IDX].val_as_str(),
-            )));
-        }
-        let plugin_list = List::new(plugin_names.drain(..))
-            .block(
-                Block::default()
-                    .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
-                    .title("Plugins"),
-            )
-            .highlight_symbol(">")
-            .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
-        f.render_stateful_widget(plugin_list, plugins_list_rect, &mut self.plugins_list_state);
+    // plugin list names
+    let items: Vec<ListItem>= state.ui.plugins_list_view.iter().map(|i| ListItem::new(i.0.as_str())).collect();
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
+            .title("Plugins"),
+        ).highlight_symbol(">")
+        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+    f.render_stateful_widget(list, plugins_list_rect, &mut state.ui.plugin_list);
+    // plugin list times
+    let items: Vec<ListItem>= state.ui.plugins_list_view.iter().map(|i| ListItem::new(i.1.str_repr.as_str())).collect();
+    let list = List::new(items).block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT))
+        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+    f.render_widget(list, plugins_time_rect);
 
-        // Render each average exec time for the plugin list
-        let plugin_times = List::new(plugin_times.drain(..))
-            .block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT))
-            .highlight_style(Style::default().fg(Color::Yellow).modifier(Modifier::BOLD));
-        f.render_stateful_widget(
-            plugin_times,
-            plugins_time_rect,
-            &mut self.plugins_list_state,
-        );
-    }
-
-    // Render the selected plugin details
-    {
-        let cur_plugin = &mut cur_fuzzer.plugins[selected_plugin_idx];
-
-        let mut _max_plugin_val = 0;
-        let mut plugin_titles = Vec::new();
-        let mut plugin_vals = Vec::new();
-        for s in cur_plugin.stats.iter_mut() {
-            let (tag, val) = s.get_tuple();
-            plugin_titles.push(Text::Raw(Cow::from(tag)));
-            if val.len() > _max_plugin_val {
-                _max_plugin_val = val.len();
-            }
-            plugin_vals.push(Text::Raw(Cow::from(val)));
-        }
-
-        // Split bottom area for currently selected plugin
-        let rects = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(
-                [
-                    Constraint::Length((self.max_plugin_stat_title + 2) as u16),
-                    Constraint::Percentage(100),
-                ]
-                .as_ref(),
-            )
-            .split(plugin_details_rect);
-        let plugin_tag_list_rect = rects[0];
-        let plugin_val_list_rect = rects[1];
-
-        // Render selected plugin stat names
-        let plugin_tag_list = List::new(plugin_titles.drain(..)).block(
-            Block::default()
-                .borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
-                .title(cur_plugin.name.as_ref()),
-        );
-        f.render_widget(plugin_tag_list, plugin_tag_list_rect);
-        // Render selected plugin stat values
-        let plugin_val_list = List::new(plugin_vals.drain(..))
-            .block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT));
-        f.render_widget(plugin_val_list, plugin_val_list_rect);
-    }
+    // selected plugin stat tags
+    let items: Vec<ListItem>= state.ui.plugins_view.iter().map(|i| ListItem::new(strip_tag_hints(i.0.as_str()).0)).collect();
+    let list = List::new(items).block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::LEFT)
+        .title(state.fuzzers[0].stats.plugins[state.ui.selected_plugin + 1].name.as_ref()));
+    f.render_widget(list, plugin_tag_list_rect);
+    //  selected stat values
+    let items: Vec<ListItem>= state.ui.plugins_view.iter().map(|i| ListItem::new(i.1.str_repr.as_str())).collect();
+    let list = List::new(items).block(Block::default().borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT));
+    f.render_widget(list, plugin_val_list_rect);
 }
 
 pub fn draw_footer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) {
@@ -480,34 +433,45 @@ pub fn destroy_ui() -> Result<()> {
     Ok(())
 }
 
-
-pub enum CachedStat {
-    Num(u64),
-    Str(String),
-    Bytes(Vec<u8>),
+pub struct CachedStat {
+    pub val: CachedStatVal,
+    pub str_repr_val: Option<u64>,
+    pub str_repr: String,
 }
 impl CachedStat {
-    pub fn from(val: &mut cflib::StatVal) -> Self {
-        match val {
-            cflib::StatVal::Num(v) => Self::Num(*v.val),
-            cflib::StatVal::Str(v) => Self::Str(String::from(*v.get())),
-            cflib::StatVal::Bytes(v) => Self::Bytes(Vec::from(*v.get())),
-        }
+    pub fn from(val: &mut StatVal) -> Self {
+        // Create copy of real stat
+        let val = match val {
+            StatVal::Num(v) => CachedStatVal::Num(*v.val),
+            StatVal::Str(v) => CachedStatVal::Str(String::from(*v.get())),
+            StatVal::Bytes(v) => CachedStatVal::Bytes(Vec::from(*v.get())),
+        };
+
+        Self {
+            val,
+            str_repr_val: None,
+            str_repr: String::new(),
+        } 
     }
-    pub fn set(&mut self, new_val: &mut cflib::StatVal) {
+
+    pub fn set(&mut self, new_val: &mut StatVal) {
         use std::ops::Deref;
+    
         match new_val {
-            cflib::StatVal::Num(v) => match self {
-                Self::Num(ref mut s) => *s = *v.val,
+            StatVal::Num(v) => match self.val {
+                CachedStatVal::Num(ref mut s) => {
+                    *s = *v.val;
+                },
                 _ => panic!("CachedStat::set() with mismatch StatVal"),
             },
             cflib::StatVal::Str(v) => {
                 let val = v.get();
-                match self {
-                    Self::Str(ref mut s) => {
+                match self.val {
+                    CachedStatVal::Str(ref mut s) => {
                         if s != *val {
                             s.clear();
                             s.push_str(*val);
+                            self.str_repr_val = Some(1);
                         }
                     }
                     _ => panic!("CachedStat::set() with mismatch StatVal"),
@@ -515,11 +479,12 @@ impl CachedStat {
             }
             cflib::StatVal::Bytes(v) => {
                 let val = v.get();
-                match self {
-                    Self::Bytes(ref mut s) => {
+                match self.val {
+                    CachedStatVal::Bytes(ref mut s) => {
                         if val.deref() != s {
                             s.clear();
                             s.extend_from_slice(*val);
+                            self.str_repr_val = Some(1);
                         }
                     }
                     _ => panic!("CachedStat::set() with mismatch StatVal"),
@@ -527,4 +492,49 @@ impl CachedStat {
             }
         }
     }
+
+    pub fn update_str_repr(&mut self, tag_hints: (Option<&'static str>, Option<&'static str>)) {
+        let must_update = match self.str_repr_val {
+            None => true,
+            Some(cur_val) => {
+                match self.val {
+                    CachedStatVal::Num(ref v) => *v != cur_val,
+                    _ => cur_val == 1,
+                }
+            }
+        };
+
+        if !must_update {
+            return;
+        }
+        
+
+        self.str_repr.clear();
+        match self.val {
+            CachedStatVal::Num(v) => {
+                self.str_repr_val = Some(v);
+                // If this number is a timestamp, pretend it keeps changing
+                if let Some(postfix) = tag_hints.1 {
+                    if postfix == TAG_POSTFIX_EPOCHS {
+                        self.str_repr_val = None;
+                    }
+                }
+                pretty_num(&mut self.str_repr, v, tag_hints);
+            },
+            CachedStatVal::Str(ref s) => {
+                self.str_repr_val = Some(0);
+                pretty_str(&mut self.str_repr, s, tag_hints);
+            },
+            CachedStatVal::Bytes(ref b) => {
+                self.str_repr_val = Some(0);
+                pretty_bytes(&mut self.str_repr, b, tag_hints);
+            },
+        }
+    }
+}
+
+pub enum CachedStatVal {
+    Num(u64),
+    Str(String),
+    Bytes(Vec<u8>),
 }

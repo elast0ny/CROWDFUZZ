@@ -19,6 +19,24 @@ impl<'a> CfCore<'a> {
         self.ctx.stats.new_plugin(&self.config.prefix)?;
 
         let mut tag = format!(
+            "{}exec_time{}",
+            cflib::TAG_PREFIX_AVG,
+            cflib::TAG_POSTFIX_US
+        );
+        self.stats.exec_time = match self.ctx.stats.new_stat(&tag, NewStat::Num(0)) {
+            Ok(StatVal::Num(v)) => v,
+            Err(e) => {
+                return Err(From::from(format!(
+                    "Failed to create core stat {} : {}",
+                    tag, e
+                )))
+            }
+            _ => panic!("Returned ok with invalid stat type"),
+        };
+
+        tag.clear();
+        let _ = write!(
+            &mut tag,
             "{}uptime{}",
             cflib::TAG_PREFIX_TOTAL,
             cflib::TAG_POSTFIX_EPOCHS
@@ -87,25 +105,7 @@ impl<'a> CfCore<'a> {
         };
 
         tag.clear();
-        let _ = write!(
-            &mut tag,
-            "{}exec_time{}",
-            cflib::TAG_PREFIX_AVG,
-            cflib::TAG_POSTFIX_US
-        );
-        self.stats.exec_time = match self.ctx.stats.new_stat(&tag, NewStat::Num(0)) {
-            Ok(StatVal::Num(v)) => v,
-            Err(e) => {
-                return Err(From::from(format!(
-                    "Failed to create core stat {} : {}",
-                    tag, e
-                )))
-            }
-            _ => panic!("Returned ok with invalid stat type"),
-        };
-
-        tag.clear();
-        let _ = write!(&mut tag, "working{}", cflib::TAG_POSTFIX_STR_DIR);
+        let _ = write!(&mut tag, "working_dir{}", cflib::TAG_POSTFIX_PATH);
         self.stats.cwd = match self.ctx.stats.new_stat(
             &tag,
             NewStat::Str {
@@ -150,7 +150,7 @@ impl<'a> CfCore<'a> {
         };
 
         tag.clear();
-        let _ = write!(&mut tag, "bin_bash{}", cflib::TAG_POSTFIX_HEX);
+        let _ = write!(&mut tag, "target_crc{}", cflib::TAG_POSTFIX_HEX);
         self.stats.target_hash = match self.ctx.stats.new_stat(
             &tag,
             NewStat::Bytes {
@@ -293,7 +293,6 @@ impl<'a> Stats<'a> {
 
         // Save where the stat's start is
         let stat_val_idx = self.end_idx;
-        
         if let NewStat::Num(val) = stat {
             if self.buf.len() < self.end_idx + size_of::<u8>() + size_of::<u64>() {
                 return Err(From::from("Stats memory is too small".to_string()));
@@ -308,20 +307,14 @@ impl<'a> Stats<'a> {
             }
         } else {
             let (id, mut max_size, init_val) = match stat {
-                NewStat::Bytes { max_size, init_val } => {
-                    (1, max_size, init_val)
-                },
-                NewStat::Str { max_size, init_val } => {
-                    (2, max_size, init_val.as_bytes())
-                }
+                NewStat::Bytes { max_size, init_val } => (1, max_size, init_val),
+                NewStat::Str { max_size, init_val } => (2, max_size, init_val.as_bytes()),
                 NewStat::Num(_) => unreachable!(),
             };
-            
             // Make sure max_size makes sense
             if init_val.len() > max_size {
                 max_size = init_val.len();
             }
-            
             // Make sure this can fit
             if self.buf.len()
                 < self.end_idx
@@ -329,7 +322,8 @@ impl<'a> Stats<'a> {
                     + size_of::<AtomicU8>() // Lock
                     + size_of::<u64>() // Capacity
                     + size_of::<u64>() // Len
-                    + max_size // buf[]
+                    + max_size
+            // buf[]
             {
                 return Err(From::from("Stats memory is too small".to_string()));
             }
@@ -363,7 +357,7 @@ impl<'a> Stats<'a> {
         Ok(stat_val)
     }
 
-    pub fn set_state(&mut self, new_state:CoreState) {        
+    pub fn set_state(&mut self, new_state: CoreState) {
         unsafe {
             *(self.buf.as_mut_ptr() as *mut CoreState) = new_state;
         };

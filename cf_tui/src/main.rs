@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::time::{Duration, Instant};
 
 use clap::{App, Arg};
@@ -97,39 +96,42 @@ fn main() -> Result<()> {
                     break;
                 }
             };
-            match read_evt {
-                Event::Key(event) => {
-                    match event.code {
-                        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
+            if let Event::Key(event) = read_evt {
+                match event.code {
+                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
+                        status = Ok(());
+                        break;
+                    }
+                    //also allow ctrl-c
+                    KeyCode::Char('c') | KeyCode::Char('C') => {
+                        if event.modifiers.contains(KeyModifiers::CONTROL) {
                             status = Ok(());
                             break;
                         }
-                        //also allow ctrl-c
-                        KeyCode::Char('c') | KeyCode::Char('C') => {
-                            if event.modifiers.contains(KeyModifiers::CONTROL) {
-                                status = Ok(());
-                                break;
-                            }
+                    }
+                    KeyCode::F(5) => {
+                        state.update_fuzzer_list();
+                    }
+                    KeyCode::Tab | KeyCode::PageUp | KeyCode::Right => {
+                        increment_selected(&mut state.ui.selected_tab, state.fuzzers.len() + 1, false);
+                    }
+                    KeyCode::PageDown | KeyCode::Left => {
+                        decrement_selected(&mut state.ui.selected_tab, state.fuzzers.len() + 1, false);
+                    }
+                    KeyCode::Up => {
+                        if !state.fuzzers.is_empty() {
+                            increment_selected(&mut state.ui.selected_plugin, state.fuzzers[0].stats.plugins.len() - 1, true);
+                            state.ui.plugin_list.select(Some(state.ui.selected_plugin))
                         }
-                        KeyCode::F(5) => {
-                            state.update_fuzzer_list();
+                    }
+                    KeyCode::Down => {
+                        if !state.fuzzers.is_empty() {
+                            decrement_selected(&mut state.ui.selected_plugin, state.fuzzers[0].stats.plugins.len() - 1, true);
+                            state.ui.plugin_list.select(Some(state.ui.selected_plugin))
                         }
-                        KeyCode::Tab | KeyCode::PageUp | KeyCode::Right => {
-                            //ui.select_next_fuzzer();
-                        }
-                        KeyCode::PageDown | KeyCode::Left => {
-                            //ui.select_prev_fuzzer();
-                        }
-                        KeyCode::Up => {
-                            //ui.select_prev_plugin();
-                        }
-                        KeyCode::Down => {
-                            //ui.select_next_plugin();
-                        }
-                        _ => {}
-                    };
-                }
-                _ => { /*trigger refresh for any unhandled event*/ }
+                    }
+                    _ => {}
+                };
             }
         }
     }
