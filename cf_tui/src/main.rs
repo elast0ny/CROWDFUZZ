@@ -9,7 +9,8 @@ use crate::ui::*;
 pub mod state;
 use crate::state::*;
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+use ::cflib::Result;
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
