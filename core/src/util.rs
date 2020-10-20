@@ -73,12 +73,13 @@ pub fn spawn_next_instance(instance_num: isize, cwd: &Path) -> Result<Option<Chi
         if new_inst_num <= 0 {
             return Ok(None);
         }
-        info!("Spawning {} instances", new_inst_num);
     }
 
     if new_inst_num == 1 {
         return Ok(None);
     }
+
+    info!("Spawning {} instances", new_inst_num);
 
     let mut args = std::env::args();
     let process_path = args.next().unwrap();
@@ -96,7 +97,7 @@ pub fn spawn_next_instance(instance_num: isize, cwd: &Path) -> Result<Option<Chi
             last_is_instance = false;
             continue;
         }
-        if arg == "--instances" {
+        if arg == "--num_instances" || arg == "-n" {
             last_is_instance = true;
         }
         new_args.push(arg);

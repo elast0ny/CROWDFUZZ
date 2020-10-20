@@ -3,7 +3,7 @@ A plugin based fuzzer core
 
 ![](cf_tui/doc/cf_tui_demo.gif)
 
-(Terminal based frontend cf_tui)
+(Terminal based frontend [cf_tui](cf_tui/))
 
 
 ## Why Another Fuzzer

@@ -61,7 +61,7 @@ impl<'a> CfCore<'a> {
         };
 
         tag.clear();
-        let _ = write!(&mut tag, "{}execs", cflib::TAG_PREFIX_TOTAL);
+        let _ = write!(&mut tag, "{}num_execs", cflib::TAG_PREFIX_TOTAL);
         self.stats.num_execs = match self.ctx.stats.new_stat(&tag, NewStat::Num(0)) {
             Ok(StatVal::Num(v)) => v,
             Err(e) => {
@@ -81,19 +81,6 @@ impl<'a> CfCore<'a> {
             cflib::TAG_POSTFIX_US
         );
         self.stats.total_exec_time = match self.ctx.stats.new_stat(&tag, NewStat::Num(0)) {
-            Ok(StatVal::Num(v)) => v,
-            Err(e) => {
-                return Err(From::from(format!(
-                    "Failed to create core stat {} : {}",
-                    tag, e
-                )))
-            }
-            _ => panic!("Returned ok with invalid stat type"),
-        };
-
-        tag.clear();
-        let _ = write!(&mut tag, "{}execs", cflib::TAG_PREFIX_TOTAL);
-        self.stats.num_execs = match self.ctx.stats.new_stat(&tag, NewStat::Num(0)) {
             Ok(StatVal::Num(v)) => v,
             Err(e) => {
                 return Err(From::from(format!(

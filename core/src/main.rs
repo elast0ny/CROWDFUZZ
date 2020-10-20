@@ -41,7 +41,8 @@ fn main() -> Result<()> {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("instances")
+            Arg::with_name("num_instances")
+                .short("-n")
                 .allow_hyphen_values(true)
                 .long("instances")
                 .help("How many fuzzers to spawn (1 == 1, 0 == #cores, -1 == (#cores - 1))")
@@ -77,12 +78,12 @@ fn main() -> Result<()> {
 
     info!("==== {}-{} ====", &name, env!("CARGO_PKG_VERSION"));
 
-    let num_instances: isize = match args.value_of("instances").unwrap().parse() {
+    let num_instances: isize = match args.value_of("num_instances").unwrap().parse() {
         Ok(n) => n,
         Err(e) => {
             return Err(From::from(format!(
-                "Invalid number provided for --instances {} : {}",
-                args.value_of("instances").unwrap(),
+                "Invalid number provided for --num_instances {} : {}",
+                args.value_of("num_instances").unwrap(),
                 e
             )))
         }

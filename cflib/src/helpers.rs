@@ -78,18 +78,7 @@ pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static s
             },
             // Convert time number to US
             TAG_POSTFIX_MS => val * US_IN_MS,
-            TAG_POSTFIX_SEC => val * US_IN_S,
-            TAG_POSTFIX_EPOCHS => {
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                if val > now {
-                    0
-                } else {
-                    (now - val) * US_IN_S
-                }
-            },
+            TAG_POSTFIX_SEC | TAG_POSTFIX_EPOCHS => val * US_IN_S,
             TAG_POSTFIX_MIN => val * US_IN_M,
             TAG_POSTFIX_HOUR => val * US_IN_H,
             TAG_POSTFIX_US => val,

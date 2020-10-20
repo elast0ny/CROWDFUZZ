@@ -7,7 +7,6 @@
 
 "fuzz_loop" : 
   - '..\target\debug\test_plugin.dll'
-  - '..\target\debug\test_plugin.dll'
 
 
 "plugin_conf":

@@ -13,6 +13,7 @@ use ::tui::{
     Frame, Terminal,
 };
 use std::io::{stdout, Stdout, Write};
+use std::time::{SystemTime, UNIX_EPOCH};
 use cflib::*;
 
 use crate::*;
@@ -154,10 +155,25 @@ pub fn get_or_add_cached_stat<'a>(list : &'a mut Vec<(String, CachedStat)>, idx:
 
 pub fn agregate_stat(cached_val: &mut ui::CachedStat, tag: &str, stat: &mut StatVal, total_vals: usize) {
 
-    let (cur_num, stat_num) = match (&mut cached_val.val, stat)  {
+    let (cur_num, mut stat_num) = match (&mut cached_val.val, stat)  {
         (CachedStatVal::Num(ref mut c), StatVal::Num(ref s)) => (c, *s.val),
         _ => return, // Can only agregate numbers
     };
+
+    // Convert time since EPOCH to delta from now
+    if let Some(postfix) = strip_tag_postfix(tag).1 {
+        if postfix == TAG_POSTFIX_EPOCHS {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            if stat_num > now {
+                stat_num = 0;
+            } else {
+                stat_num = now - stat_num;
+            }
+        }
+    }
     
     // Total
     if tag.starts_with(TAG_PREFIX_TOTAL) {
@@ -223,10 +239,37 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
                     // This plugin is not currently in view
                     continue 'plugin_loop;
                 };
+
+                let cur_tag = if stat_idx == 0 {
+                    if plugin_idx == 0 {
+                        "avg_core_time_us"
+                    } else {
+                        "avg_plugin_time_us"
+                    }                    
+                } else {
+                    stat.tag.as_str() 
+                };
                 
-                let (_cached_tag, cached_val) = get_or_add_cached_stat(cached_view, stat_idx, stat.tag.as_str(), &mut stat.val);
+                let (cached_tag, cached_val) = get_or_add_cached_stat(cached_view, stat_idx, cur_tag, &mut stat.val);
                 if fuzzer_idx == 0 {
                     cached_val.set(&mut stat.val);
+
+                    // Convert time since EPOCH to delta from now
+                    if let Some(postfix) = strip_tag_postfix(cached_tag.as_str()).1 {
+                        if postfix == TAG_POSTFIX_EPOCHS {
+                            if let CachedStatVal::Num(ref mut v) = cached_val.val {
+                                let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs();
+                                if *v > now {
+                                    *v = 0;
+                                } else {
+                                    *v = now - *v;
+                                }
+                            }
+                        }
+                    }
                 } else {
                     agregate_stat(cached_val, stat.tag.as_str(), &mut stat.val, fuzzer_idx + 1);
                 }
@@ -259,7 +302,7 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
     for (tag, val) in state.ui.plugins_view.iter_mut() {
         let (stripped_tag, tag_hints) =  strip_tag_hints(tag.as_str());
         if stripped_tag.len() > max_plugin_tag_len {
-            max_plugin_tag_len = tag.len();
+            max_plugin_tag_len = stripped_tag.len();
         }
         val.update_str_repr(tag_hints);
     }

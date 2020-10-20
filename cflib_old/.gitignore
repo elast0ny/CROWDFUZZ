@@ -1,5 +1,0 @@
-src/bindings.rs
-.vscode/
-/target/
-**/*.rs.bk
-Cargo.lock
