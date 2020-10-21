@@ -15,7 +15,7 @@ struct State {
 fn init(core: &dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {    
     let ctx = State {
         num_iter: 0,
-        fuzzer_name: box_ref!(*store.get(STORE_FUZZER_ID).unwrap().front().unwrap(), &str),
+        fuzzer_name: box_ref!(*store.get(STORE_FUZZER_ID).unwrap(), &str),
     };
 
     core.log(::log::Level::Info, &format!("initializing for {} !", ctx.fuzzer_name));
@@ -38,7 +38,7 @@ fn fuzz(_core: &dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) 
 
     ctx.num_iter += 1;
 
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    std::thread::sleep(std::time::Duration::from_secs(1));
     
     Ok(())
 }

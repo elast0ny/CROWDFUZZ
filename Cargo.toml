@@ -3,6 +3,7 @@ members = [
     "cflib",
     "core",
     "plugins/test_plugin",
+    "plugins/fs_store",
     "plugins/random_select",
     "plugins/basic_mutate",
     "plugins/basic_run",

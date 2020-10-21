@@ -6,11 +6,12 @@
 
 
 "fuzz_loop" : 
-  - '..\target\debug\random_select.dll'
-  - '..\target\debug\basic_mutate.dll'
+  - '..\target\debug\fs_store.dll'
+#  - '..\target\debug\random_select.dll'
+#  - '..\target\debug\basic_mutate.dll'
 # - '..\target\debug\basic_run.dll'
-  - 'D:\Code\C\cf_wafl\build\wafl_dr_run.dll'
-  - '..\target\debug\save_result.dll'
+#  - 'D:\Code\C\cf_wafl\build\wafl_dr_run.dll'
+#  - '..\target\debug\save_result.dll'
 
 
 "plugin_conf":

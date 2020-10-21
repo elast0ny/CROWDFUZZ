@@ -1,0 +1,15 @@
+[package]
+name = "fs_store"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[lib]
+path = "src/fs_store.rs"
+name = "fs_store"
+crate-type = ["cdylib"] # Compile to native lib
+
+[dependencies]
+cflib = {path="../../cflib"}
+log = "0.*"
+rust-crypto = "0.*"

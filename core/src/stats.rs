@@ -2,6 +2,7 @@ use std::mem::size_of;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::AtomicU8;
+use std::mem::MaybeUninit;
 
 use ::cflib::*;
 use ::log::*;
@@ -10,6 +11,37 @@ use ::simple_parse::{SpRead, SpWrite};
 use crate::core::CfCore;
 use crate::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+pub struct CoreStats {
+    /// EPOCHS on startup
+    pub start_time: cflib::StatNum,
+    /// Number of executions since startup
+    pub num_execs: cflib::StatNum,
+    /// Time it takes for a single execution
+    pub total_exec_time: cflib::StatNum,
+    /// Time spent in the fuzzer core
+    pub exec_time: cflib::StatNum,
+    pub cwd: cflib::StatStr,
+    pub cmd_line: cflib::StatStr,
+    pub target_hash: cflib::StatBytes,
+}
+impl Default for CoreStats {
+    fn default() -> Self {
+        // This gets initialized properly before being used in init_stats()
+        #[allow(invalid_value)]
+        unsafe {
+            Self {
+                start_time: MaybeUninit::zeroed().assume_init(),
+                num_execs: MaybeUninit::zeroed().assume_init(),
+                total_exec_time: MaybeUninit::zeroed().assume_init(),
+                exec_time: MaybeUninit::zeroed().assume_init(),
+                cwd: MaybeUninit::zeroed().assume_init(),
+                cmd_line: MaybeUninit::zeroed().assume_init(),
+                target_hash: MaybeUninit::zeroed().assume_init(),
+            }
+        }
+    }
+}
 
 impl<'a> CfCore<'a> {
     pub fn init_stats(&mut self) -> Result<()> {
@@ -238,7 +270,7 @@ impl<'a> Stats<'a> {
         *num_plugins += 1;
 
         let dbg = cflib::PluginStats::from_bytes(&self.buf[plugin_start_idx..self.end_idx])?.1;
-        debug!("\tshm[{}] = {:?}", plugin_start_idx, dbg);
+        trace!("\tshm[{}] = {:?}", plugin_start_idx, dbg);
         Ok(())
     }
 
@@ -338,7 +370,7 @@ impl<'a> Stats<'a> {
         let stat_val = StatVal::from_bytes(&self.buf[stat_val_idx..self.end_idx])?.1;
 
         let dbg = Stat::from_bytes(&self.buf[stat_idx..self.end_idx])?.1;
-        debug!("\tshm[{}] = {:?}", stat_val_idx, dbg);
+        trace!("\tshm[{}] = {:?}", stat_val_idx, dbg);
 
         *num_stats += 1;
         Ok(stat_val)

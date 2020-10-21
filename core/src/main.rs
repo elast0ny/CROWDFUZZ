@@ -143,7 +143,7 @@ fn main() -> Result<()> {
             break;
         }
 
-        info!("CfCore & plugins initialized succesfully");
+        info!("Core & plugins initialized succesfully");
 
         //Run through once
         if let Err(e) = core.single_run() {
