@@ -5,7 +5,4 @@
 "target_args" : ["-cd"]
 
 "fuzz_loop" : 
-  - '../target/debug/libbasic_select.so'
-  - '../target/debug/libbasic_mutate.so'
-  - '../target/debug/libbasic_run.so'
-  - '../target/debug/libbasic_postrun.so'
+  - '../target/debug/libfs_store.so'

@@ -1,6 +1,7 @@
 use cflib::*;
-use std::collections::hash_map::Entry;
+use std::collections::{HashSet, hash_map::Entry};
 use std::mem::MaybeUninit;
+use std::path::PathBuf;
 
 use ::log::Level;
 use ::crypto::sha1::Sha1;
@@ -16,14 +17,18 @@ cflib::register!(unload, destroy);
 
 pub struct State<'i> {
     hasher: Sha1,
-    tmp_uid: Vec<u8>,
+    unique_files: HashSet<[u8; 20]>,
+    tmp_uid: [u8; 20],
+    tmp_str: String,
+    queue_dir: PathBuf,
+
     is_input_list_owner: bool,
-    input_list: &'i mut Vec<&'i mut CfInputInfo>,
-    owned_new_list: Vec<&'i mut CfInputInfo>,
+    input_list: &'i mut Vec<CfInputInfo>,
+    owned_new_list: Vec<CfInputInfo>,
     
     is_new_inputs_owner: bool,
     new_inputs: &'i mut Vec<&'i mut CfInput>,
-    owned_new_inputs: Vec<&'i mut CfInputInfo>,
+    owned_new_inputs: Vec<CfInputInfo>,
 }
 
 // Initialize our plugin
@@ -32,7 +37,10 @@ fn init(core: &dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     #[allow(invalid_value)]
     let mut state = State {
         hasher: Sha1::new(),
-        tmp_uid: Vec::new(),
+        unique_files: HashSet::new(),
+        tmp_uid: [0; 20],
+        tmp_str: String::with_capacity(40),
+        queue_dir: PathBuf::new(),
         is_input_list_owner: false,
         is_new_inputs_owner: false,
         input_list: unsafe{MaybeUninit::zeroed().assume_init()},
@@ -42,12 +50,16 @@ fn init(core: &dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     };
         
     core.log(::log::Level::Info, "Getting store values...");
-    
+
+    // Save our files in <state>/queue
+    state.queue_dir.push(box_ref!(*store.get(STORE_STATE_DIR).unwrap(), &str));
+    state.queue_dir.push("queue");
+
     // Input list
     match store.entry(String::from(STORE_INPUT_LIST)) {
         Entry::Occupied(e) => {
             core.log(Level::Info, &format!("Using existing '{}' in store !", e.key()));
-            state.input_list = *box_ref!(*e.get(), &mut Vec<&mut CfInputInfo>);
+            state.input_list = *box_ref!(*e.get(), &mut Vec<CfInputInfo>);
         },
         Entry::Vacant(e) => {
             e.insert(box_leak!(&mut state.owned_new_list));
@@ -83,7 +95,7 @@ fn fuzz(_core: &dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) 
 
     let new_inputs: Vec<_> = state.new_inputs.drain(..).collect();
     for new_input in new_inputs {
-        state.calc_uid(new_input);
+        state.save_input(new_input);
     }
 
     std::thread::sleep(std::time::Duration::from_secs(1));
