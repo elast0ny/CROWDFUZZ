@@ -1,12 +1,12 @@
+use ::cflib::*;
+use ::log::*;
+use ::shared_memory::ShmemConf;
+use std::pin::Pin;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 use std::time::Instant;
-use std::pin::Pin;
-use ::cflib::*;
-use ::log::*;
-use ::shared_memory::ShmemConf;
 
 use crate::Result;
 
@@ -90,7 +90,7 @@ impl<'a> CfCore<'a> {
             ctx: PluginCtx {
                 plugin_data,
                 stats: Stats::new(buf)?,
-                cur_plugin_id: plugin_chain.len(),  
+                cur_plugin_id: plugin_chain.len(),
             },
             plugin_chain,
             fuzz_loop_start: fuzz_loop_start_idx,
@@ -100,7 +100,6 @@ impl<'a> CfCore<'a> {
 
         core.init_stats()?;
         core.init_public_store();
-        
         Ok(core)
     }
 
@@ -117,8 +116,7 @@ impl<'a> CfCore<'a> {
                 self.ctx.cur_plugin_id = num_plugins;
                 return Err(From::from(format!(
                     "CTRL-C while initializing plugins ({}/{} initialized)",
-                    plugin_id,
-                    num_plugins
+                    plugin_id, num_plugins
                 )));
             }
             self.ctx.cur_plugin_id = plugin_id;
@@ -149,7 +147,7 @@ impl<'a> CfCore<'a> {
             };
 
             debug!("\t\"{}\"->load()", plugin.name());
-            if let Err(e) = plugin.init(&self.ctx, &mut self.store.content) {
+            if let Err(e) = plugin.init(&mut self.ctx, &mut self.store.content) {
                 warn!("Error initializing \"{}\"", plugin.name());
                 return Err(e);
             }
@@ -161,8 +159,7 @@ impl<'a> CfCore<'a> {
                 self.ctx.cur_plugin_id = num_plugins;
                 return Err(From::from(format!(
                     "CTRL-C while running plugin validation ({}/{} validated)",
-                    plugin_id,
-                    num_plugins
+                    plugin_id, num_plugins
                 )));
             }
             self.ctx.cur_plugin_id = plugin_id;
@@ -170,7 +167,7 @@ impl<'a> CfCore<'a> {
                 unsafe { self.plugin_chain.get_unchecked_mut(self.ctx.cur_plugin_id) };
 
             debug!("\t\"{}\"->validate()", plugin.name());
-            if let Err(e) = plugin.validate(&self.ctx, &mut self.store.content) {
+            if let Err(e) = plugin.validate(&mut self.ctx, &mut self.store.content) {
                 warn!("Error in plugin \"{}\"'s validate()", plugin.name());
                 return Err(e);
             }
@@ -191,7 +188,7 @@ impl<'a> CfCore<'a> {
             }
             self.ctx.cur_plugin_id = num_plugins - 1 - plugin_id;
             debug!("\"{}\"->unload()", plugin.name());
-            if let Err(e) = plugin.destroy(&self.ctx, &mut self.store.content) {
+            if let Err(e) = plugin.destroy(&mut self.ctx, &mut self.store.content) {
                 warn!("Error destroying \"{}\" : {}", plugin.name(), e);
             }
         }
@@ -226,7 +223,7 @@ impl<'a> CfCore<'a> {
             debug!("\t\"{}\"->fuzz()", plugin.name());
 
             plugin_start = Instant::now();
-            plugin.do_work(&self.ctx, &mut self.store.content)?;
+            plugin.do_work(&mut self.ctx, &mut self.store.content)?;
             time_elapsed = plugin_start.elapsed().as_micros() as u64;
 
             total_plugin_time += time_elapsed;
@@ -270,6 +267,7 @@ impl<'a> CfCore<'a> {
         let mut time_elapsed: u64;
         let mut total_plugin_time: u64;
 
+        // This is the real fuzz loop, make sure it is as fast as possible
         loop {
             core_start = Instant::now();
             total_plugin_time = 0;
@@ -278,8 +276,8 @@ impl<'a> CfCore<'a> {
                 self.store.avg_denominator += 1;
             }
             self.ctx.cur_plugin_id = self.fuzz_loop_start;
-
             for plugin in fuzz_loop_plugins.iter_mut() {
+                // Check if ctrl-c has been hit
                 if self.exiting.load(Ordering::Relaxed) {
                     self.ctx.cur_plugin_id = num_plugins;
                     return Err(From::from(format!(
@@ -290,29 +288,29 @@ impl<'a> CfCore<'a> {
 
                 // run the plugin
                 plugin_start = Instant::now();
-                plugin.do_work(&self.ctx, &mut self.store.content)?;
+                plugin.do_work(&mut self.ctx, &mut self.store.content)?;
                 time_elapsed = plugin_start.elapsed().as_micros() as u64;
-
-                total_plugin_time += time_elapsed;
+                // Update plugin's exec time
                 cflib::update_average(
                     plugin.exec_time.val,
                     time_elapsed,
                     self.store.avg_denominator,
                 );
+
+                // Keep track of time spent in plugins
+                total_plugin_time += time_elapsed;
+
                 self.ctx.cur_plugin_id += 1;
             }
 
-            //if *self.stats.num_execs == 3 {
-            //    info!("Execs : {}", *self.stats.num_execs);
-            //    return Ok(());
-            //}
-
             time_elapsed = core_start.elapsed().as_micros() as u64;
+            // Update average full iteration time
             cflib::update_average(
                 self.stats.total_exec_time.val,
                 time_elapsed,
                 self.store.avg_denominator,
             );
+            // Update core's exec time
             cflib::update_average(
                 self.stats.exec_time.val,
                 time_elapsed - total_plugin_time,

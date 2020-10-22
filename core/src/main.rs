@@ -6,8 +6,8 @@ pub use ::log::*;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-pub mod util;
 pub mod log;
+pub mod util;
 
 pub mod config;
 pub mod core;

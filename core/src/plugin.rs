@@ -168,7 +168,7 @@ impl Plugin {
         &self.name
     }
 
-    pub fn init(&mut self, interface: &dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+    pub fn init(&mut self, interface: &mut dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
         //Call init at most once
         if self.is_init {
             return Ok(());
@@ -189,7 +189,7 @@ impl Plugin {
         Ok(())
     }
 
-    pub fn validate(&mut self, interface: &dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+    pub fn validate(&mut self, interface: &mut dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
         if !self.is_init {
             return Err(From::from(format!(
                 "Tried to call '{}'.pre_fuzz_fn() before init()",
@@ -207,7 +207,7 @@ impl Plugin {
         Ok(())
     }
 
-    pub fn do_work(&self, interface: &dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+    pub fn do_work(&self, interface: &mut dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
         //No checks for is_init for performance...
         
         if let Err(e) = (self.fuzz_fn)(interface, store, self.ctx) {
@@ -220,7 +220,7 @@ impl Plugin {
         Ok(())
     }
 
-    pub fn destroy(&mut self, interface: &dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+    pub fn destroy(&mut self, interface: &mut dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
         //Call init at most once
         if !self.is_init {
             return Err(From::from(format!(

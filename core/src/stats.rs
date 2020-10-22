@@ -1,8 +1,8 @@
 use std::mem::size_of;
+use std::mem::MaybeUninit;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::AtomicU8;
-use std::mem::MaybeUninit;
 
 use ::cflib::*;
 use ::log::*;

@@ -1,4 +1,3 @@
-
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::path::Path;
@@ -8,10 +7,10 @@ use ::crypto::{digest::Digest, sha1::Sha1};
 
 use crate::*;
 
-fn compute_sha1(hasher: &mut Sha1, chunks: &[CfBuf], dst: &mut[u8; 20]) {
+fn compute_sha1(hasher: &mut Sha1, chunks: &[CfBuf], dst: &mut [u8; 20]) {
     hasher.reset();
     for chunk in chunks {
-       hasher.input(unsafe{chunk.to_slice()});
+        hasher.input(unsafe { chunk.to_slice() });
     }
     hasher.result(dst);
 }
@@ -37,7 +36,7 @@ fn write_file(dst: &Path, chunks: &[CfBuf]) -> bool {
     };
     // Write file contents
     for chunk in chunks {
-        if file.write_all(unsafe{chunk.to_slice()}).is_err() {
+        if file.write_all(unsafe { chunk.to_slice() }).is_err() {
             let _ = std::fs::remove_file(&dst);
             return false;
         }
@@ -46,9 +45,7 @@ fn write_file(dst: &Path, chunks: &[CfBuf]) -> bool {
 }
 
 impl State {
-
     pub fn init(&mut self, core: &dyn PluginInterface, extra_input_folder: &str) {
-    
         // first scan the input directory
         if let Ok(list) = fs::read_dir(extra_input_folder) {
             for r in list {
@@ -56,7 +53,6 @@ impl State {
                     Ok(i) => i,
                     _ => continue,
                 };
-                
                 // Skip directories
                 let path = item.path();
                 if path.is_dir() {
@@ -70,7 +66,6 @@ impl State {
                     contents: None,
                     path: Some(path),
                 });
-                
                 // Save if new
                 self.save_new_inputs(core, false);
             }
@@ -83,7 +78,6 @@ impl State {
                     Ok(i) => i,
                     _ => continue,
                 };
-                
                 // Skip directories
                 let path = item.path();
                 if path.is_dir() {
@@ -96,7 +90,11 @@ impl State {
                 }
 
                 // Compute the hash of input into tmp_uid
-                compute_sha1(&mut self.hasher, &[CfBuf::from_slice(&mut self.tmp_buf)], &mut self.tmp_uid);
+                compute_sha1(
+                    &mut self.hasher,
+                    &[CfBuf::from_slice(&mut self.tmp_buf)],
+                    &mut self.tmp_uid,
+                );
                 if !self.unique_files.insert(self.tmp_uid) {
                     //_core.log(::log::Level::Info, "existing file");
                     //true is returned if new entry
@@ -107,18 +105,18 @@ impl State {
                 self.input_list.push(CfInputInfo {
                     uid: CfBuf::from_slice(&mut self.tmp_uid),
                     path: Some(path),
-                });      
+                });
             }
         }
-
     }
-
 
     /// Save any new file
     pub fn save_new_inputs(&mut self, _core: &dyn PluginInterface, write_to_queue: bool) -> bool {
-
         let mut saved_one = false;
-        let mut tmp_chunk = [CfBuf{ptr: std::ptr::null_mut(), len: 0}];
+        let mut tmp_chunk = [CfBuf {
+            ptr: std::ptr::null_mut(),
+            len: 0,
+        }];
         let mut cur_fpath: Option<PathBuf>;
 
         for new_input in self.new_inputs.drain(..) {
@@ -127,10 +125,10 @@ impl State {
                 Some(v) => {
                     cur_fpath = None;
                     raw_to_ref!(v, CfInput).chunks.as_slice()
-                },
+                }
                 None => {
                     match new_input.path {
-                        Some(p) if read_file(p.as_path(), &mut self.tmp_buf)  => {
+                        Some(p) if read_file(p.as_path(), &mut self.tmp_buf) => {
                             cur_fpath = Some(p);
                             //_core.log(::log::Level::Info, "save_from_path");
                             tmp_chunk[0] = CfBuf::from_slice(&mut self.tmp_buf);
@@ -143,7 +141,6 @@ impl State {
 
             // Compute the hash of input into tmp_uid
             compute_sha1(&mut self.hasher, input, &mut self.tmp_uid);
-            
             if !self.unique_files.insert(self.tmp_uid) {
                 //_core.log(::log::Level::Info, "existing file");
                 //true is returned if new entry
@@ -169,13 +166,12 @@ impl State {
                 let _ = self.unique_files.remove(&self.tmp_uid);
                 continue;
             }
-            
             // Add file to input_list
             self.input_list.push(CfInputInfo {
                 uid: CfBuf::from_slice(&mut self.tmp_uid),
                 path: cur_fpath,
-            });      
-            
+            });
+            *self.num_inputs.val += 1;
             saved_one = true;
         }
 

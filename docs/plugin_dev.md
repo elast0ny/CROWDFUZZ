@@ -4,10 +4,13 @@ If you are interested in developing your own plugins, take a look at the plugins
 
 
 ## Store guidelines
-Plugins should generaly add Boxed references to the store during their load() and keep those references alive until unload(). This enables other plugins to only have to query the store once during validation() and subsequently just use the saved reference.
+Plugins should generaly add references to the store during their load() and keep those references alive until unload(). This enables other plugins to only have to query the store once during validation() and subsequently just use the saved reference.
 
-cflib provides a few macros to help creating those boxed references
-- box_leak / box_ref / box_take
+In general, you should make sure that the struct you are referencing is either Box'ed or a child of a box'ed struct.
+
+cflib provides a few unsafe macros that abstract converting raw pointers into rust references :
+- box_ref / box_take
+- ref_to_raw / raw_to_ref
 
 ## __Corpus management__
 Plugins in this category should create the INPUT_LIST entry and the NEW_INPUTS entry if they accept new inputs.
