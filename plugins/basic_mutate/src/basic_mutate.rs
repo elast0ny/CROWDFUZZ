@@ -1,91 +1,84 @@
-use ::cflib::*;
+use std::mem::MaybeUninit;
 
-extern crate rand;
-use rand::{thread_rng, Rng};
-use std::ffi::c_void;
-use std::slice::from_raw_parts_mut;
+use ::cflib::*;
+use ::log::Level::*;
+use ::rand::{Rng, SeedableRng};
+use ::rand::rngs::SmallRng;
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
-cflib::register!(init, init);
-cflib::register!(validate, validate);
-cflib::register!(work, mutate_testcase);
-cflib::register!(destroy, destroy);
+cflib::register!(load, init);
+cflib::register!(pre_fuzz, validate);
+cflib::register!(fuzz, mutate_input);
+cflib::register!(unload, destroy);
 
 struct State {
-    input_bytes: &'static CFVec,
-    input_chunks: Vec<CFBuf>,
-    chunk_list: CFVec,
+    rng: SmallRng,
+    cur_input: &'static mut CfInput,
 }
 
-extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
-    let core = cflib::cast!(core_ptr);
-
-    let mut state = Box::new(State {
-        input_bytes: unsafe { &*std::ptr::null() },
-        input_chunks: Vec::with_capacity(16),
-        chunk_list: CFVec {
-            length: 0,
-            capacity: 0,
-            data: std::ptr::null_mut(),
-        },
+// Initialize our plugin
+fn init(_core: &mut dyn PluginInterface, _store: &mut CfStore) -> Result<*mut u8> {
+    #[allow(invalid_value)]
+    let state = Box::new(unsafe {
+        State {
+            rng: SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
+            cur_input: MaybeUninit::zeroed().assume_init(),
+        }
     });
 
-    core.store_push_back(KEY_CUR_INPUT_CHUNKS_STR, &mut state.chunk_list as *mut _);
-
-    core.priv_data = Box::into_raw(state) as *mut _;
-    STATUS_SUCCESS
+    Ok(Box::into_raw(state) as _)
 }
 
-extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
+// Make sure we have everything to fuzz properly
+fn validate(
+    core: &mut dyn PluginInterface,
+    store: &mut CfStore,
+    plugin_ctx: *mut u8,
+) -> Result<()> {
+    let state = box_ref!(plugin_ctx, State);
+    core.log(::log::Level::Info, "validating");
 
-    // A plugin must set INPUT_BYTES for us to mutate
-    state.input_bytes = cflib::store_get_ref!(mandatory, CFVec, core, KEY_INPUT_BYTES_STR, 0);
-
-    STATUS_SUCCESS
-}
-
-extern "C" fn destroy(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let core = cflib::cast!(core_ptr);
-
-    let _state: Box<State> = unsafe { Box::from_raw(priv_data as *mut _) };
-    let _: *mut c_void = core.store_pop_front(KEY_CUR_INPUT_CHUNKS_STR);
-
-    STATUS_SUCCESS
-}
-
-///Select random byte in input and assign random value to it
-extern "C" fn mutate_testcase(
-    core_ptr: *mut CoreInterface,
-    priv_data: *mut c_void,
-) -> PluginStatus {
-    let (_core, state) = cflib::cast!(core_ptr, priv_data, State);
-
-    let input_bytes: &mut [u8] =
-        unsafe { from_raw_parts_mut(state.input_bytes.data as *mut _, state.input_bytes.length) };
-
-    // Randomly mutate some bytes
-    let num_of_bytes_mutated = thread_rng().gen_range(0, state.input_bytes.length as usize);
-    for _ in 0..num_of_bytes_mutated {
-        let rand_byte = unsafe {
-            &mut *(state
-                .input_bytes
-                .data
-                .offset(thread_rng().gen_range(0, state.input_bytes.length as usize) as isize)
-                as *mut u8)
-        };
-        *rand_byte = thread_rng().gen::<u8>();
+    // We need a plugin that creates in input_bytes
+    if let Some(v) = store.get(STORE_INPUT_BYTES) {
+        state.cur_input = raw_to_mutref!(*v, CfInput);
+    } else {
+        core.log(Error, "No plugin create input_bytes !");
+        return Err(From::from("No selected input".to_string()));
     }
 
-    state.input_chunks.clear();
-    // Only one chunk for now as we just modify existing data
-    state.input_chunks.push(CFBuf {
-        len: input_bytes.len(),
-        buf: input_bytes.as_ptr() as _,
-    });
+    Ok(())
+}
 
-    // Make the input chunks point to our newly mutated input
-    state.chunk_list.update_from_vec(&state.input_chunks);
+// Perform our task in the fuzzing loop
+fn mutate_input(
+    _core: &mut dyn PluginInterface,
+    _store: &mut CfStore,
+    plugin_ctx: *mut u8,
+) -> Result<()> {
+    let state = box_ref!(plugin_ctx, State);
 
-    STATUS_SUCCESS
+    if state.cur_input.chunks.is_empty() {
+        // Input is empty ??
+        return Ok(());
+    }
+
+    let first_chunk = unsafe{state.cur_input.chunks.get_unchecked_mut(0)};
+
+    // Randomly mutate some bytes in the first chunk
+    let num_of_bytes_mutated = state.rng.gen_range(0, first_chunk.len());
+    for _ in 0..num_of_bytes_mutated {
+        first_chunk[state.rng.gen_range(0, first_chunk.len())] = state.rng.gen::<u8>();
+    }
+
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    Ok(())
+}
+
+// Unload and free our resources
+fn destroy(core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
+    let _state = box_take!(plugin_ctx, State);
+
+    core.log(Debug, "Cleaning up");
+
+    Ok(())
 }

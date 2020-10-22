@@ -5,7 +5,8 @@ use std::io::prelude::*;
 
 use ::cflib::*;
 use ::log::Level::*;
-use ::rand::Rng;
+use ::rand::{Rng, SeedableRng};
+use ::rand::rngs::SmallRng;
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
 cflib::register!(load, init);
@@ -14,9 +15,10 @@ cflib::register!(fuzz, select_input);
 cflib::register!(unload, destroy);
 
 struct State {
+    rng: SmallRng,
     cur_input_idx: usize,
-    tmp_input_bytes: CfInput,
-    cur_input_bytes: *const CfInput,
+    tmp_buf: Vec<u8>,
+    cur_input: CfInput,
     input_list: &'static mut Vec<CfInputInfo>,
     priority_list: VecDeque<usize>,
     num_priority_inputs: StatNum,
@@ -27,11 +29,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     #[allow(invalid_value)]
     let mut state = Box::new(unsafe {
         State {
+            rng: SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
             cur_input_idx: 0,
-            tmp_input_bytes: CfInput {
-                chunks: vec![vec![]],
-            },
-            cur_input_bytes: std::ptr::null_mut(),
+            tmp_buf: Vec::new(),
+            cur_input: CfInput::default(),
             priority_list: VecDeque::new(),
             input_list: MaybeUninit::zeroed().assume_init(),
             num_priority_inputs: match core.add_stat(&format!("{}num_priority_inputs", TAG_PREFIX_TOTAL), NewStat::Num(0))
@@ -58,7 +59,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     );
     store.insert(
         STORE_INPUT_BYTES.to_string(),
-        mutref_to_raw!(state.cur_input_bytes),
+        mutref_to_raw!(state.cur_input),
     );
     store.insert(
         "select_priority_list".to_string(),
@@ -101,15 +102,19 @@ fn select_input(
         Some(idx) => idx,
         None => {
             // No priority, just randomly pick a file
-            rand::thread_rng().gen_range(0, state.input_list.len())
+            state.rng.gen_range(0, state.input_list.len())
         }
     };
 
     let input_info = unsafe{state.input_list.get_unchecked(state.cur_input_idx)};
 
+    state.tmp_buf.clear();
     // No need to read off disk, content was inlined in the input info
     if let Some(contents) = &input_info.contents {
-        state.cur_input_bytes = contents as *const _;
+        // Copy original contents into input_bytes
+        for chunk in &contents.chunks {
+            state.tmp_buf.extend_from_slice(chunk);
+        }
     } else {
         // Lets read contents from disk
         let p = match &input_info.path {
@@ -125,17 +130,14 @@ fn select_input(
             _ => return Err(From::from("No input contents".to_string())),
         };
         // Read contents
-        let chunk = unsafe{state.tmp_input_bytes.chunks.get_unchecked_mut(0)};
-        chunk.clear();
-        if fin.read_to_end(chunk).is_err() {
+        if fin.read_to_end(&mut state.tmp_buf).is_err() {
             return Err(From::from("No input contents".to_string()));
         }
-        
-        // Point cur_input_bytes to our tmp buffer
-        state.cur_input_bytes = &state.tmp_input_bytes as *const _;
     }
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    state.cur_input.chunks.clear();
+    state.cur_input.chunks.push(state.tmp_buf.as_mut_slice());
+
     Ok(())
 }
 

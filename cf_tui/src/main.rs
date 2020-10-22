@@ -120,10 +120,10 @@ fn main() -> Result<()> {
                         decrement_selected(&mut state.ui.selected_tab, state.fuzzers.len() + 1, false);
                     }
                     KeyCode::Up => {
-                        select_next_plugin(&mut state);
+                        select_prev_plugin(&mut state);
                     }
                     KeyCode::Down => {
-                        select_prev_plugin(&mut state);
+                        select_next_plugin(&mut state);
                     }
                     _ => {}
                 };

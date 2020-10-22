@@ -11,4 +11,5 @@ crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
 cflib = {path="../../cflib"}
-rand = "0.*"
+rand = {version = "0.*", features = ["small_rng"]}
+log = "0.*"

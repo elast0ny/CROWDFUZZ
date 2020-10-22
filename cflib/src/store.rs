@@ -35,20 +35,17 @@ pub const STORE_INPUT_LIST: &str = "input_list";
 /// (*mut Vec<&CfNewInput) New inputs that should be saved/tracked
 pub const STORE_NEW_INPUTS: &str = "new_inputs";
 
-/* Input selection */
+/* Input selection & mutation */
 /// (*const usize) Index of the select input in INPUT_LIST
 pub const STORE_INPUT_IDX: &str = "input_idx";
-/// (*mut *const CfInput) Contents of the selected input
+/// (*mut CfInput) Contents of the selected input
 pub const STORE_INPUT_BYTES: &str = "input_bytes";
 
-/* Input mutation */
-/// (&mut CfInput) Contents of the mutated input
-pub const STORE_MUTATED_INPUT_BYTES: &str = "minput_bytes";
 
 /* Target exec */
-/// (&mut u64) The number of US for the last run
+/// (*mut u64) The number of US for the last run
 pub const STORE_TARGET_EXEC_SPEED: &str = "target_exec_us";
-/// (&mut TargetExitStatus) The exit status for the last run
+/// (*mut TargetExitStatus) The exit status for the last run
 pub const STORE_EXIT_STATUS: &str = "exit_status";
 
 pub enum TargetExitStatus {
@@ -70,7 +67,7 @@ pub struct CfInputInfo {
 /// Represents the contents of an input
 pub struct CfInput {
     /// List of chunks representing the input
-    pub chunks: Vec<Vec<u8>>,
+    pub chunks: Vec<&'static mut [u8]>,
 }
 impl Default for CfInput {
     fn default() -> Self {

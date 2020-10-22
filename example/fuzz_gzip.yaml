@@ -8,8 +8,7 @@
 "fuzz_loop" : 
   - '..\target\release\fs_store.dll'
   - '..\target\release\select_input.dll'
-#  - '..\target\debug\random_select.dll'
-#  - '..\target\debug\basic_mutate.dll'
+  - '..\target\release\basic_mutate.dll'
 # - '..\target\debug\basic_run.dll'
 #  - 'D:\Code\C\cf_wafl\build\wafl_dr_run.dll'
 #  - '..\target\debug\save_result.dll'

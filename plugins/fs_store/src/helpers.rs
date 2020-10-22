@@ -128,7 +128,7 @@ impl State {
                 Some(v) => {
                     cur_fpath = None;
                     for chunk in raw_to_ref!(v, CfInput).chunks.iter() {
-                        cur_input.push(chunk.as_slice());
+                        cur_input.push(chunk);
                     }
                 }
                 None => {

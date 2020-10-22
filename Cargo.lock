@@ -6,7 +6,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86cf417c12d52a4e5e8ed8ef6c071a97bb448570f7c1876e3f475fcc8cc8b417"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "errno",
  "libc",
  "num_cpus",
@@ -58,6 +58,7 @@ name = "basic_mutate"
 version = "0.0.1"
 dependencies = [
  "cflib",
+ "log",
  "rand 0.7.3",
 ]
 
@@ -65,7 +66,7 @@ dependencies = [
 name = "basic_run"
 version = "0.0.5"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "cflib",
 ]
 
@@ -115,6 +116,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 
 [[package]]
+name = "cfg-if"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
 name = "cflib"
 version = "0.0.1"
 dependencies = [
@@ -157,6 +164,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "const_fn"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce90df4c658c62f12d78f7508cf92f9173e5184a539c10bfe54a3107b3ffd0f2"
+
+[[package]]
 name = "crc"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -167,48 +180,48 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.4.4"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b153fe7cbef478c567df0f972e02e6d736db11affe43dfc9c56a9374d1adfb87"
+checksum = "dca26ee1f8d361640700bde38b2c37d8c22b3ce2d360e1fc1c74ea4b0aa7d775"
 dependencies = [
+ "cfg-if 1.0.0",
  "crossbeam-utils",
- "maybe-uninit",
 ]
 
 [[package]]
 name = "crossbeam-deque"
-version = "0.7.3"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f02af974daeee82218205558e51ec8768b48cf524bd01d550abe5573a608285"
+checksum = "94af6efb46fef72616855b036a624cf27ba656ffc9be1b9a3c931cfc7749a9a9"
 dependencies = [
+ "cfg-if 1.0.0",
  "crossbeam-epoch",
  "crossbeam-utils",
- "maybe-uninit",
 ]
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.8.2"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "058ed274caafc1f60c4997b5fc07bf7dc7cca454af7c6e81edffe5f33f70dace"
+checksum = "ec0f606a85340376eef0d6d8fec399e6d4a544d648386c6645eb6d0653b27d9f"
 dependencies = [
- "autocfg",
- "cfg-if",
+ "cfg-if 1.0.0",
+ "const_fn",
  "crossbeam-utils",
  "lazy_static",
- "maybe-uninit",
  "memoffset",
  "scopeguard",
 ]
 
 [[package]]
 name = "crossbeam-utils"
-version = "0.7.2"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3c7c73a2d1e9fc0886a08b93e98eb643461230d5f1925e4036204d5f2e261a8"
+checksum = "ec91540d98355f690a86367e566ecad2e9e579f230230eb7c21398372be73ea5"
 dependencies = [
  "autocfg",
- "cfg-if",
+ "cfg-if 1.0.0",
+ "const_fn",
  "lazy_static",
 ]
 
@@ -404,7 +417,7 @@ version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc587bc0ec293155d5bfa6b9891ec18a1e330c234f896ea47fbada4cadbe47e6"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "libc",
  "wasi 0.9.0+wasi-snapshot-preview1",
 ]
@@ -436,7 +449,7 @@ version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63312a18f7ea8760cdd0a7c5aac1a619752a246b833545e3e36d1f81f7cd9e66"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
 ]
 
 [[package]]
@@ -457,7 +470,7 @@ version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3557c9384f7f757f6d139cd3a4c62ef4e850696c16bf27924a5538c8a09717a1"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "winapi",
 ]
 
@@ -491,14 +504,8 @@ version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fabed175da42fed1fa0746b0ea71f412aa9d35e76e95e59b192c64b9dc2bf8b"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
 ]
-
-[[package]]
-name = "maybe-uninit"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
 name = "memchr"
@@ -517,9 +524,9 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "0.7.3"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e53a6ea5f38c0a48ca42159868c6d8e1bd56c0451238856cc08d58563643bdc3"
+checksum = "f8f1c83949125de4a582aa2da15ae6324d91cf6a58a70ea407643941ff98f558"
 dependencies = [
  "libc",
  "log",
@@ -546,7 +553,7 @@ checksum = "83450fe6a6142ddd95fb064b746083fc4ef1705fe81f64a64e1d4b39f54a1055"
 dependencies = [
  "bitflags",
  "cc",
- "cfg-if",
+ "cfg-if 0.1.10",
  "libc",
 ]
 
@@ -558,7 +565,7 @@ checksum = "85db2feff6bf70ebc3a4793191517d5f0331100a2f10f9bf93b5e5214f32b7b7"
 dependencies = [
  "bitflags",
  "cc",
- "cfg-if",
+ "cfg-if 0.1.10",
  "libc",
 ]
 
@@ -614,7 +621,7 @@ version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d58c7c768d4ba344e3e8d72518ac13e259d7c7ade24167003b8488e10b6740a3"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "cloudabi 0.0.3",
  "libc",
  "redox_syscall",
@@ -628,7 +635,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c361aa727dd08437f2f1447be8b59a33b0edd15e0fcee698f935613d9efbca9b"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "cloudabi 0.1.0",
  "instant",
  "libc",
@@ -701,6 +708,7 @@ dependencies = [
  "rand_chacha",
  "rand_core 0.5.1",
  "rand_hc",
+ "rand_pcg",
 ]
 
 [[package]]
@@ -747,10 +755,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "rayon"
-version = "1.4.1"
+name = "rand_pcg"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcf6960dc9a5b4ee8d3e4c5787b4a112a8818e0290a42ff664ad60692fdf2032"
+checksum = "16abd0c1b639e9eb4d7c50c0b8100b0d0f849be2349829c740fe8e6eb4816429"
+dependencies = [
+ "rand_core 0.5.1",
+]
+
+[[package]]
+name = "rayon"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b0d8e0819fadc20c74ea8373106ead0600e3a67ef1fe8da56e39b9ae7275674"
 dependencies = [
  "autocfg",
  "crossbeam-deque",
@@ -760,9 +777,9 @@ dependencies = [
 
 [[package]]
 name = "rayon-core"
-version = "1.8.1"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8c4fec834fb6e6d2dd5eece3c7b432a52f0ba887cf40e595190c4107edc08bf"
+checksum = "9ab346ac5921dc62ffa9f89b7a773907511cdfa5490c572ae9be1be33e8afa4a"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-deque",
@@ -852,7 +869,7 @@ version = "0.0.1"
 dependencies = [
  "cflib",
  "log",
- "rand 0.3.23",
+ "rand 0.7.3",
 ]
 
 [[package]]
@@ -905,7 +922,7 @@ version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a429d85a9b89ad8b66a5d610e40dff055d4a5726ea73cefeb3b658af9919ffe6"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "libc",
  "nix 0.19.0",
  "quick-error",
@@ -963,7 +980,7 @@ version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1fa70dc5c8104ec096f4fe7ede7a221d35ae13dcd19ba1ad9a81d2cab9a1c44"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "libc",
  "redox_syscall",
  "winapi",
@@ -983,9 +1000,9 @@ checksum = "6446ced80d6c486436db5c078dde11a9f73d42b57fb273121e160b84f63d894c"
 
 [[package]]
 name = "syn"
-version = "1.0.45"
+version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea9c5432ff16d6152371f808fb5a871cd67368171b09bb21b43df8e4a47a3556"
+checksum = "5ad5de3220ea04da322618ded2c42233d02baca219d6f160a3e9c87cda16c942"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -998,7 +1015,7 @@ version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67330cbee3b2a819e3365a773f05e884a136603687f812bf24db5b6c3d76b696"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "doc-comment",
  "libc",
  "ntapi",
