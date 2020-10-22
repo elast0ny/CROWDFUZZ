@@ -8,24 +8,27 @@ cflib::register!(unload, destroy);
 
 struct State {
     num_iter: usize,
-    fuzzer_name: &'static str,
+    fuzzer_name: &'static String,
 }
 
 // Initialize our plugin
 fn init(core: &dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {    
-    let ctx = State {
+    let state = Box::new(State {
         num_iter: 0,
-        fuzzer_name: box_ref!(*store.get(STORE_FUZZER_ID).unwrap(), &str),
-    };
+        fuzzer_name: raw_to_ref!(*store.get(STORE_FUZZER_ID).unwrap(), String),
+    });
 
-    core.log(::log::Level::Info, &format!("initializing for {} !", ctx.fuzzer_name));
+    let val = store.get(STORE_FUZZER_ID).unwrap();
+
+    core.log(::log::Level::Info, &format!("initializing for {:p} {:p}", val, *val));
+    core.log(::log::Level::Info, &format!("initializing for {} !", state.fuzzer_name));
     
-    Ok(box_leak!(ctx))
+    Ok(Box::into_raw(state) as _)
 }
 
 // Make sure we have everything to fuzz properly
 fn validate(core: &dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
-    let _ctx = box_ref!(plugin_ctx, State);
+    let _state = box_ref!(plugin_ctx, State);
     
     core.log(::log::Level::Info, "validating");
 

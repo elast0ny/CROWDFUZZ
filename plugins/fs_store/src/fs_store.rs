@@ -1,5 +1,5 @@
 use cflib::*;
-use std::collections::{HashSet, hash_map::Entry};
+use std::collections::HashSet;
 use std::mem::MaybeUninit;
 use std::path::PathBuf;
 
@@ -7,7 +7,6 @@ use ::log::Level;
 use ::crypto::sha1::Sha1;
 
 mod helpers;
-use helpers::*;
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
 cflib::register!(load, init);
@@ -15,89 +14,113 @@ cflib::register!(pre_fuzz, validate);
 cflib::register!(fuzz, fuzz);
 cflib::register!(unload, destroy);
 
-pub struct State<'i> {
+pub struct State {
     hasher: Sha1,
     unique_files: HashSet<[u8; 20]>,
     tmp_uid: [u8; 20],
     tmp_str: String,
+    tmp_buf: Vec<u8>,
     queue_dir: PathBuf,
 
     is_input_list_owner: bool,
-    input_list: &'i mut Vec<CfInputInfo>,
-    owned_new_list: Vec<CfInputInfo>,
+    input_list: &'static mut Vec<CfInputInfo>,
+    owned_input_list: Vec<CfInputInfo>,
     
     is_new_inputs_owner: bool,
-    new_inputs: &'i mut Vec<&'i mut CfInput>,
-    owned_new_inputs: Vec<CfInputInfo>,
+    new_inputs: &'static mut Vec<CfNewInput>,
+    owned_new_inputs: Vec<CfNewInput>,
 }
 
 // Initialize our plugin
 fn init(core: &dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {    
     
     #[allow(invalid_value)]
-    let mut state = State {
+    let mut state = Box::new(State {
         hasher: Sha1::new(),
         unique_files: HashSet::new(),
         tmp_uid: [0; 20],
-        tmp_str: String::with_capacity(40),
+        tmp_str: String::new(),
+        tmp_buf: Vec::new(),
         queue_dir: PathBuf::new(),
         is_input_list_owner: false,
         is_new_inputs_owner: false,
         input_list: unsafe{MaybeUninit::zeroed().assume_init()},
         new_inputs: unsafe{MaybeUninit::zeroed().assume_init()},
-        owned_new_list: Vec::new(),
+        owned_input_list: Vec::new(),
         owned_new_inputs: Vec::new(),
-    };
+    });
         
-    core.log(::log::Level::Info, "Getting store values...");
 
     // Save our files in <state>/queue
-    state.queue_dir.push(box_ref!(*store.get(STORE_STATE_DIR).unwrap(), &str));
+    state.queue_dir.push(raw_to_ref!(*store.get(STORE_STATE_DIR).unwrap(), String));
     state.queue_dir.push("queue");
 
-    // Input list
-    match store.entry(String::from(STORE_INPUT_LIST)) {
-        Entry::Occupied(e) => {
-            core.log(Level::Info, &format!("Using existing '{}' in store !", e.key()));
-            state.input_list = *box_ref!(*e.get(), &mut Vec<CfInputInfo>);
-        },
-        Entry::Vacant(e) => {
-            e.insert(box_leak!(&mut state.owned_new_list));
+    // Create filesystem store
+    if !state.queue_dir.is_dir() && std::fs::create_dir(&state.queue_dir).is_err() {
+        core.log(Level::Error, &format!("Failed to create directory '{}'", state.queue_dir.to_string_lossy()));
+        return Err(From::from("Failed to create directory".to_string()));
+    }
+
+    // Grab or create input_list
+    loop {
+        if let Some(v) = store.get(STORE_INPUT_LIST) {
+            if !state.is_input_list_owner {
+                core.log(Level::Info, &format!("Using existing '{}' in store !", STORE_INPUT_LIST));
+            }
+            state.input_list = raw_to_mutref!(*v, Vec<CfInputInfo>);
+            break;
+        } else {
+            store.insert(String::from(STORE_INPUT_LIST), mutref_to_raw!(state.owned_input_list));
             state.is_input_list_owner = true;
         }
     }
 
-    Ok(box_leak!(state))
-}
-
-// Make sure we have everything to fuzz properly
-fn validate(core: &dyn PluginInterface, store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
-
-    // new_inputs
-    match store.entry(String::from(STORE_NEW_INPUTS)) {
-        Entry::Occupied(e) => {
-            core.log(Level::Info, &format!("Using existing '{}' in store !", e.key()));
-            state.new_inputs = *box_ref!(*e.get(), &mut Vec<&mut CfInput>);
-        },
-        Entry::Vacant(e) => {
-            e.insert(box_leak!(&mut state.owned_new_inputs));
+    // Grab or create new_inputs
+    loop {
+        if let Some(v) = store.get(STORE_NEW_INPUTS) {
+            if !state.is_new_inputs_owner {
+                core.log(Level::Info, &format!("Using existing '{}' in store !", STORE_NEW_INPUTS));
+            }
+            state.new_inputs = raw_to_mutref!(*v, Vec<CfNewInput>);
+            break;
+        } else {
+            store.insert(String::from(STORE_NEW_INPUTS), mutref_to_raw!(state.owned_new_inputs));
             state.is_new_inputs_owner = true;
         }
     }
+
+    // Get the input direcory with starting testcases
+    let input_dir = raw_to_ref!(*store.get(STORE_INPUT_DIR).unwrap(), String);
+
+    // Build our input_list from the filesystem
+    core.log(Level::Info, "Scanning for inputs...");
+    state.init(core, input_dir.as_str());
+
+    if state.input_list.is_empty() {
+        core.log(Level::Error, &format!("No inputs found in {} or {}", input_dir, state.queue_dir.to_string_lossy()));
+        return Err(From::from("No inputs".to_string()));
+    }
+
+    core.log(Level::Info, &format!("Found {} input(s) !", state.input_list.len()));
+
+    Ok(Box::into_raw(state) as _)
+}
+
+// Make sure we have everything to fuzz properly
+fn validate(_core: &dyn PluginInterface, _store: &mut CfStore, _plugin_ctx: *mut u8) -> Result<()> {
+    
+    // We dont rely on any other plugin
 
     Ok(())
 }
 
 // Perform our task in the fuzzing loop
-fn fuzz(_core: &dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
+fn fuzz(core: &dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
 
-    let new_inputs: Vec<_> = state.new_inputs.drain(..).collect();
-    for new_input in new_inputs {
-        state.save_input(new_input);
-    }
-
+    // Only task is to save new files to the filesystem
+    state.save_new_inputs(core, true);
+    
     std::thread::sleep(std::time::Duration::from_secs(1));
     
     Ok(())
@@ -107,16 +130,14 @@ fn fuzz(_core: &dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) 
 fn destroy(_core: &dyn PluginInterface, store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
     let state = box_take!(plugin_ctx, State);
 
+    // If we created the input_list
     if state.is_input_list_owner {
-        if let Some(e) = store.remove(STORE_INPUT_LIST) {
-            drop(box_take!(e, &mut Vec<u8>));
-        }
+        let _ = store.remove(STORE_INPUT_LIST);
     }
 
+    // If we created the new_inputs
     if state.is_new_inputs_owner {
-        if let Some(e) = store.remove(STORE_NEW_INPUTS) {
-            drop(box_take!(e, &mut Vec<u8>));
-        }
+        let _ = store.remove(STORE_NEW_INPUTS);
     }
 
     Ok(())

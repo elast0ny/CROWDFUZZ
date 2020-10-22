@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
 };
 use std::time::Instant;
-
+use std::pin::Pin;
 use ::cflib::*;
 use ::log::*;
 use ::shared_memory::ShmemConf;
@@ -34,7 +34,7 @@ pub struct CfCore<'a> {
 }
 
 impl<'a> CfCore<'a> {
-    pub fn init(prefix: &str, config_path: &str) -> Result<Self> {
+    pub fn init(prefix: &str, config_path: &str) -> Result<Pin<Box<Self>>> {
         info!("Loading project config");
         let config = Config::new(prefix, config_path)?;
 
@@ -83,7 +83,7 @@ impl<'a> CfCore<'a> {
 
         let buf: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(shmem.as_ptr(), shmem.len()) };
 
-        let mut core = CfCore {
+        let mut core = Box::pin(CfCore {
             config,
             exiting: Arc::new(AtomicBool::new(false)),
             stats: CoreStats::default(),
@@ -96,7 +96,7 @@ impl<'a> CfCore<'a> {
             fuzz_loop_start: fuzz_loop_start_idx,
             shmem,
             store: Store::default(),
-        };
+        });
 
         core.init_stats()?;
         core.init_public_store();

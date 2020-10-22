@@ -35,26 +35,66 @@ macro_rules! register {
     };
 }
 
-/// Creates a Box<T> and leaks the resource as *mut u8
+/// Converts a T to *mut u8
 #[macro_export]
-macro_rules! box_leak {
+macro_rules! ref_to_raw {
     ($var:expr) => {
-        Box::into_raw(Box::new($var)) as *mut u8
+        &$var as *const _ as *mut u8
+    };
+}
+#[macro_export]
+macro_rules! mutref_to_raw {
+    ($var:expr) => {
+        &mut $var as *const _ as *mut u8
     };
 }
 
-/// Takes a references from a raw pointer to a Box<T> returning &mut T
+/// Converts a *mut u8 to &T
+/// # Safety
+/// This macro is extremely unsafe. use with caution.
+#[macro_export]
+macro_rules! raw_to_ref {
+    ($var:expr, $typ:ty) => {
+        unsafe {&*($var as *mut $typ)}
+    };
+}
+/// Converts a *mut u8 to &mut T
+/// # Safety
+/// This macro is extremely unsafe. use with caution.
+#[macro_export]
+macro_rules! raw_to_mutref {
+    ($var:expr, $typ:ty) => {
+        unsafe {&mut *($var as *mut $typ)}
+    };
+}
+
+/// Converts a *mut u8 to &mut T
+/// # Safety
+/// This macro is extremely unsafe. use with caution.
+#[macro_export]
+macro_rules! mutref_from_raw {
+    ($var:expr, $typ:ty) => {
+        unsafe {&mut *($var as *mut $typ)}
+    };
+}
+
+
+/// Converts a *mut u8 to &mut T
+/// # Safety
+/// This macro is extremely unsafe. use with caution.
 #[macro_export]
 macro_rules! box_ref {
-    ($raw_ptr:expr, $typ:ty) => {
-        unsafe {Box::leak(Box::from_raw($raw_ptr as *mut $typ))}
+    ($var:expr, $typ:ty) => {
+        unsafe {Box::leak(box_take!($var,$typ))}
     };
 }
 
-/// Takes ownership of a raw pointer to a Box<T> returning a Box<T>
+/// Converts a *mut u8 to Box<T>
+/// # Safety
+/// This macro is extremely unsafe. use with caution.
 #[macro_export]
 macro_rules! box_take {
-    ($raw_ptr:expr, $typ:ty) => {
-        unsafe {Box::from_raw($raw_ptr as *mut $typ)}
+    ($var:expr, $typ:ty) => {
+        unsafe {Box::from_raw($var as *mut $typ)}
     };
 }
