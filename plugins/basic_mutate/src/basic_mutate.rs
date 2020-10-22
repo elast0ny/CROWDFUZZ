@@ -75,10 +75,7 @@ fn mutate_input(
 }
 
 // Unload and free our resources
-fn destroy(core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
+fn destroy(_core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
     let _state = box_take!(plugin_ctx, State);
-
-    core.log(Debug, "Cleaning up");
-
     Ok(())
 }

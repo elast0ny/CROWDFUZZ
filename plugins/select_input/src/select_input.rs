@@ -142,10 +142,8 @@ fn select_input(
 }
 
 // Unload and free our resources
-fn destroy(core: &mut dyn PluginInterface, store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
+fn destroy(_core: &mut dyn PluginInterface, store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
     let _ctx = box_take!(plugin_ctx, State);
-
-    core.log(Debug, "Cleaning up");
 
     let _ = store.remove(STORE_INPUT_IDX);
     let _ = store.remove(STORE_INPUT_BYTES);
