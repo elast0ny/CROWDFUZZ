@@ -77,7 +77,6 @@ fn validate(
     plugin_ctx: *mut u8,
 ) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
-    core.log(::log::Level::Info, "validating");
 
     match store.get(STORE_INPUT_LIST) {
         Some(v) => state.input_list = raw_to_mutref!(*v, Vec<CfInputInfo>),

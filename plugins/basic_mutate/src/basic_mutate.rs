@@ -38,7 +38,6 @@ fn validate(
     plugin_ctx: *mut u8,
 ) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
-    core.log(::log::Level::Info, "validating");
 
     // We need a plugin that creates in input_bytes
     if let Some(v) = store.get(STORE_INPUT_BYTES) {
