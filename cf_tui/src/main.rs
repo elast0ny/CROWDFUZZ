@@ -120,16 +120,10 @@ fn main() -> Result<()> {
                         decrement_selected(&mut state.ui.selected_tab, state.fuzzers.len() + 1, false);
                     }
                     KeyCode::Up => {
-                        if !state.fuzzers.is_empty() {
-                            increment_selected(&mut state.ui.selected_plugin, state.fuzzers[0].stats.plugins.len() - 1, true);
-                            state.ui.plugin_list.select(Some(state.ui.selected_plugin))
-                        }
+                        select_next_plugin(&mut state);
                     }
                     KeyCode::Down => {
-                        if !state.fuzzers.is_empty() {
-                            decrement_selected(&mut state.ui.selected_plugin, state.fuzzers[0].stats.plugins.len() - 1, true);
-                            state.ui.plugin_list.select(Some(state.ui.selected_plugin))
-                        }
+                        select_prev_plugin(&mut state);
                     }
                     _ => {}
                 };

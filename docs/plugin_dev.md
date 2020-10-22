@@ -18,7 +18,7 @@ Plugins in this category should create the INPUT_LIST entry and the NEW_INPUTS e
 For simplicity, it is highly recommend to avoid input deletion & reordering in this list so other plugins can use indexes safely.
 
 ## __File selection__
-Responsible for creating the INPUT_BYTES entry.
+Responsible for creating the INPUT_BYTES and INPUT_IDX entries.
 
 ## __Mutation__
 Mutation plugins should read the INPUT_BYTES entry and push values to MUTATED_INPUT_BYTES.

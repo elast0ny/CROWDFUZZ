@@ -18,16 +18,11 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         fuzzer_name: raw_to_ref!(*store.get(STORE_FUZZER_ID).unwrap(), String),
     });
 
-    let val = store.get(STORE_FUZZER_ID).unwrap();
-
-    core.log(
-        ::log::Level::Info,
-        &format!("initializing for {:p} {:p}", val, *val),
-    );
     core.log(
         ::log::Level::Info,
         &format!("initializing for {} !", state.fuzzer_name),
     );
+    
     Ok(Box::into_raw(state) as _)
 }
 

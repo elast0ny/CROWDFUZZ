@@ -1,15 +1,15 @@
 [package]
-name = "random_select"
+name = "select_input"
 version = "0.0.1"
 authors = ["Elast0ny <Elast0ny00@gmail.com>"]
 edition = "2018"
 
 [lib]
-name = "random_select"
-path = "src/random_select.rs"
+name = "select_input"
+path = "src/select_input.rs"
 crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
 cflib = {path='../../cflib'}
 rand = "0.*"
-rust-crypto = "0.*"
+log = "0.*"

@@ -747,15 +747,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "random_select"
-version = "0.0.1"
-dependencies = [
- "cflib",
- "rand 0.7.3",
- "rust-crypto",
-]
-
-[[package]]
 name = "rayon"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -854,6 +845,15 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "select_input"
+version = "0.0.1"
+dependencies = [
+ "cflib",
+ "log",
+ "rand 0.3.23",
+]
 
 [[package]]
 name = "semver"

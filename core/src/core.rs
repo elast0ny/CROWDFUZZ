@@ -253,7 +253,7 @@ impl<'a> CfCore<'a> {
             time_elapsed - total_plugin_time,
             *self.stats.num_execs.val,
         );
-        debug!("\tCfCore time : {} us", *self.stats.exec_time.val);
+        debug!("\tCore time : {} us", *self.stats.exec_time.val);
 
         info!("Ready to go !");
         Ok(())

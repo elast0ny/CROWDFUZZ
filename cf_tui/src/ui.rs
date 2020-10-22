@@ -87,6 +87,28 @@ pub fn increment_selected(val: &mut usize, max: usize, loop_to_zero: bool) {
     *val += 1;
 }
 
+pub fn select_next_plugin(state: &mut State) {
+    if !state.fuzzers.is_empty() {
+        let prev = state.ui.selected_plugin;
+        increment_selected(&mut state.ui.selected_plugin, state.fuzzers[0].stats.plugins.len() - 1, true);
+        if prev != state.ui.selected_plugin {
+            state.ui.plugins_view.clear();
+            state.ui.plugin_list.select(Some(state.ui.selected_plugin))
+        }
+    }
+}
+
+pub fn select_prev_plugin(state: &mut State) {
+    if !state.fuzzers.is_empty() {
+        let prev = state.ui.selected_plugin;
+        decrement_selected(&mut state.ui.selected_plugin, state.fuzzers[0].stats.plugins.len() - 1, true);
+        if prev != state.ui.selected_plugin {
+            state.ui.plugins_view.clear();
+            state.ui.plugin_list.select(Some(state.ui.selected_plugin))
+        }
+    }
+}
+
 pub fn draw<B: Backend>(state: &mut State, f: &mut Frame<B>) {
     let size = f.size();
     // Split terminal into 3 main parts
@@ -286,7 +308,7 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
     for (tag, val) in state.ui.main_view.iter_mut() {
         let (stripped_tag, tag_hints) =  strip_tag_hints(tag.as_str());
         if stripped_tag.len() > max_tag_len {
-            max_tag_len = tag.len();
+            max_tag_len = stripped_tag.len();
         }
         val.update_str_repr(tag_hints);
         if val.str_repr.len() > max_val_len {
@@ -328,9 +350,9 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
         .direction(Direction::Horizontal)
         .constraints(
             [
-                Constraint::Length((max_tag_len + 2) as u16),
+                Constraint::Length((1 + max_tag_len + 2) as u16),
                 Constraint::Length((max_val_len + 1) as u16),
-                Constraint::Length((max_plugin_name_len + 3) as u16),
+                Constraint::Length((2 + max_plugin_name_len + 2) as u16),
                 Constraint::Percentage(100),
                 
             ]
@@ -346,7 +368,7 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
         .direction(Direction::Horizontal)
         .constraints(
             [
-                Constraint::Length((max_plugin_tag_len + 2) as u16),
+                Constraint::Length((1 + max_plugin_tag_len + 2) as u16),
                 Constraint::Percentage(100),
             ]
             .as_ref(),

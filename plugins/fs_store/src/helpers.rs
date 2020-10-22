@@ -7,10 +7,12 @@ use ::crypto::{digest::Digest, sha1::Sha1};
 
 use crate::*;
 
-fn compute_sha1(hasher: &mut Sha1, chunks: &[CfBuf], dst: &mut [u8; 20]) {
+// We currently use Sha1. It might be worth exploring speed differences
+// with doing a pre crc32 check first ?
+fn compute_uid(hasher: &mut Sha1, chunks: &[&[u8]], dst: &mut [u8; 20]) {
     hasher.reset();
     for chunk in chunks {
-        hasher.input(unsafe { chunk.to_slice() });
+        hasher.input(chunk);
     }
     hasher.result(dst);
 }
@@ -29,14 +31,14 @@ fn read_file(src: &Path, dst: &mut Vec<u8>) -> bool {
     true
 }
 
-fn write_file(dst: &Path, chunks: &[CfBuf]) -> bool {
+fn write_file(dst: &Path, chunks: &[&[u8]]) -> bool {
     let mut file = match File::create(dst) {
         Ok(f) => f,
         _ => return false,
     };
     // Write file contents
     for chunk in chunks {
-        if file.write_all(unsafe { chunk.to_slice() }).is_err() {
+        if file.write_all(chunk).is_err() {
             let _ = std::fs::remove_file(&dst);
             return false;
         }
@@ -66,6 +68,7 @@ impl State {
                     contents: None,
                     path: Some(path),
                 });
+
                 // Save if new
                 self.save_new_inputs(core, false);
             }
@@ -90,9 +93,9 @@ impl State {
                 }
 
                 // Compute the hash of input into tmp_uid
-                compute_sha1(
+                compute_uid(
                     &mut self.hasher,
-                    &[CfBuf::from_slice(&mut self.tmp_buf)],
+                    &[&mut self.tmp_buf],
                     &mut self.tmp_uid,
                 );
                 if !self.unique_files.insert(self.tmp_uid) {
@@ -103,8 +106,9 @@ impl State {
 
                 // Add file to input_list
                 self.input_list.push(CfInputInfo {
-                    uid: CfBuf::from_slice(&mut self.tmp_uid),
+                    uid: self.tmp_uid.to_vec(),
                     path: Some(path),
+                    contents: None,
                 });
             }
         }
@@ -113,26 +117,26 @@ impl State {
     /// Save any new file
     pub fn save_new_inputs(&mut self, _core: &dyn PluginInterface, write_to_queue: bool) -> bool {
         let mut saved_one = false;
-        let mut tmp_chunk = [CfBuf {
-            ptr: std::ptr::null_mut(),
-            len: 0,
-        }];
+        let mut cur_input: Vec<&[u8]> = Vec::with_capacity(1);
         let mut cur_fpath: Option<PathBuf>;
 
         for new_input in self.new_inputs.drain(..) {
+            cur_input.clear();
+            
             // Either content was passed or we must read a file
-            let input = match new_input.contents {
+            match new_input.contents {
                 Some(v) => {
                     cur_fpath = None;
-                    raw_to_ref!(v, CfInput).chunks.as_slice()
+                    for chunk in raw_to_ref!(v, CfInput).chunks.iter() {
+                        cur_input.push(chunk.as_slice());
+                    }
                 }
                 None => {
                     match new_input.path {
                         Some(p) if read_file(p.as_path(), &mut self.tmp_buf) => {
                             cur_fpath = Some(p);
-                            //_core.log(::log::Level::Info, "save_from_path");
-                            tmp_chunk[0] = CfBuf::from_slice(&mut self.tmp_buf);
-                            &tmp_chunk
+                            // Borrow checker doesnt realise that vec.clear() drops the immutable ref...
+                            cur_input.push(unsafe{std::slice::from_raw_parts(self.tmp_buf.as_ptr(), self.tmp_buf.len())});
                         }
                         _ => continue,
                     }
@@ -140,7 +144,7 @@ impl State {
             };
 
             // Compute the hash of input into tmp_uid
-            compute_sha1(&mut self.hasher, input, &mut self.tmp_uid);
+            compute_uid(&mut self.hasher, &cur_input, &mut self.tmp_uid);
             if !self.unique_files.insert(self.tmp_uid) {
                 //_core.log(::log::Level::Info, "existing file");
                 //true is returned if new entry
@@ -162,15 +166,18 @@ impl State {
 
             //_core.log(::log::Level::Info, &format!("sha1 {:?}", &mut self.tmp_uid));
 
-            if write_to_queue && !write_file(cur_fpath.as_ref().unwrap().as_path(), input) {
+            if write_to_queue && !write_file(cur_fpath.as_ref().unwrap().as_path(), &cur_input) {
                 let _ = self.unique_files.remove(&self.tmp_uid);
                 continue;
             }
+
             // Add file to input_list
             self.input_list.push(CfInputInfo {
-                uid: CfBuf::from_slice(&mut self.tmp_uid),
+                uid: self.tmp_uid.to_vec(),
                 path: cur_fpath,
+                contents: None,
             });
+            
             *self.num_inputs.val += 1;
             saved_one = true;
         }

@@ -11,7 +11,7 @@ mod helpers;
 cflib::register!(name, env!("CARGO_PKG_NAME"));
 cflib::register!(load, init);
 cflib::register!(pre_fuzz, validate);
-cflib::register!(fuzz, fuzz);
+cflib::register!(fuzz, save_new);
 cflib::register!(unload, destroy);
 
 pub struct State {
@@ -119,8 +119,6 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     core.log(Level::Info, "Scanning for inputs...");
     state.init(core, input_dir.as_str());
 
-    *state.num_inputs.val = state.input_list.len() as _;
-
     if state.input_list.is_empty() {
         core.log(
             Level::Error,
@@ -153,12 +151,12 @@ fn validate(
 }
 
 // Perform our task in the fuzzing loop
-fn fuzz(core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
+fn save_new(core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
 
     // Only task is to save new files to the filesystem
     state.save_new_inputs(core, true);
-    std::thread::sleep(std::time::Duration::from_secs(1));
+
     Ok(())
 }
 

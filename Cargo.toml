@@ -4,7 +4,7 @@ members = [
     "core",
     "plugins/test_plugin",
     "plugins/fs_store",
-    "plugins/random_select",
+    "plugins/select_input",
     "plugins/basic_mutate",
     "plugins/basic_run",
     "plugins/save_result",
