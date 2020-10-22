@@ -22,7 +22,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         ::log::Level::Info,
         &format!("initializing for {} !", state.fuzzer_name),
     );
-    
+
     Ok(Box::into_raw(state) as _)
 }
 
@@ -45,6 +45,7 @@ fn fuzz(_core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut 
     ctx.num_iter += 1;
 
     std::thread::sleep(std::time::Duration::from_secs(1));
+
     Ok(())
 }
 

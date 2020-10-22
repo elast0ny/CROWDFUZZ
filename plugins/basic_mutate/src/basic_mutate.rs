@@ -72,7 +72,6 @@ fn mutate_input(
         first_chunk[state.rng.gen_range(0, first_chunk.len())] = state.rng.gen::<u8>();
     }
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
     Ok(())
 }
 

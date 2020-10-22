@@ -6,7 +6,7 @@ members = [
     "plugins/fs_store",
     "plugins/select_input",
     "plugins/basic_mutate",
-    "plugins/basic_run",
+    "plugins/run_target",
     "plugins/save_result",
     "cf_tui",
 ]

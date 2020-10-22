@@ -42,9 +42,6 @@ pub struct Config {
     /// Path of the statistic file
     #[serde(default = "default_stats_path")]
     pub stats_file: String,
-    /// Name of the input file when fuzzing
-    #[serde(default = "default_input_fname")]
-    pub input_file_name: String,
 
     #[serde(skip_deserializing)]
     #[serde(default = "String::new")]
@@ -59,10 +56,6 @@ fn default_smem_size() -> usize {
 }
 fn default_stats_path() -> String {
     String::from("fuzzer_stats")
-}
-
-fn default_input_fname() -> String {
-    String::from("cur_input")
 }
 
 impl Config {

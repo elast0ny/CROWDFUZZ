@@ -5,4 +5,13 @@
 "target_args" : ["-cd"]
 
 "fuzz_loop" : 
-  - '../target/debug/libfs_store.so'
+  - '../target/release/libfs_store.so'
+  - '../target/release/libselect_input.so'
+  - '../target/release/libbasic_mutate.so'
+  - '../target/release/librun_target.so'
+
+
+  "plugin_conf":
+    # run_target args
+    #"target_wd" : "C:\\"
+    "timeout_ms": "1000"

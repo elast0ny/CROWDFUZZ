@@ -43,13 +43,11 @@ pub const STORE_INPUT_BYTES: &str = "input_bytes";
 
 
 /* Target exec */
-/// (*mut u64) The number of US for the last run
-pub const STORE_TARGET_EXEC_SPEED: &str = "target_exec_us";
 /// (*mut TargetExitStatus) The exit status for the last run
 pub const STORE_EXIT_STATUS: &str = "exit_status";
 
 pub enum TargetExitStatus {
-    Normal,
+    Normal(i32),
     Timeout,
     Crash(i32),
 }
