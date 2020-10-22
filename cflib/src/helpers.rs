@@ -103,7 +103,7 @@ pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static s
             let _ = write!(dst, "{}", val / US_IN_S);
             val %= US_IN_S;
             if val > US_IN_MS {
-                let _ = write!(dst, ".{}s", val / US_IN_MS);
+                let _ = write!(dst, ".{:03}s", val / US_IN_MS);
             } else {
                 let _ = write!(dst, "s");
             }
