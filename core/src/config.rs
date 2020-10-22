@@ -151,7 +151,7 @@ impl Config {
                 // TODO : Read the fuzzer stats file and ensure that the pid is still a live fuzzer process
                 if cleanup_dead_fuzzer(entry.path().as_path()) {
                     warn!("Deleted stats file from dead fuzzer : {}", file_name);
-                    break;
+                    continue;
                 }
                 fuzz_num += 1;
             }
