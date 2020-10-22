@@ -6,8 +6,9 @@ use std::{
 };
 
 use ::log::*;
-
 use ::serde_derive::{Deserialize, Serialize};
+use ::shared_memory::ShmemConf;
+use ::sysinfo::{ProcessExt, RefreshKind, System, SystemExt};
 
 use crate::Result;
 
@@ -56,6 +57,34 @@ fn default_smem_size() -> usize {
 }
 fn default_stats_path() -> String {
     String::from("fuzzer_stats")
+}
+
+fn cleanup_dead_fuzzer(stats_file: &Path) -> bool {
+    let shmem = match ShmemConf::new().flink(stats_file).open() {
+        Ok(m) => m,
+        Err(_e) => {
+            return std::fs::remove_file(stats_file).is_ok();
+        }
+    };
+
+    let cur = shmem.as_ptr();
+    let fuzzer_pid = unsafe { *(cur.add(std::mem::size_of::<cflib::CoreState>()) as *mut u32)};
+    let mut sys_info = System::new_with_specifics(
+        RefreshKind::new().with_processes(),
+    );
+    sys_info.refresh_processes();
+
+    let fuzzer_alive = match sys_info.get_process(fuzzer_pid as _) {
+        None => false,
+        Some(p) => p.name().starts_with("crowdfuzz"),
+    };
+
+    if !fuzzer_alive {
+        return std::fs::remove_file(stats_file).is_ok();
+    }
+
+    // Nothing was deleted
+    false
 }
 
 impl Config {
@@ -120,6 +149,10 @@ impl Config {
                     continue;
                 }
                 // TODO : Read the fuzzer stats file and ensure that the pid is still a live fuzzer process
+                if cleanup_dead_fuzzer(entry.path().as_path()) {
+                    warn!("Deleted stats file from dead fuzzer : {}", file_name);
+                    break;
+                }
                 fuzz_num += 1;
             }
         }
@@ -151,8 +184,21 @@ impl Config {
 
     pub fn new<S: AsRef<str>>(prefix: S, config_fpath: S) -> Result<Config> {
         // Parse the yaml config
-        let path = PathBuf::from(config_fpath.as_ref()).canonicalize()?;
-        let mut config: Config = serde_yaml::from_reader(File::open(&path)?)?;
+        let path = match PathBuf::from(config_fpath.as_ref()).canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Cannot find config file '{}'", config_fpath.as_ref());
+                return Err(From::from(e));
+            },
+        };
+        
+        let mut config: Config = match serde_yaml::from_reader(File::open(&path)?) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Failed to parse config file '{}' : {}", config_fpath.as_ref(), e);
+                return Err(From::from(e));
+            }
+        };
 
         // Set the current working directory to be the config's directory
         config.prev_wd = std::env::current_dir().unwrap();
