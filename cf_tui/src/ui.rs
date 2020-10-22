@@ -328,11 +328,35 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
         }
         val.update_str_repr((None, Some(TAG_POSTFIX_US)));
     }
+
+    // Be nice to plugins runing a target and substract the target_exec
+    // from the plugin_time
+    let mut substract_time = 0;
     for (tag, val) in state.ui.plugins_view.iter_mut() {
+        if STAT_TARGET_EXEC_TIME != tag.as_str() {
+            continue;
+        }
+        
+        if let CachedStatVal::Num(ref v) = val.val {
+            substract_time = *v;
+            break;
+        }
+    }
+
+    for (idx, (tag, val)) in state.ui.plugins_view.iter_mut().enumerate() {
         let (stripped_tag, tag_hints) =  strip_tag_hints(tag.as_str());
         if stripped_tag.len() > max_plugin_tag_len {
             max_plugin_tag_len = stripped_tag.len();
         }
+
+        if idx == 0 {
+            if let CachedStatVal::Num(ref mut v) = val.val {
+                if *v > substract_time {
+                    *v -= substract_time;
+                }
+            }
+        }
+        
         val.update_str_repr(tag_hints);
     }
 
