@@ -4,6 +4,7 @@
 "target" : '/usr/bin/gzip'
 "target_args" : ["-cd"]
 
+# cargo build --release -p fs_store -p select_input -p basic_mutate -p run_target
 "fuzz_loop" : 
   - '../target/release/libfs_store.so'
   - '../target/release/libselect_input.so'

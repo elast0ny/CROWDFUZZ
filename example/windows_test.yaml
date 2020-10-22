@@ -5,6 +5,7 @@
 "target_args" : ['input\test.gz']
 
 
+# cargo build --release -p fs_store -p select_input -p basic_mutate -p run_target
 "fuzz_loop" : 
   - '..\target\release\fs_store.dll'
   - '..\target\release\select_input.dll'
