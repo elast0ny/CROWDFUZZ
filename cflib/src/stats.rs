@@ -20,7 +20,7 @@ pub const TAG_POSTFIX_HOUR : &str = "_h";
 pub (crate) const TAG_POSTFIXES: &[&str] = &[TAG_POSTFIX_HEX, TAG_POSTFIX_PATH, TAG_POSTFIX_EPOCHS, TAG_POSTFIX_US, TAG_POSTFIX_MS, TAG_POSTFIX_SEC, TAG_POSTFIX_MIN, TAG_POSTFIX_HOUR];
 
 /// Plugins that execute a target binary should use this name for consistency
-pub const STAT_TARGET_EXEC_TIME : &str = concat!("avg_target_exec_time_us");
+pub const STAT_TARGET_EXEC_TIME : &str = "avg_target_exec_time_us";
 
 /// Struct used to request stat memory for specific stat types
 pub enum NewStat<'a> {

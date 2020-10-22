@@ -12,7 +12,9 @@ cflib::register!(fuzz, mutate_input);
 cflib::register!(unload, destroy);
 
 struct State {
+    /// fast/non-crypto grade random
     rng: SmallRng,
+    /// Reference to the currently selected input
     cur_input: &'static mut CfInput,
 }
 

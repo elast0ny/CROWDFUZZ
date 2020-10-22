@@ -238,7 +238,19 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
 
     // Compute stat values
     for (fuzzer_idx, fuzzer) in fuzzer_list.drain(..).enumerate() {
-        'plugin_loop: for (plugin_idx, plugin) in fuzzer.stats.plugins.iter_mut().enumerate() {            
+        'plugin_loop: for (plugin_idx, plugin) in fuzzer.stats.plugins.iter_mut().enumerate() {
+
+            // Calculate either the main core plugin view or selected plugin view
+            let mut cached_view = if plugin_idx == 0 {
+                // First plugin is for the core
+                Some(&mut state.ui.main_view)
+            } else if plugin_idx - 1 == state.ui.selected_plugin {
+                // This is the active plugin in the plugin_details view
+                Some(&mut state.ui.plugins_view)
+            } else {
+                None
+            };
+            
             for (stat_idx, stat) in plugin.stats.iter_mut().enumerate() {
                 // Calculate exec time for all plugins
                 if plugin_idx != 0 && stat_idx == 0 {
@@ -250,18 +262,13 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
                     }
                 }
 
-                // Calculate either the main core plugin view or selected plugin view
-                let cached_view = if plugin_idx == 0 {
-                    // First plugin is for the core
-                    &mut state.ui.main_view
-                } else if plugin_idx - 1 == state.ui.selected_plugin {
-                    // This is the active plugin in the plugin_details view
-                    &mut state.ui.plugins_view
-                } else {
-                    // This plugin is not currently in view
-                    continue 'plugin_loop;
+                // If this is the fuzzer core or selected plugin stats
+                let cached_view = match cached_view {
+                    Some(ref mut c) => c,
+                    None => continue 'plugin_loop,
                 };
-
+                
+                // Rename first stat to core/plugin time
                 let cur_tag = if stat_idx == 0 {
                     if plugin_idx == 0 {
                         "avg_core_time_us"

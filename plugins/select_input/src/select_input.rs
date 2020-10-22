@@ -15,6 +15,7 @@ cflib::register!(fuzz, select_input);
 cflib::register!(unload, destroy);
 
 struct State {
+    /// Use a fast/non-crypto grade random
     rng: SmallRng,
     cur_input_idx: usize,
     tmp_buf: Vec<u8>,
