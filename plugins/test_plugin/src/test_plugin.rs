@@ -19,7 +19,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     });
 
     core.log(
-        ::log::Level::Info,
+        LogLevel::Info,
         &format!("initializing for {} !", state.fuzzer_name),
     );
 
@@ -33,7 +33,7 @@ fn validate(
     plugin_ctx: *mut u8,
 ) -> Result<()> {
     let _state = box_ref!(plugin_ctx, State);
-    core.log(::log::Level::Info, "validating");
+    core.log(LogLevel::Info, "validating");
 
     Ok(())
 }
@@ -57,7 +57,7 @@ fn destroy(
 ) -> Result<()> {
     let _ctx = box_take!(plugin_ctx, State);
 
-    core.log(::log::Level::Info, "destroying");
+    core.log(LogLevel::Info, "destroying");
 
     Ok(())
 }
