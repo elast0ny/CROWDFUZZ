@@ -93,11 +93,7 @@ impl State {
                 }
 
                 // Compute the hash of input into tmp_uid
-                compute_uid(
-                    &mut self.hasher,
-                    &[&mut self.tmp_buf],
-                    &mut self.tmp_uid,
-                );
+                compute_uid(&mut self.hasher, &[&mut self.tmp_buf], &mut self.tmp_uid);
                 if !self.unique_files.insert(self.tmp_uid) {
                     //_core.log(::log::Level::Info, "existing file");
                     //true is returned if new entry
@@ -122,7 +118,7 @@ impl State {
 
         for new_input in self.new_inputs.drain(..) {
             cur_input.clear();
-            
+
             // Either content was passed or we must read a file
             match new_input.contents {
                 Some(v) => {
@@ -136,7 +132,12 @@ impl State {
                         Some(p) if read_file(p.as_path(), &mut self.tmp_buf) => {
                             cur_fpath = Some(p);
                             // Borrow checker doesnt realise that vec.clear() drops the immutable ref...
-                            cur_input.push(unsafe{std::slice::from_raw_parts(self.tmp_buf.as_ptr(), self.tmp_buf.len())});
+                            cur_input.push(unsafe {
+                                std::slice::from_raw_parts(
+                                    self.tmp_buf.as_ptr(),
+                                    self.tmp_buf.len(),
+                                )
+                            });
                         }
                         _ => continue,
                     }
@@ -177,7 +178,7 @@ impl State {
                 path: cur_fpath,
                 contents: None,
             });
-            
+
             *self.num_inputs.val += 1;
             saved_one = true;
         }

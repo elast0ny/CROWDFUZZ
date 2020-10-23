@@ -1,8 +1,6 @@
-
-
 /// Macro provided to register a CROWDFUZZ plugin properly.
 /// All variants of the macro must be used
-/// 
+///
 /// Variants are :
 /// register!(name, &str)
 /// register!(load, PluginLoadCb)
@@ -11,7 +9,7 @@
 /// register!(unload, PluginUnLoadCb)
 #[macro_export]
 macro_rules! register {
-    (name, $your_proc:expr) => {        
+    (name, $your_proc:expr) => {
         #[no_mangle]
         pub static __PluginName: &'static str = concat!($your_proc, "\0");
     };
@@ -55,7 +53,7 @@ macro_rules! mutref_to_raw {
 #[macro_export]
 macro_rules! raw_to_ref {
     ($var:expr, $typ:ty) => {
-        unsafe {&*($var as *mut $typ)}
+        unsafe { &*($var as *mut $typ) }
     };
 }
 /// Converts a *mut u8 to &mut T
@@ -64,7 +62,7 @@ macro_rules! raw_to_ref {
 #[macro_export]
 macro_rules! raw_to_mutref {
     ($var:expr, $typ:ty) => {
-        unsafe {&mut *($var as *mut $typ)}
+        unsafe { &mut *($var as *mut $typ) }
     };
 }
 
@@ -74,10 +72,9 @@ macro_rules! raw_to_mutref {
 #[macro_export]
 macro_rules! mutref_from_raw {
     ($var:expr, $typ:ty) => {
-        unsafe {&mut *($var as *mut $typ)}
+        unsafe { &mut *($var as *mut $typ) }
     };
 }
-
 
 /// Converts a *mut u8 to &mut T
 /// # Safety
@@ -85,7 +82,7 @@ macro_rules! mutref_from_raw {
 #[macro_export]
 macro_rules! box_ref {
     ($var:expr, $typ:ty) => {
-        unsafe {Box::leak(box_take!($var,$typ))}
+        unsafe { Box::leak(box_take!($var, $typ)) }
     };
 }
 
@@ -95,6 +92,6 @@ macro_rules! box_ref {
 #[macro_export]
 macro_rules! box_take {
     ($var:expr, $typ:ty) => {
-        unsafe {Box::from_raw($var as *mut $typ)}
+        unsafe { Box::from_raw($var as *mut $typ) }
     };
 }

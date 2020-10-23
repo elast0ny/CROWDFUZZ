@@ -1,11 +1,11 @@
 use ::log::*;
 
+use crate::stats::Stats;
+use crate::Result;
 use cflib::*;
 use std::ffi::CStr;
 use std::path::PathBuf;
 use std::ptr::null_mut;
-use crate::stats::Stats;
-use crate::Result;
 
 pub struct PluginData {
     name: String,
@@ -30,13 +30,18 @@ pub struct PluginCtx<'a> {
 impl<'a> PluginInterface for PluginCtx<'a> {
     fn log(&self, level: LogLevel, msg: &str) {
         let plugin = unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id) };
-        log!(match level {
-            LogLevel::Info => ::log::Level::Info,
-            LogLevel::Warn => ::log::Level::Warn,
-            LogLevel::Error => ::log::Level::Error,
-            LogLevel::Debug => ::log::Level::Debug,
-            LogLevel::Trace => ::log::Level::Trace,
-        }, "[{}] {}", &plugin.name, msg);
+        log!(
+            match level {
+                LogLevel::Info => ::log::Level::Info,
+                LogLevel::Warn => ::log::Level::Warn,
+                LogLevel::Error => ::log::Level::Error,
+                LogLevel::Debug => ::log::Level::Debug,
+                LogLevel::Trace => ::log::Level::Trace,
+            },
+            "[{}] {}",
+            &plugin.name,
+            msg
+        );
     }
     fn add_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal> {
         self.stats.new_stat(tag, stat)
@@ -174,7 +179,11 @@ impl Plugin {
         &self.name
     }
 
-    pub fn init(&mut self, interface: &mut dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+    pub fn init(
+        &mut self,
+        interface: &mut dyn cflib::PluginInterface,
+        store: &mut CfStore,
+    ) -> Result<()> {
         //Call init at most once
         if self.is_init {
             return Ok(());
@@ -195,7 +204,11 @@ impl Plugin {
         Ok(())
     }
 
-    pub fn validate(&mut self, interface: &mut dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+    pub fn validate(
+        &mut self,
+        interface: &mut dyn cflib::PluginInterface,
+        store: &mut CfStore,
+    ) -> Result<()> {
         if !self.is_init {
             return Err(From::from(format!(
                 "Tried to call '{}'.pre_fuzz_fn() before init()",
@@ -209,13 +222,17 @@ impl Plugin {
                 self.name, e
             )));
         }
-        
+
         Ok(())
     }
 
-    pub fn do_work(&self, interface: &mut dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+    pub fn do_work(
+        &self,
+        interface: &mut dyn cflib::PluginInterface,
+        store: &mut CfStore,
+    ) -> Result<()> {
         //No checks for is_init for performance...
-        
+
         if let Err(e) = (self.fuzz_fn)(interface, store, self.ctx) {
             return Err(From::from(format!(
                 "'{}'.fuzz() failed with error : {}",
@@ -226,7 +243,11 @@ impl Plugin {
         Ok(())
     }
 
-    pub fn destroy(&mut self, interface: &mut dyn cflib::PluginInterface, store: &mut CfStore) -> Result<()> {
+    pub fn destroy(
+        &mut self,
+        interface: &mut dyn cflib::PluginInterface,
+        store: &mut CfStore,
+    ) -> Result<()> {
         //Call init at most once
         if !self.is_init {
             return Err(From::from(format!(

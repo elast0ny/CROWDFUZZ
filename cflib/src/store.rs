@@ -41,7 +41,6 @@ pub const STORE_INPUT_IDX: &str = "input_idx";
 /// (*mut CfInput) Contents of the selected input
 pub const STORE_INPUT_BYTES: &str = "input_bytes";
 
-
 /* Target exec */
 /// (*mut TargetExitStatus) The exit status for the last run
 pub const STORE_EXIT_STATUS: &str = "exit_status";

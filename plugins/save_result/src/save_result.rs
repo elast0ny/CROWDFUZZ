@@ -47,10 +47,9 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
                 Ok(StatVal::Num(v)) => v,
                 _ => return Err(From::from("Failed to reserve stat".to_string())),
             },
-            num_timeouts: match core.add_stat(
-                &format!("{}timeouts", TAG_PREFIX_TOTAL),
-                NewStat::Num(0),
-            ) {
+            num_timeouts: match core
+                .add_stat(&format!("{}timeouts", TAG_PREFIX_TOTAL), NewStat::Num(0))
+            {
                 Ok(StatVal::Num(v)) => v,
                 _ => return Err(From::from("Failed to reserve stat".to_string())),
             },

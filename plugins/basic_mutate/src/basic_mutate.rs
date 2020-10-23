@@ -1,8 +1,8 @@
 use std::mem::MaybeUninit;
 
 use ::cflib::*;
-use ::rand::{Rng, SeedableRng};
 use ::rand::rngs::SmallRng;
+use ::rand::{Rng, SeedableRng};
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
 cflib::register!(load, init);
@@ -62,7 +62,7 @@ fn mutate_input(
         return Ok(());
     }
 
-    let first_chunk = unsafe{state.cur_input.chunks.get_unchecked_mut(0)};
+    let first_chunk = unsafe { state.cur_input.chunks.get_unchecked_mut(0) };
 
     // Randomly mutate some bytes in the first chunk
     let num_of_bytes_mutated = state.rng.gen_range(0, first_chunk.len());
@@ -74,7 +74,11 @@ fn mutate_input(
 }
 
 // Unload and free our resources
-fn destroy(_core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
+fn destroy(
+    _core: &mut dyn PluginInterface,
+    _store: &mut CfStore,
+    plugin_ctx: *mut u8,
+) -> Result<()> {
     let _state = box_take!(plugin_ctx, State);
     Ok(())
 }

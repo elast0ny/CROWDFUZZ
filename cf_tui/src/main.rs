@@ -9,7 +9,6 @@ use crate::ui::*;
 pub mod state;
 use crate::state::*;
 
-
 use ::cflib::Result;
 
 fn main() -> Result<()> {
@@ -23,8 +22,7 @@ fn main() -> Result<()> {
             Arg::with_name("project_state")
                 .help("Path to a fuzzer's state directory")
                 .required(true)
-                .takes_value(true)
-                //.multiple(true).number_of_values(1)
+                .takes_value(true), //.multiple(true).number_of_values(1)
         )
         .arg(
             Arg::with_name("stats_prefix")
@@ -113,10 +111,18 @@ fn main() -> Result<()> {
                         state.update_fuzzer_list();
                     }
                     KeyCode::Tab | KeyCode::PageUp | KeyCode::Right => {
-                        increment_selected(&mut state.ui.selected_tab, state.fuzzers.len() + 1, false);
+                        increment_selected(
+                            &mut state.ui.selected_tab,
+                            state.fuzzers.len() + 1,
+                            false,
+                        );
                     }
                     KeyCode::PageDown | KeyCode::Left => {
-                        decrement_selected(&mut state.ui.selected_tab, state.fuzzers.len() + 1, false);
+                        decrement_selected(
+                            &mut state.ui.selected_tab,
+                            state.fuzzers.len() + 1,
+                            false,
+                        );
                     }
                     KeyCode::Up => {
                         select_prev_plugin(&mut state);

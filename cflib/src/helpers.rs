@@ -58,7 +58,11 @@ pub fn strip_tag_postfix(tag: &str) -> (&str, Option<&'static str>) {
     (tag, None)
 }
 
-pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static str>, Option<&'static str>)) {
+pub fn pretty_num(
+    dst: &mut String,
+    mut val: u64,
+    type_hints: (Option<&'static str>, Option<&'static str>),
+) {
     use std::fmt::Write;
 
     let mut generated_str = false;
@@ -69,12 +73,11 @@ pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static s
     const US_IN_H: u64 = 60 * US_IN_M;
 
     if let Some(postfix) = type_hints.1 {
-
         val = match postfix {
             TAG_POSTFIX_HEX => {
-                let _ =write!(dst, "0x{:X}", val);
+                let _ = write!(dst, "0x{:X}", val);
                 return;
-            },
+            }
             // Convert time number to US
             TAG_POSTFIX_MS => val * US_IN_MS,
             TAG_POSTFIX_SEC | TAG_POSTFIX_EPOCHS => val * US_IN_S,
@@ -83,11 +86,11 @@ pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static s
             TAG_POSTFIX_US => val,
             // Any other postfix dont apply to numbers
             _ => {
-                let _ =write!(dst, "{}?", val);
+                let _ = write!(dst, "{}?", val);
                 return;
-            },
+            }
         };
-        
+
         // Attempt to write "long" timescales
         if val > US_IN_H {
             let _ = write!(dst, "{}h", val / US_IN_H);
@@ -109,7 +112,7 @@ pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static s
             }
             generated_str = true;
         }
-    
+
         // Write smaller time scales
         if !generated_str {
             if val > US_IN_MS {
@@ -130,7 +133,11 @@ pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static s
     }
 }
 
-pub fn pretty_str(dst: &mut String, mut val: &str, type_hints: (Option<&'static str>, Option<&'static str>)) {
+pub fn pretty_str(
+    dst: &mut String,
+    mut val: &str,
+    type_hints: (Option<&'static str>, Option<&'static str>),
+) {
     if let Some(postfix) = type_hints.1 {
         // Strip windows path grossness
         if postfix == TAG_POSTFIX_PATH && val.starts_with("\\\\?\\") {
@@ -140,7 +147,11 @@ pub fn pretty_str(dst: &mut String, mut val: &str, type_hints: (Option<&'static 
     dst.push_str(val);
 }
 
-pub fn pretty_bytes(dst: &mut String, val: &[u8], type_hints: (Option<&'static str>, Option<&'static str>)) {
+pub fn pretty_bytes(
+    dst: &mut String,
+    val: &[u8],
+    type_hints: (Option<&'static str>, Option<&'static str>),
+) {
     use std::fmt::Write;
     let mut wrote = false;
     if let Some(postfix) = type_hints.1 {
@@ -302,7 +313,13 @@ impl<'a> SpRead<'a> for StatStr {
 }
 impl std::fmt::Debug for StatStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}/{}] '{}'", self.val.len, self.val.capacity(), unsafe{std::str::from_utf8_unchecked(self.val.get())})
+        write!(
+            f,
+            "[{}/{}] '{}'",
+            self.val.len,
+            self.val.capacity(),
+            unsafe { std::str::from_utf8_unchecked(self.val.get()) }
+        )
     }
 }
 
@@ -334,7 +351,13 @@ impl<'a> SpRead<'a> for StatBytes {
 }
 impl std::fmt::Debug for StatBytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}/{}] {:X?}", self.val.len, self.val.capacity(), self.val.get())
+        write!(
+            f,
+            "[{}/{}] {:X?}",
+            self.val.len,
+            self.val.capacity(),
+            self.val.get()
+        )
     }
 }
 

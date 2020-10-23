@@ -1,11 +1,11 @@
 use std::collections::VecDeque;
-use std::mem::MaybeUninit;
 use std::fs::File;
 use std::io::prelude::*;
+use std::mem::MaybeUninit;
 
 use ::cflib::*;
-use ::rand::{Rng, SeedableRng};
 use ::rand::rngs::SmallRng;
+use ::rand::{Rng, SeedableRng};
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
 cflib::register!(load, init);
@@ -35,8 +35,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             cur_input: CfInput::default(),
             priority_list: VecDeque::new(),
             input_list: MaybeUninit::zeroed().assume_init(),
-            num_priority_inputs: match core.add_stat(&format!("{}num_priority_inputs", TAG_PREFIX_TOTAL), NewStat::Num(0))
-            {
+            num_priority_inputs: match core.add_stat(
+                &format!("{}num_priority_inputs", TAG_PREFIX_TOTAL),
+                NewStat::Num(0),
+            ) {
                 Ok(StatVal::Num(v)) => v,
                 _ => return Err(From::from("Failed to reserve stat".to_string())),
             },
@@ -48,7 +50,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         || store.get(STORE_INPUT_BYTES).is_some()
         || store.get("select_priority_list").is_some()
     {
-        core.log(LogLevel::Error, "Another plugin is already selecting inputs !");
+        core.log(
+            LogLevel::Error,
+            "Another plugin is already selecting inputs !",
+        );
         return Err(From::from("Duplicate select plugins".to_string()));
     }
 
@@ -105,7 +110,7 @@ fn select_input(
         }
     };
 
-    let input_info = unsafe{state.input_list.get_unchecked(state.cur_input_idx)};
+    let input_info = unsafe { state.input_list.get_unchecked(state.cur_input_idx) };
 
     state.tmp_buf.clear();
     // No need to read off disk, content was inlined in the input info
@@ -119,7 +124,13 @@ fn select_input(
         let p = match &input_info.path {
             Some(p) => p.as_path(),
             None => {
-                core.log(LogLevel::Error, &format!("input[{}] has no content or path info !", state.cur_input_idx));
+                core.log(
+                    LogLevel::Error,
+                    &format!(
+                        "input[{}] has no content or path info !",
+                        state.cur_input_idx
+                    ),
+                );
                 return Err(From::from("No input contents".to_string()));
             }
         };
@@ -141,7 +152,11 @@ fn select_input(
 }
 
 // Unload and free our resources
-fn destroy(_core: &mut dyn PluginInterface, store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
+fn destroy(
+    _core: &mut dyn PluginInterface,
+    store: &mut CfStore,
+    plugin_ctx: *mut u8,
+) -> Result<()> {
     let _ctx = box_take!(plugin_ctx, State);
 
     let _ = store.remove(STORE_INPUT_IDX);
