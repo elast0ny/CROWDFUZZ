@@ -22,7 +22,6 @@ fn main() -> Result<()> {
         .arg(
             Arg::with_name("project_state")
                 .help("Path to a fuzzer's state directory")
-                .short("-s")
                 .required(true)
                 .takes_value(true)
                 //.multiple(true).number_of_values(1)
