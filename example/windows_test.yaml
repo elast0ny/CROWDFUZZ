@@ -2,10 +2,10 @@
 "state" : "state/"
 "results" : "results/"
 "target" : 'test.exe'
-"target_args" : ['input\test.gz']
+"target_args" : ['@@']
 
 
-# cargo build --release -p fs_store -p select_input -p basic_mutate -p run_target
+# cargo build --release -p fs_store -p select_input -p basic_mutate -p run_target -p save_result
 "fuzz_loop" : 
   - '..\target\release\fs_store.dll'
   - '..\target\release\select_input.dll'
@@ -15,8 +15,11 @@
 
 
 "plugin_conf":
-  # --- run_target --- 
-  #"target_wd" : "C:\\"
+  #"queue_dir": "some_dir"
+  #"crashes_dir": "some_dir"
+  #"timeouts_dir": "some_dir"
+  #"target_wd" : "some_dir"
   "target_timeout_ms": "1000"
-  "target_input_path" : "state/cur_input"
+  "target_input_path" : "cur_input"
+
 

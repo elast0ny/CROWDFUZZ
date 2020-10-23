@@ -1,10 +1,9 @@
-use cflib::*;
 use std::collections::HashSet;
 use std::mem::MaybeUninit;
 use std::path::PathBuf;
 
+use ::cflib::*;
 use ::crypto::sha1::Sha1;
-use ::log::Level;
 
 mod helpers;
 
@@ -29,41 +28,65 @@ pub struct State {
     is_new_inputs_owner: bool,
     new_inputs: &'static mut Vec<CfNewInput>,
     owned_new_inputs: Vec<CfNewInput>,
+    stat_queue_dir: StatStr,
 }
 
 // Initialize our plugin
 fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     #[allow(invalid_value)]
-    let mut state = Box::new(State {
-        hasher: Sha1::new(),
-        unique_files: HashSet::new(),
-        tmp_uid: [0; 20],
-        tmp_str: String::new(),
-        tmp_buf: Vec::new(),
-        queue_dir: PathBuf::new(),
-        is_input_list_owner: false,
-        is_new_inputs_owner: false,
-        num_inputs: match core.add_stat(&format!("{}num_files", TAG_PREFIX_TOTAL), NewStat::Num(0))
-        {
-            Ok(StatVal::Num(v)) => v,
-            _ => return Err(From::from("Failed to reserve stat".to_string())),
-        },
-        input_list: unsafe { MaybeUninit::zeroed().assume_init() },
-        new_inputs: unsafe { MaybeUninit::zeroed().assume_init() },
-        owned_input_list: Vec::new(),
-        owned_new_inputs: Vec::new(),
+    let mut state = Box::new(unsafe {
+        State {
+            hasher: Sha1::new(),
+            unique_files: HashSet::new(),
+            tmp_uid: [0; 20],
+            tmp_str: String::new(),
+            tmp_buf: Vec::new(),
+            queue_dir: PathBuf::new(),
+            is_input_list_owner: false,
+            is_new_inputs_owner: false,
+            num_inputs: match core
+                .add_stat(&format!("{}num_files", TAG_PREFIX_TOTAL), NewStat::Num(0))
+            {
+                Ok(StatVal::Num(v)) => v,
+                _ => return Err(From::from("Failed to reserve stat".to_string())),
+            },
+            input_list: MaybeUninit::zeroed().assume_init(),
+            new_inputs: MaybeUninit::zeroed().assume_init(),
+            owned_input_list: Vec::new(),
+            owned_new_inputs: Vec::new(),
+            stat_queue_dir: MaybeUninit::zeroed().assume_init(),
+        }
     });
 
-    // Save our files in <state>/queue
+    let plugin_conf = raw_to_ref!(*store.get(STORE_PLUGIN_CONF).unwrap(), std::collections::HashMap<String, String>);
+
+    // Create queue dir
+    // Save our files in <state>/X
     state
         .queue_dir
         .push(raw_to_ref!(*store.get(STORE_STATE_DIR).unwrap(), String));
-    state.queue_dir.push("queue");
+    if let Some(p) = plugin_conf.get("queue_dir") {
+        state.queue_dir.push(p);
+    } else {
+        state.queue_dir.push("queue");
+    }
+
+    let tmp: &str = state.queue_dir.to_str().unwrap();
+    state.stat_queue_dir = match core.add_stat(
+        &format!("queue_dir{}", TAG_POSTFIX_PATH),
+        NewStat::Str {
+            max_size: tmp.len(),
+            init_val: tmp,
+        },
+    ) {
+        Ok(StatVal::Str(v)) => v,
+        _ => return Err(From::from("Failed to reserve stat".to_string())),
+    };
 
     // Create filesystem store
     if !state.queue_dir.is_dir() && std::fs::create_dir(&state.queue_dir).is_err() {
         core.log(
-            Level::Error,
+            LogLevel::Error,
             &format!(
                 "Failed to create directory '{}'",
                 state.queue_dir.to_string_lossy()
@@ -77,7 +100,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         if let Some(v) = store.get(STORE_INPUT_LIST) {
             if !state.is_input_list_owner {
                 core.log(
-                    Level::Info,
+                    LogLevel::Info,
                     &format!("Using existing '{}' in store !", STORE_INPUT_LIST),
                 );
             }
@@ -97,7 +120,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         if let Some(v) = store.get(STORE_NEW_INPUTS) {
             if !state.is_new_inputs_owner {
                 core.log(
-                    Level::Info,
+                    LogLevel::Info,
                     &format!("Using existing '{}' in store !", STORE_NEW_INPUTS),
                 );
             }
@@ -116,12 +139,12 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     let input_dir = raw_to_ref!(*store.get(STORE_INPUT_DIR).unwrap(), String);
 
     // Build our input_list from the filesystem
-    core.log(Level::Info, "Scanning for inputs...");
+    core.log(LogLevel::Info, "Scanning for inputs...");
     state.init(core, input_dir.as_str());
 
     if state.input_list.is_empty() {
         core.log(
-            Level::Error,
+            LogLevel::Error,
             &format!(
                 "No inputs found in {} or {}",
                 input_dir,
@@ -132,7 +155,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
 
     core.log(
-        Level::Info,
+        LogLevel::Info,
         &format!("Found {} input(s) !", state.input_list.len()),
     );
 
@@ -151,7 +174,11 @@ fn validate(
 }
 
 // Perform our task in the fuzzing loop
-fn save_new(core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
+fn save_new(
+    core: &mut dyn PluginInterface,
+    _store: &mut CfStore,
+    plugin_ctx: *mut u8,
+) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
 
     // Only task is to save new files to the filesystem

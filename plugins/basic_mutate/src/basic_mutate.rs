@@ -1,7 +1,6 @@
 use std::mem::MaybeUninit;
 
 use ::cflib::*;
-use ::log::Level::*;
 use ::rand::{Rng, SeedableRng};
 use ::rand::rngs::SmallRng;
 
@@ -43,7 +42,7 @@ fn validate(
     if let Some(v) = store.get(STORE_INPUT_BYTES) {
         state.cur_input = raw_to_mutref!(*v, CfInput);
     } else {
-        core.log(Error, "No plugin create input_bytes !");
+        core.log(LogLevel::Error, "No plugin create input_bytes !");
         return Err(From::from("No selected input".to_string()));
     }
 

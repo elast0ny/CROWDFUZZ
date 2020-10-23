@@ -4,12 +4,13 @@
 "target" : '/usr/bin/gzip'
 "target_args" : ["-cd"]
 
-# cargo build --release -p fs_store -p select_input -p basic_mutate -p run_target
+# cargo build --release -p fs_store -p select_input -p basic_mutate -p run_target -p save_result
 "fuzz_loop" : 
   - '../target/release/libfs_store.so'
   - '../target/release/libselect_input.so'
   - '../target/release/libbasic_mutate.so'
   - '../target/release/librun_target.so'
+  - '../target/release/libsave_result.so'
 
 
 "plugin_conf":

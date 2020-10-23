@@ -5,7 +5,6 @@ use std::mem::MaybeUninit;
 use std::path::PathBuf;
 
 use ::cflib::*;
-use ::log::Level::*;
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
 cflib::register!(load, init);
@@ -64,16 +63,16 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     let state_dir = raw_to_ref!(*store.get(STORE_STATE_DIR).unwrap(), String);
 
     // Create crashes dir
+    state.crash_dir.push(state_dir);
     if let Some(p) = plugin_conf.get("crashes_dir") {
         state.crash_dir.push(p);
     } else {
-        state.crash_dir.push(state_dir);
         state.crash_dir.push("crashes");
     }
     if !state.crash_dir.is_dir() {
         if let Err(e) = fs::create_dir_all(&state.crash_dir) {
             core.log(
-                Error,
+                LogLevel::Error,
                 &format!(
                     "Failed to create crashes directory {} : {}",
                     state.crash_dir.to_string_lossy(),
@@ -85,7 +84,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
     let tmp: &str = state.crash_dir.to_str().unwrap();
     state.stat_crash_dir = match core.add_stat(
-        "crashes_dir",
+        &format!("crashes_dir{}", TAG_POSTFIX_PATH),
         NewStat::Str {
             max_size: tmp.len(),
             init_val: tmp,
@@ -96,16 +95,16 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     };
 
     // Create timeouts dir
+    state.timeout_dir.push(state_dir);
     if let Some(p) = plugin_conf.get("timeouts_dir") {
         state.timeout_dir.push(p);
     } else {
-        state.timeout_dir.push(state_dir);
         state.timeout_dir.push("timeouts");
     }
     if !state.timeout_dir.is_dir() {
         if let Err(e) = fs::create_dir_all(&state.timeout_dir) {
             core.log(
-                Error,
+                LogLevel::Error,
                 &format!(
                     "Failed to create timeouts directory {} : {}",
                     state.timeout_dir.to_string_lossy(),
@@ -117,7 +116,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
     let tmp: &str = state.timeout_dir.to_str().unwrap();
     state.state_timeout_dir = match core.add_stat(
-        "timeouts_dir",
+        &format!("timeouts_dir{}", TAG_POSTFIX_PATH),
         NewStat::Str {
             max_size: tmp.len(),
             init_val: tmp,
@@ -142,7 +141,7 @@ fn validate(
     if let Some(v) = store.get(STORE_EXIT_STATUS) {
         state.exit_status = raw_to_ref!(*v, TargetExitStatus);
     } else {
-        core.log(Error, "No plugin created exit_status !");
+        core.log(LogLevel::Error, "No plugin created exit_status !");
         return Err(From::from("No exit_status".to_string()));
     }
 
@@ -150,21 +149,21 @@ fn validate(
     if let Some(v) = store.get(STORE_INPUT_BYTES) {
         state.cur_input = raw_to_mutref!(*v, CfInput);
     } else {
-        core.log(Error, "No plugin created input_bytes !");
+        core.log(LogLevel::Error, "No plugin created input_bytes !");
         return Err(From::from("No selected input".to_string()));
     }
 
     if let Some(v) = store.get(STORE_INPUT_IDX) {
         state.cur_input_idx = raw_to_mutref!(*v, usize);
     } else {
-        core.log(Error, "No plugin created input_idx !");
+        core.log(LogLevel::Error, "No plugin created input_idx !");
         return Err(From::from("No selected input".to_string()));
     }
 
     match store.get(STORE_INPUT_LIST) {
         Some(v) => state.input_list = raw_to_mutref!(*v, Vec<CfInputInfo>),
         None => {
-            core.log(Error, "No plugin managing input_list !");
+            core.log(LogLevel::Error, "No plugin managing input_list !");
             return Err(From::from("No inputs".to_string()));
         }
     };

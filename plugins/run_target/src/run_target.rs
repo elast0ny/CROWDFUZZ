@@ -4,12 +4,10 @@ use std::io::{Seek, Write};
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use ::cflib::*;
-use ::log::Level::*;
 use ::wait_timeout::ChildExt;
-
 
 cfg_if::cfg_if! {
     if #[cfg(target_os = "windows")] {
@@ -68,7 +66,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     // Make sure target is a file
     if !Path::new(state.target_path).is_file() {
         core.log(
-            Error,
+            LogLevel::Error,
             &format!("Failed to find target binary '{}'", state.target_path),
         );
         return Err(From::from("Invalid target binary path".to_string()));
@@ -80,7 +78,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
 
     // Add exit_status to store
     if store.get(STORE_EXIT_STATUS).is_some() {
-        core.log(Error, "Another plugin is already filling exit_status !");
+        core.log(
+            LogLevel::Error,
+            "Another plugin is already filling exit_status !",
+        );
         return Err(From::from("Duplicate run target plugins".to_string()));
     }
     store.insert(
@@ -98,10 +99,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
                     .target_args
                     .push(input_path.to_str().unwrap().to_string()),
                 None => {
+                    input_path.push(raw_to_ref!(*store.get(STORE_STATE_DIR).unwrap(), String));
                     if let Some(ref p) = state.target_input_path {
                         input_path.push(p);
                     } else {
-                        input_path.push(raw_to_ref!(*store.get(STORE_STATE_DIR).unwrap(), String));
                         input_path.push("cur_input");
                     }
 
@@ -112,7 +113,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
                         Ok(f) => f,
                         Err(e) => {
                             core.log(
-                                Error,
+                                LogLevel::Error,
                                 &format!(
                                     "Failed to create input file {} : {}",
                                     input_path.to_string_lossy(),
@@ -132,7 +133,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
 
     core.log(
-        Debug,
+        LogLevel::Info,
         &format!("Running '{}' {:?}", state.target_path, state.target_args),
     );
     Ok(Box::into_raw(state) as _)
@@ -149,7 +150,7 @@ fn validate(
     match store.get(STORE_INPUT_BYTES) {
         Some(v) => state.cur_input = raw_to_ref!(*v, CfInput),
         None => {
-            core.log(Error, "No plugin created input_bytes !");
+            core.log(LogLevel::Error, "No plugin created input_bytes !");
             return Err(From::from("No input".to_string()));
         }
     };
@@ -178,7 +179,10 @@ fn run_target(
         for chunk in &state.cur_input.chunks {
             let _ = (f.set_len(0), f.seek(std::io::SeekFrom::Start(0)));
             if let Err(e) = f.write_all(chunk) {
-                core.log(Error, &format!("Failed to write target input : {}", e));
+                core.log(
+                    LogLevel::Error,
+                    &format!("Failed to write target input : {}", e),
+                );
                 return Err(From::from("Failed to write target input".to_string()));
             }
         }
@@ -192,7 +196,7 @@ fn run_target(
         Ok(c) => c,
         Err(e) => {
             core.log(
-                Error,
+                LogLevel::Error,
                 &format!(
                     "Failed to spawn child process '{}' {:?} : {}",
                     state.target_path, state.target_args, e
@@ -206,15 +210,17 @@ fn run_target(
         let stdin = child.stdin.as_mut().unwrap();
         for chunk in &state.cur_input.chunks {
             if let Err(e) = stdin.write_all(chunk) {
-                core.log(Error, &format!("Failed to write target stdin : {}", e));
+                core.log(
+                    LogLevel::Error,
+                    &format!("Failed to write target stdin : {}", e),
+                );
                 return Err(From::from("Failed to write target stdin".to_string()));
             }
         }
     }
 
     //TODO : implement timeout
-    let result =
-    if let Some(timeout) = state.target_timeout_ms {
+    let result = if let Some(timeout) = state.target_timeout_ms {
         child.wait_timeout(timeout).unwrap()
     } else {
         Some(child.wait().unwrap())
@@ -230,7 +236,7 @@ fn run_target(
         None => {
             let _ = child.kill();
             state.exit_status = TargetExitStatus::Timeout
-        },
+        }
         Some(ref r) => {
             match os::get_exception(&r) {
                 Some(exception) => {
@@ -266,7 +272,6 @@ impl State {
         core: &mut dyn PluginInterface,
         conf: &HashMap<String, String>,
     ) -> Result<()> {
-
         if let Some(v) = conf.get("target_input_path") {
             self.target_input_path = Some(v.clone());
         }
@@ -276,7 +281,7 @@ impl State {
                 Ok(num) => self.target_timeout_ms = Some(Duration::from_millis(num as _)),
                 Err(e) => {
                     core.log(
-                        Error,
+                        LogLevel::Error,
                         &format!(
                             "Failed to parse number in target_timeout_ms config '{}' : {}",
                             v, e
@@ -291,7 +296,7 @@ impl State {
             // Make sure its a valid directory
             if !Path::new(v.as_str()).is_dir() {
                 core.log(
-                    Error,
+                    LogLevel::Error,
                     &format!("Target working directory does not exist '{}'", v),
                 );
                 return Err(From::from("Invalid config".to_string()));

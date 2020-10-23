@@ -4,7 +4,6 @@ use std::fs::File;
 use std::io::prelude::*;
 
 use ::cflib::*;
-use ::log::Level::*;
 use ::rand::{Rng, SeedableRng};
 use ::rand::rngs::SmallRng;
 
@@ -49,7 +48,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         || store.get(STORE_INPUT_BYTES).is_some()
         || store.get("select_priority_list").is_some()
     {
-        core.log(Error, "Another plugin is already selecting inputs !");
+        core.log(LogLevel::Error, "Another plugin is already selecting inputs !");
         return Err(From::from("Duplicate select plugins".to_string()));
     }
 
@@ -81,7 +80,7 @@ fn validate(
     match store.get(STORE_INPUT_LIST) {
         Some(v) => state.input_list = raw_to_mutref!(*v, Vec<CfInputInfo>),
         None => {
-            core.log(Error, "No plugin managing input_list !");
+            core.log(LogLevel::Error, "No plugin managing input_list !");
             return Err(From::from("No inputs".to_string()));
         }
     };
@@ -120,7 +119,7 @@ fn select_input(
         let p = match &input_info.path {
             Some(p) => p.as_path(),
             None => {
-                core.log(Error, &format!("input[{}] has no content or path info !", state.cur_input_idx));
+                core.log(LogLevel::Error, &format!("input[{}] has no content or path info !", state.cur_input_idx));
                 return Err(From::from("No input contents".to_string()));
             }
         };

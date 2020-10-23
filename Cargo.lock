@@ -58,7 +58,6 @@ name = "basic_mutate"
 version = "0.0.1"
 dependencies = [
  "cflib",
- "log",
  "rand 0.7.3",
 ]
 
@@ -117,7 +116,6 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 name = "cflib"
 version = "0.0.1"
 dependencies = [
- "log",
  "rustc_version",
  "simple_parse",
 ]
@@ -387,7 +385,6 @@ name = "fs_store"
 version = "0.0.1"
 dependencies = [
  "cflib",
- "log",
  "rust-crypto",
 ]
 
@@ -458,11 +455,11 @@ checksum = "2448f6066e80e3bfc792e9c98bf705b4b0fc6e8ef5b43e5889aff0eaa9c58743"
 
 [[package]]
 name = "libloading"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3557c9384f7f757f6d139cd3a4c62ef4e850696c16bf27924a5538c8a09717a1"
+checksum = "1090080fe06ec2648d0da3881d9453d97e71a45f00eb179af7fdd7e3f686fdb0"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "winapi",
 ]
 
@@ -563,9 +560,9 @@ dependencies = [
 
 [[package]]
 name = "ntapi"
-version = "0.3.4"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a31937dea023539c72ddae0e3571deadc1414b300483fa7aaec176168cfa9d2"
+checksum = "3f6bb902e437b6d86e03cce10a7e2af662292c5dfef23b65899ea3ac9354ad44"
 dependencies = [
  "winapi",
 ]
@@ -819,7 +816,6 @@ version = "0.0.5"
 dependencies = [
  "cfg-if 0.1.10",
  "cflib",
- "log",
  "wait-timeout",
 ]
 
@@ -856,7 +852,6 @@ name = "save_result"
 version = "0.0.1"
 dependencies = [
  "cflib",
- "rust-crypto",
 ]
 
 [[package]]
@@ -870,7 +865,6 @@ name = "select_input"
 version = "0.0.1"
 dependencies = [
  "cflib",
- "log",
  "rand 0.7.3",
 ]
 
