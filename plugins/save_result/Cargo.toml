@@ -11,5 +11,4 @@ crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
 cflib = {path="../../cflib"}
-rust-crypto = "0.*"
-
+log = "0.*"

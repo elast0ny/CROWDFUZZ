@@ -11,6 +11,7 @@
   - '..\target\release\select_input.dll'
   - '..\target\release\basic_mutate.dll'
   - '..\target\release\run_target.dll'
+  - '..\target\release\save_result.dll'
 
 
 "plugin_conf":

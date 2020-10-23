@@ -1,316 +1,243 @@
-use std::collections::HashSet;
-use std::ffi::c_void;
-use std::fs;
-use std::fs::File;
+use std::collections::HashMap;
+use std::fs::{self, File};
 use std::io::prelude::*;
+use std::mem::MaybeUninit;
 use std::path::PathBuf;
-use std::ptr::{null, null_mut};
-use std::slice::from_raw_parts;
 
-use crypto::digest::Digest;
-use crypto::sha1::Sha1;
-
-use cflib::*;
+use ::cflib::*;
+use ::log::Level::*;
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
-cflib::register!(init, init);
-cflib::register!(validate, validate);
-cflib::register!(work, post_run);
-cflib::register!(destroy, destroy);
+cflib::register!(load, init);
+cflib::register!(pre_fuzz, validate);
+cflib::register!(fuzz, save_result);
+cflib::register!(unload, destroy);
 
 struct State {
-    store: Store,
-    stats: Stats,
+    /// Reference to the currently selected input
+    exit_status: &'static TargetExitStatus,
+    cur_input: &'static mut CfInput,
+    cur_input_idx: &'static usize,
+    input_list: &'static mut Vec<CfInputInfo>,
+
+    tmp_str: String,
     crash_dir: PathBuf,
     timeout_dir: PathBuf,
-
-    cur_hash: [u8; 20],
-    hasher: Sha1,
-    unique_files: HashSet<[u8; 20]>,
+    num_crashes: StatNum,
+    num_timeouts: StatNum,
+    stat_crash_dir: StatStr,
+    state_timeout_dir: StatStr,
 }
 
-extern "C" fn init(core_ptr: *mut CoreInterface) -> PluginStatus {
-    let core = cflib::cast!(core_ptr);
+// Initialize our plugin
+fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
+    #[allow(invalid_value)]
+    let mut state = Box::new(unsafe {
+        State {
+            exit_status: MaybeUninit::zeroed().assume_init(),
+            cur_input: MaybeUninit::zeroed().assume_init(),
+            input_list: MaybeUninit::zeroed().assume_init(),
+            cur_input_idx: MaybeUninit::zeroed().assume_init(),
 
-    let mut state = Box::new(State {
-        store: Store::default(),
-        stats: Stats::default(),
-        crash_dir: PathBuf::new(),
-        timeout_dir: PathBuf::new(),
-
-        cur_hash: [0; 20],
-        hasher: Sha1::new(),
-        unique_files: HashSet::new(),
+            tmp_str: String::with_capacity(40),
+            crash_dir: PathBuf::new(),
+            timeout_dir: PathBuf::new(),
+            num_crashes: match core
+                .add_stat(&format!("{}crashes", TAG_PREFIX_TOTAL), NewStat::Num(0))
+            {
+                Ok(StatVal::Num(v)) => v,
+                _ => return Err(From::from("Failed to reserve stat".to_string())),
+            },
+            num_timeouts: match core.add_stat(
+                &format!("{}timeouts", TAG_PREFIX_TOTAL),
+                NewStat::Num(0),
+            ) {
+                Ok(StatVal::Num(v)) => v,
+                _ => return Err(From::from("Failed to reserve stat".to_string())),
+            },
+            stat_crash_dir: MaybeUninit::zeroed().assume_init(),
+            state_timeout_dir: MaybeUninit::zeroed().assume_init(),
+        }
     });
 
-    // Allocate space for our statistics
-    state.stats.existing_crashes = unsafe {
-        &mut *(core
-            .add_stat(
-                &format!("{}existing_crashes", cflib::TAG_PREFIX_TOTAL_STR),
-                NewStat::Number,
-            )
-            .unwrap() as *mut _)
-    };
-    *state.stats.existing_crashes = 0;
-    state.stats.existing_timeouts = unsafe {
-        &mut *(core
-            .add_stat(
-                &format!("{}existing_timeouts", cflib::TAG_PREFIX_TOTAL_STR),
-                NewStat::Number,
-            )
-            .unwrap() as *mut _)
-    };
-    *state.stats.existing_timeouts = 0;
-    state.stats.new_crashes = unsafe {
-        &mut *(core
-            .add_stat(
-                &format!("{}new_crashes", cflib::TAG_PREFIX_TOTAL_STR),
-                NewStat::Number,
-            )
-            .unwrap() as *mut _)
-    };
-    *state.stats.new_crashes = 0;
-    state.stats.new_timeouts = unsafe {
-        &mut *(core
-            .add_stat(
-                &format!("{}new_timeouts", cflib::TAG_PREFIX_TOTAL_STR),
-                NewStat::Number,
-            )
-            .unwrap() as *mut _)
-    };
-    *state.stats.new_timeouts = 0;
+    let plugin_conf = raw_to_ref!(*store.get(STORE_PLUGIN_CONF).unwrap(), HashMap<String, String>);
+    let state_dir = raw_to_ref!(*store.get(STORE_STATE_DIR).unwrap(), String);
 
-    core.priv_data = Box::into_raw(state) as *mut _;
-
-    STATUS_SUCCESS
-}
-
-extern "C" fn validate(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
-
-    // Extract values we need from the store
-    state.store.exit_status =
-        cflib::store_get_ref!(mandatory, CFTuple, core, KEY_EXIT_STATUS_STR, 0);
-    state.store.result_dir = cflib::store_get_ref!(mandatory, CFUtf8, core, KEY_RESULT_DIR_STR, 0);
-    state.store.cur_input =
-        cflib::store_get_ref!(mandatory, CFVec, core, KEY_CUR_INPUT_CHUNKS_STR, 0);
-    state.store.exec_only =
-        cflib::store_get_ref!(mandatory, CFBool, core, KEY_EXEC_ONLY_MODE_STR, 0);
-
-    state.crash_dir = PathBuf::from(state.store.result_dir.as_utf8());
-    state.timeout_dir = state.crash_dir.clone();
-
-    state.crash_dir.push("crashes/");
-    state.timeout_dir.push("timeouts/");
-
-    // Create directories
-    for d in [&state.crash_dir, &state.timeout_dir].iter() {
-        if let Err(e) = std::fs::create_dir_all(d) {
-            core.log(
-                LOGLEVEL_ERROR,
-                &format!(
-                    "Failed to create directory '{}' : {}",
-                    d.to_string_lossy(),
-                    e
-                ),
-            );
-            return STATUS_PLUGINERROR;
-        }
-    }
-
-    core.log(
-        LOGLEVEL_INFO,
-        &format!("Writing crashes to '{}'", state.crash_dir.to_string_lossy()),
-    );
-    core.log(
-        LOGLEVEL_INFO,
-        &format!(
-            "Writing timeouts to '{}'",
-            state.timeout_dir.to_string_lossy()
-        ),
-    );
-
-    // Ingest any existing files
-    state.scrape_existing_dirs();
-
-    // Pre-allocate space for filename
-    state.crash_dir.push("dummyfilename0123456");
-    state.timeout_dir.push("dummyfilename0123456");
-
-    STATUS_SUCCESS
-}
-
-extern "C" fn destroy(_core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    // Free our state data
-    let _state: Box<State> = unsafe { Box::from_raw(priv_data as *mut _) };
-
-    STATUS_SUCCESS
-}
-
-///Select random byte in input and assign random value to it
-extern "C" fn post_run(core_ptr: *mut CoreInterface, priv_data: *mut c_void) -> PluginStatus {
-    let (core, state) = cflib::cast!(core_ptr, priv_data, State);
-
-    // Ignore if exec_only or if not a crash or timeout
-    if *state.store.exec_only == CF_TRUE
-        || (state.store.exit_status.first != EXIT_STATUS_CRASH as _
-            && state.store.exit_status.first != EXIT_STATUS_TIMEOUT as _)
-    {
-        return STATUS_SUCCESS;
-    }
-
-    // Compute the hash of the input
-    state.hasher.reset();
-    let chunks: &[CFBuf] = state.store.cur_input.as_slice();
-    for chunk in chunks.iter() {
-        state
-            .hasher
-            .input(unsafe { from_raw_parts(chunk.buf, chunk.len) });
-    }
-    state.hasher.result(&mut state.cur_hash);
-
-    // Already seen this input
-    if state.unique_files.contains(&state.cur_hash) {
-        return STATUS_SUCCESS;
-    }
-
-    let out_file = if state.store.exit_status.first == EXIT_STATUS_CRASH as _ {
-        *state.stats.new_crashes += 1;
-        state.crash_dir.set_file_name(format!(
-            "0x{:X}_{}",
-            state.store.exit_status.second,
-            state.hasher.result_str()
-        ));
-        state.crash_dir.as_path()
+    // Create crashes dir
+    if let Some(p) = plugin_conf.get("crashes_dir") {
+        state.crash_dir.push(p);
     } else {
-        *state.stats.new_timeouts += 1;
-        state.timeout_dir.set_file_name(state.hasher.result_str());
-        state.timeout_dir.as_path()
-    };
-
-    // Create file
-    let mut f = match File::create(out_file) {
-        Ok(f) => f,
-        Err(e) => {
+        state.crash_dir.push(state_dir);
+        state.crash_dir.push("crashes");
+    }
+    if !state.crash_dir.is_dir() {
+        if let Err(e) = fs::create_dir_all(&state.crash_dir) {
             core.log(
-                LOGLEVEL_ERROR,
+                Error,
                 &format!(
-                    "Failed to create new file '{}' : {}",
-                    out_file.to_string_lossy(),
+                    "Failed to create crashes directory {} : {}",
+                    state.crash_dir.to_string_lossy(),
                     e
                 ),
             );
-            return STATUS_PLUGINERROR;
+            return Err(From::from(e));
+        };
+    }
+    let tmp: &str = state.crash_dir.to_str().unwrap();
+    state.stat_crash_dir = match core.add_stat(
+        "crashes_dir",
+        NewStat::Str {
+            max_size: tmp.len(),
+            init_val: tmp,
+        },
+    ) {
+        Ok(StatVal::Str(v)) => v,
+        _ => return Err(From::from("Failed to reserve stat".to_string())),
+    };
+
+    // Create timeouts dir
+    if let Some(p) = plugin_conf.get("timeouts_dir") {
+        state.timeout_dir.push(p);
+    } else {
+        state.timeout_dir.push(state_dir);
+        state.timeout_dir.push("timeouts");
+    }
+    if !state.timeout_dir.is_dir() {
+        if let Err(e) = fs::create_dir_all(&state.timeout_dir) {
+            core.log(
+                Error,
+                &format!(
+                    "Failed to create timeouts directory {} : {}",
+                    state.timeout_dir.to_string_lossy(),
+                    e
+                ),
+            );
+            return Err(From::from(e));
+        };
+    }
+    let tmp: &str = state.timeout_dir.to_str().unwrap();
+    state.state_timeout_dir = match core.add_stat(
+        "timeouts_dir",
+        NewStat::Str {
+            max_size: tmp.len(),
+            init_val: tmp,
+        },
+    ) {
+        Ok(StatVal::Str(v)) => v,
+        _ => return Err(From::from("Failed to reserve stat".to_string())),
+    };
+
+    Ok(Box::into_raw(state) as _)
+}
+
+// Make sure we have everything to fuzz properly
+fn validate(
+    core: &mut dyn PluginInterface,
+    store: &mut CfStore,
+    plugin_ctx: *mut u8,
+) -> Result<()> {
+    let state = box_ref!(plugin_ctx, State);
+
+    // We need a plugin that creates in exit_status
+    if let Some(v) = store.get(STORE_EXIT_STATUS) {
+        state.exit_status = raw_to_ref!(*v, TargetExitStatus);
+    } else {
+        core.log(Error, "No plugin created exit_status !");
+        return Err(From::from("No exit_status".to_string()));
+    }
+
+    // We need a plugin that creates in input_bytes
+    if let Some(v) = store.get(STORE_INPUT_BYTES) {
+        state.cur_input = raw_to_mutref!(*v, CfInput);
+    } else {
+        core.log(Error, "No plugin created input_bytes !");
+        return Err(From::from("No selected input".to_string()));
+    }
+
+    if let Some(v) = store.get(STORE_INPUT_IDX) {
+        state.cur_input_idx = raw_to_mutref!(*v, usize);
+    } else {
+        core.log(Error, "No plugin created input_idx !");
+        return Err(From::from("No selected input".to_string()));
+    }
+
+    match store.get(STORE_INPUT_LIST) {
+        Some(v) => state.input_list = raw_to_mutref!(*v, Vec<CfInputInfo>),
+        None => {
+            core.log(Error, "No plugin managing input_list !");
+            return Err(From::from("No inputs".to_string()));
         }
     };
 
-    //Write chunks to disk
-    for chunk in chunks {
-        if let Err(e) = f.write_all(unsafe { from_raw_parts(chunk.buf, chunk.len) }) {
-            core.log(LOGLEVEL_ERROR, &format!("Failed to write : {}", e));
-            return STATUS_PLUGINERROR;
-        }
-    }
-
-    STATUS_SUCCESS
+    Ok(())
 }
 
-struct Store {
-    // Borrowed values
-    pub result_dir: &'static CFUtf8,
-    pub exit_status: &'static CFTuple,
-    pub cur_input: &'static CFVec,
-    pub exec_only: &'static CFBool,
-}
-impl Default for Store {
-    fn default() -> Self {
-        unsafe {
-            Self {
-                result_dir: &*null(),
-                exit_status: &*null(),
-                cur_input: &*null(),
-                exec_only: &*null(),
-            }
-        }
-    }
+// Perform our task in the fuzzing loop
+fn save_result(
+    _core: &mut dyn PluginInterface,
+    _store: &mut CfStore,
+    plugin_ctx: *mut u8,
+) -> Result<()> {
+    let state = box_ref!(plugin_ctx, State);
+
+    // Save input if interesting exit_status
+    state.save_input()?;
+
+    Ok(())
 }
 
-struct Stats {
-    pub existing_crashes: &'static mut u64,
-    pub existing_timeouts: &'static mut u64,
-    pub new_crashes: &'static mut u64,
-    pub new_timeouts: &'static mut u64,
-}
-impl Default for Stats {
-    fn default() -> Self {
-        unsafe {
-            Self {
-                existing_crashes: &mut *null_mut(),
-                existing_timeouts: &mut *null_mut(),
-                new_crashes: &mut *null_mut(),
-                new_timeouts: &mut *null_mut(),
-            }
-        }
-    }
+// Unload and free our resources
+fn destroy(
+    _core: &mut dyn PluginInterface,
+    _store: &mut CfStore,
+    plugin_ctx: *mut u8,
+) -> Result<()> {
+    let _state = box_take!(plugin_ctx, State);
+    Ok(())
 }
 
 impl State {
-    pub fn scrape_existing_dirs(&mut self) {
-        let mut existing_file_list = Vec::new();
-
-        // Get all existing files
-        for (idx, d) in [&self.crash_dir, &self.timeout_dir].iter().enumerate() {
-            let dir_listing = match fs::read_dir(d) {
-                Ok(v) => v,
-                _ => continue,
-            };
-
-            for entry in dir_listing {
-                let (entry, info) = match entry {
-                    Ok(e) => {
-                        let info = match e.metadata() {
-                            Ok(v) => v,
-                            _ => continue,
-                        };
-                        (e, info)
-                    }
-                    _ => continue,
-                };
-
-                //Skip directories
-                if !info.is_file() {
-                    continue;
-                }
-
-                if idx == 0 {
-                    *self.stats.existing_crashes += 1;
-                } else {
-                    *self.stats.existing_timeouts += 1;
-                }
-
-                existing_file_list.push(entry.path());
+    /// Saves the current input if exit_status was interesting
+    pub fn save_input(&mut self) -> Result<bool> {
+        let dst: &mut PathBuf = match self.exit_status {
+            TargetExitStatus::Crash(_) => {
+                *self.num_crashes.val += 1;
+                &mut self.crash_dir
             }
+            TargetExitStatus::Timeout => {
+                *self.num_timeouts.val += 1;
+                &mut self.crash_dir
+            }
+            _ => return Ok(false),
+        };
+
+        let input_info = unsafe { self.input_list.get_unchecked(*self.cur_input_idx) };
+
+        // Build hexstr from file uid
+        self.tmp_str.clear();
+        for b in &input_info.uid {
+            use std::fmt::Write;
+            let _ = write!(&mut self.tmp_str, "{:02X}", *b);
         }
 
-        // For every detected file, compute their hash
-        let mut file_contents = Vec::new();
-        for file in &existing_file_list {
-            let mut f = match File::open(file) {
-                Ok(v) => v,
-                Err(_e) => continue, // Failed to open
-            };
-            match f.read_to_end(&mut file_contents) {
-                Ok(_) => {}
-                Err(_e) => continue, // Failed to read
+        // Create out file
+        dst.push(&self.tmp_str);
+        let mut file = match File::create(&dst) {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = dst.pop();
+                return Err(From::from(e));
             }
+        };
+        let _ = dst.pop();
 
-            // Compute hash
-            self.hasher.reset();
-            self.hasher.input(&file_contents);
-            self.hasher.result(&mut self.cur_hash);
-
-            self.unique_files.insert(self.cur_hash);
+        // Write file contents
+        for chunk in &self.cur_input.chunks {
+            if let Err(e) = file.write_all(chunk) {
+                let _ = fs::remove_file(&dst);
+                return Err(From::from(e));
+            }
         }
+        Ok(true)
     }
 }
