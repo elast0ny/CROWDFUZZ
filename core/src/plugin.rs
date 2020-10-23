@@ -28,9 +28,15 @@ pub struct PluginCtx<'a> {
 }
 
 impl<'a> PluginInterface for PluginCtx<'a> {
-    fn log(&self, level: ::log::Level, msg: &str) {
+    fn log(&self, level: LogLevel, msg: &str) {
         let plugin = unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id) };
-        log!(level, "[{}] {}", &plugin.name, msg);
+        log!(match level {
+            LogLevel::Info => ::log::Level::Info,
+            LogLevel::Warn => ::log::Level::Warn,
+            LogLevel::Error => ::log::Level::Error,
+            LogLevel::Debug => ::log::Level::Debug,
+            LogLevel::Trace => ::log::Level::Trace,
+        }, "[{}] {}", &plugin.name, msg);
     }
     fn add_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal> {
         self.stats.new_stat(tag, stat)

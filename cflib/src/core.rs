@@ -8,8 +8,17 @@ pub enum PluginStatus {
     Error,
 }
 
+#[derive(Debug)]
+pub enum LogLevel {
+    Info,
+    Warn,
+    Error,
+    Debug,
+    Trace,
+}
+
 pub trait PluginInterface {
-    fn log(&self, level: log::Level, msg: &str);
+    fn log(&self, level: LogLevel, msg: &str);
     fn add_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal>;
 }
 
