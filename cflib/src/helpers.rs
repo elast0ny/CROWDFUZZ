@@ -105,7 +105,7 @@ pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static s
             if val > US_IN_MS {
                 let _ = write!(dst, ".{:03}s", val / US_IN_MS);
             } else {
-                let _ = write!(dst, "s");
+                dst.push('s');
             }
             generated_str = true;
         }
@@ -113,11 +113,11 @@ pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static s
         // Write smaller time scales
         if !generated_str {
             if val > US_IN_MS {
-                let _ = write!(dst, "{}ms", val / US_IN_MS);
+                let _ = write!(dst, "{} ms", val / US_IN_MS);
             } else if val > 0 {
-                let _ = write!(dst, "{}us", val);
+                let _ = write!(dst, "{} us", val);
             } else {
-                dst.push('0');
+                dst.push_str("<1 us");
             }
 
             generated_str = true;
@@ -131,15 +131,13 @@ pub fn pretty_num(dst: &mut String, mut val: u64, type_hints: (Option<&'static s
 }
 
 pub fn pretty_str(dst: &mut String, mut val: &str, type_hints: (Option<&'static str>, Option<&'static str>)) {
-    use std::fmt::Write;
-
     if let Some(postfix) = type_hints.1 {
         // Strip windows path grossness
         if postfix == TAG_POSTFIX_PATH && val.starts_with("\\\\?\\") {
             val = &val[4..];
         }
     }
-    let _ = write!(dst, "{}", val);
+    dst.push_str(val);
 }
 
 pub fn pretty_bytes(dst: &mut String, val: &[u8], type_hints: (Option<&'static str>, Option<&'static str>)) {
