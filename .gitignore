@@ -4,3 +4,4 @@
 fuzzer_stats_*
 example/results/*
 example/state/*
+cur_input
