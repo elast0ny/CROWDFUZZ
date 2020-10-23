@@ -60,6 +60,7 @@ fn default_stats_path() -> String {
 }
 
 fn cleanup_dead_fuzzer(stats_file: &Path) -> bool {
+    debug!("Openning shmem link");
     let shmem = match ShmemConf::new().flink(stats_file).open() {
         Ok(m) => m,
         Err(_e) => {
@@ -68,18 +69,17 @@ fn cleanup_dead_fuzzer(stats_file: &Path) -> bool {
     };
 
     let cur = shmem.as_ptr();
-    let fuzzer_pid = unsafe { *(cur.add(std::mem::size_of::<cflib::CoreState>()) as *mut u32)};
-    let mut sys_info = System::new_with_specifics(
-        RefreshKind::new().with_processes(),
-    );
+    let fuzzer_pid = unsafe { *(cur.add(std::mem::size_of::<cflib::CoreState>()) as *mut u32) };
+    debug!("Checking if pid {} is a crowdfuzz process", fuzzer_pid);
+    let mut sys_info = System::new_with_specifics(RefreshKind::new().with_processes());
     sys_info.refresh_processes();
-
     let fuzzer_alive = match sys_info.get_process(fuzzer_pid as _) {
         None => false,
         Some(p) => p.name().starts_with("crowdfuzz"),
     };
 
     if !fuzzer_alive {
+        debug!("Deleting shmem link");
         return std::fs::remove_file(stats_file).is_ok();
     }
 
@@ -189,13 +189,29 @@ impl Config {
             Err(e) => {
                 error!("Cannot find config file '{}'", config_fpath.as_ref());
                 return Err(From::from(e));
-            },
+            }
         };
-        
-        let mut config: Config = match serde_yaml::from_reader(File::open(&path)?) {
+
+        let fin = match File::open(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                error!(
+                    "Failed to open config file '{}' : {}",
+                    path.to_str().unwrap(),
+                    e
+                );
+                return Err(From::from(e));
+            }
+        };
+
+        let mut config: Config = match serde_yaml::from_reader(fin) {
             Ok(c) => c,
             Err(e) => {
-                error!("Failed to parse config file '{}' : {}", config_fpath.as_ref(), e);
+                error!(
+                    "Failed to parse config file '{}' : {}",
+                    path.to_str().unwrap(),
+                    e
+                );
                 return Err(From::from(e));
             }
         };
