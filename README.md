@@ -28,12 +28,17 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 |Name | Status | Description |
 |-----|--------|-------------|
 |[cf_tui](cf_tui/)| Done | Basic terminal based UI to monitor fuzzers on a local machine|
-| ? | TODO | Web based fuzzer stat aggregator to see multiple fuzzers from multiple servers fuzzing the same project |
+| web_ui | TODO | Web based ui that can receive stats from multiple remote hosts |
 
 ## List of Plugins
 
 |Name | Status | Description |
 |-----|--------|-------------|
-|basic| TODO |Very basic set of plugins. Should be used as reference/examples. See : [basic_select](plugins/basic_select/), [basic_mutate](plugins/basic_mutate/), [basic_run](plugins/basic_run/), [basic_postrun](plugins/basic_postrun/) |
-|afl-fuzz| TODO | Standalone plugin suite that re-implements [afl-fuzz](http://lcamtuf.coredump.cx/afl/)|
-|winafl| Working PoC | Implement the execution technique from [winAFL](https://github.com/ivanfratric/winafl). Re-use `afl-fuzz` plugins for the rest|
+|[fs_store](plugins/fs_store/)|✔|A local filesystem corpus manager|
+|[select_input](plugins/select_input/)|✔|Selects an input based on priority or randomly|
+|[basic_mutate](plugins/basic_mutate/)|✔|Randomly changes bytes in an existing file|
+|[run_target](plugins/run_target/)|✔|Runs a target with the fuzzed input|
+|[save_result](plugins/save_result/)|✔|Saves crashes and timeouts|
+|afl-mutate| TODO | Implement AFL's file mutators|
+|afl-fork-server| TODO | Support linux forking & DynamoRio for performant process creation|
+|afl-cov-analysis| TODO | Analyses the AFL bitmap to detect new coverage|
