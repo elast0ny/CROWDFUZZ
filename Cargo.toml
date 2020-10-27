@@ -2,11 +2,15 @@
 members = [
     "cflib",
     "core",
+    "cf_tui",
     "plugins/test_plugin",
     "plugins/fs_store",
     "plugins/select_input",
     "plugins/basic_mutate",
     "plugins/run_target",
     "plugins/save_result",
-    "cf_tui",
+    
+    "plugins/afl/afl_lib",
+    "plugins/afl/afl_init",
+    "plugins/afl/afl_mutate",
 ]

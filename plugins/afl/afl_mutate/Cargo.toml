@@ -1,0 +1,15 @@
+[package]
+name = "afl_mutate"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[lib]
+path = "src/afl_mutate.rs"
+name = "afl_mutate"
+crate-type = ["cdylib"] # Compile to native lib
+
+[dependencies]
+cflib = {path="../../../cflib"}
+afl_lib = {path="../afl_lib"}
+rand = {version = "0.*", features = ["small_rng"]}

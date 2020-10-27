@@ -13,6 +13,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "afl_init"
+version = "0.0.1"
+dependencies = [
+ "afl_lib",
+ "cflib",
+]
+
+[[package]]
+name = "afl_lib"
+version = "0.0.1"
+
+[[package]]
+name = "afl_mutate"
+version = "0.0.1"
+dependencies = [
+ "afl_lib",
+ "cflib",
+ "rand 0.7.3",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "0.7.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -91,7 +112,7 @@ version = "0.1.0"
 dependencies = [
  "cflib",
  "clap",
- "crossterm 0.18.0",
+ "crossterm 0.18.1",
  "env_logger",
  "log",
  "shared_memory",
@@ -233,9 +254,9 @@ dependencies = [
 
 [[package]]
 name = "crossterm"
-version = "0.18.0"
+version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2fcdc3c9cf8ee446222e8ee8691a6d21b563b8fe1a64b1873080db7b5b23cf0"
+checksum = "cef9149b29071d44c9fb98fd9c27fcf74405bbdb761889ad6a03f36be93b0b15"
 dependencies = [
  "bitflags",
  "crossterm_winapi",
@@ -249,9 +270,9 @@ dependencies = [
 
 [[package]]
 name = "crossterm_winapi"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "057b7146d02fb50175fd7dbe5158f6097f33d02831f43b4ee8ae4ddf67b68f5c"
+checksum = "c2265c3f8e080075d9b6417aa72293fc71662f34b4af2612d8d1b074d29510db"
 dependencies = [
  "winapi",
 ]
@@ -355,9 +376,9 @@ dependencies = [
 
 [[package]]
 name = "errno"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6eab5ee3df98a279d9b316b1af6ac95422127b1290317e6d18c1743c99418b01"
+checksum = "fa68f2fb9cae9d37c9b2b3584aba698a2e97f72d7aef7b9f7aa71d8b54ce46fe"
 dependencies = [
  "errno-dragonfly",
  "libc",
@@ -434,11 +455,11 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "instant"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63312a18f7ea8760cdd0a7c5aac1a619752a246b833545e3e36d1f81f7cd9e66"
+checksum = "cb1fc4429a33e1f80d41dc9fea4d108a88bec1de8053878898ae448a0b52f613"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
 ]
 
 [[package]]
@@ -449,9 +470,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.79"
+version = "0.2.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2448f6066e80e3bfc792e9c98bf705b4b0fc6e8ef5b43e5889aff0eaa9c58743"
+checksum = "4d58d1b70b004888f764dfbf6a26a3b0342a1632d33968e4a179d8011c760614"
 
 [[package]]
 name = "libloading"
@@ -865,7 +886,6 @@ name = "select_input"
 version = "0.0.1"
 dependencies = [
  "cflib",
- "rand 0.7.3",
 ]
 
 [[package]]
@@ -996,9 +1016,9 @@ checksum = "6446ced80d6c486436db5c078dde11a9f73d42b57fb273121e160b84f63d894c"
 
 [[package]]
 name = "syn"
-version = "1.0.46"
+version = "1.0.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ad5de3220ea04da322618ded2c42233d02baca219d6f160a3e9c87cda16c942"
+checksum = "cc371affeffc477f42a221a1e4297aedcea33d47d19b61455588bd9d8f6b19ac"
 dependencies = [
  "proc-macro2",
  "quote",

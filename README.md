@@ -35,7 +35,7 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 |Name | Status | Description |
 |-----|--------|-------------|
 |[fs_store](plugins/fs_store/)|✔|A local filesystem corpus manager|
-|[select_input](plugins/select_input/)|✔|Selects an input based on priority or randomly|
+|[select_input](plugins/select_input/)|✔|Selects an input based on priority or sequentially|
 |[basic_mutate](plugins/basic_mutate/)|✔|Randomly changes bytes in an existing file|
 |[run_target](plugins/run_target/)|✔|Runs a target with the fuzzed input|
 |[save_result](plugins/save_result/)|✔|Saves crashes and timeouts|

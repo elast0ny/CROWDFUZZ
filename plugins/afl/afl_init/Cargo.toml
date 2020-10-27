@@ -1,13 +1,14 @@
 [package]
-name = "select_input"
+name = "afl_init"
 version = "0.0.1"
 authors = ["Elast0ny <Elast0ny00@gmail.com>"]
 edition = "2018"
 
 [lib]
-name = "select_input"
-path = "src/select_input.rs"
+path = "src/afl_init.rs"
+name = "afl_init"
 crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
-cflib = {path='../../cflib'}
+cflib = {path="../../../cflib"}
+afl_lib = {path="../afl_lib"}

@@ -1,0 +1,10 @@
+[package]
+name = "afl_lib"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "afl_lib"
+
+[dependencies]

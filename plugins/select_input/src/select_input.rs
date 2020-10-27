@@ -4,8 +4,6 @@ use std::io::prelude::*;
 use std::mem::MaybeUninit;
 
 use ::cflib::*;
-use ::rand::rngs::SmallRng;
-use ::rand::{Rng, SeedableRng};
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
 cflib::register!(load, init);
@@ -14,11 +12,12 @@ cflib::register!(fuzz, select_input);
 cflib::register!(unload, destroy);
 
 struct State {
-    /// Use a fast/non-crypto grade random
-    rng: SmallRng,
-    cur_input_idx: usize,
-    tmp_buf: Vec<u8>,
     cur_input: CfInput,
+    reuse_input: bool,
+    cur_input_idx: usize,
+    seq_input_idx: usize,
+    orig_buf: Vec<u8>,
+    fuzz_buf: Vec<u8>,
     input_list: &'static mut Vec<CfInputInfo>,
     priority_list: VecDeque<usize>,
     num_priority_inputs: StatNum,
@@ -29,12 +28,14 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     #[allow(invalid_value)]
     let mut state = Box::new(unsafe {
         State {
-            rng: SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
             cur_input_idx: 0,
-            tmp_buf: Vec::new(),
+            seq_input_idx: 0,
+            orig_buf: Vec::new(),
+            fuzz_buf: Vec::new(),
             cur_input: CfInput::default(),
             priority_list: VecDeque::new(),
             input_list: MaybeUninit::zeroed().assume_init(),
+            reuse_input: false,
             num_priority_inputs: match core.add_stat(
                 &format!("{}num_priority_inputs", TAG_PREFIX_TOTAL),
                 NewStat::Num(0),
@@ -48,6 +49,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     // We should be the only plugin with these values
     if store.get(STORE_INPUT_IDX).is_some()
         || store.get(STORE_INPUT_BYTES).is_some()
+        || store.get(STORE_REUSE_INPUT).is_some()
         || store.get("select_priority_list").is_some()
     {
         core.log(
@@ -65,6 +67,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     store.insert(
         STORE_INPUT_BYTES.to_string(),
         mutref_to_raw!(state.cur_input),
+    );
+    store.insert(
+        STORE_REUSE_INPUT.to_string(),
+        mutref_to_raw!(state.reuse_input),
     );
     store.insert(
         "select_priority_list".to_string(),
@@ -101,52 +107,67 @@ fn select_input(
 ) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
 
+    // Update number of indexes in priority list
     *state.num_priority_inputs.val = state.priority_list.len() as _;
-    state.cur_input_idx = match state.priority_list.pop_front() {
-        Some(idx) => idx,
-        None => {
-            // No priority, just randomly pick a file
-            state.rng.gen_range(0, state.input_list.len())
-        }
-    };
 
-    let input_info = unsafe { state.input_list.get_unchecked(state.cur_input_idx) };
-
-    state.tmp_buf.clear();
-    // No need to read off disk, content was inlined in the input info
-    if let Some(contents) = &input_info.contents {
-        // Copy original contents into input_bytes
-        for chunk in &contents.chunks {
-            state.tmp_buf.extend_from_slice(chunk);
-        }
-    } else {
-        // Lets read contents from disk
-        let p = match &input_info.path {
-            Some(p) => p.as_path(),
+    if !state.reuse_input {
+        // Pick the next input index
+        match state.priority_list.pop_front() {
+            Some(idx) => state.cur_input_idx = idx,
             None => {
-                core.log(
-                    LogLevel::Error,
-                    &format!(
-                        "input[{}] has no content or path info !",
-                        state.cur_input_idx
-                    ),
-                );
-                return Err(From::from("No input contents".to_string()));
+                // Just get the next input
+                state.cur_input_idx = state.seq_input_idx;
+                state.seq_input_idx += 1;
+                if state.seq_input_idx == state.input_list.len() {
+                    state.seq_input_idx = 0;
+                }
             }
         };
-        // Open file
-        let mut fin = match File::open(p) {
-            Ok(f) => f,
-            _ => return Err(From::from("No input contents".to_string())),
-        };
-        // Read contents
-        if fin.read_to_end(&mut state.tmp_buf).is_err() {
-            return Err(From::from("No input contents".to_string()));
+
+        // Read the contents
+        let input_info = unsafe { state.input_list.get_unchecked(state.cur_input_idx) };
+
+        state.orig_buf.clear();
+        // No need to read off disk, content was inlined in the input info
+        if let Some(contents) = &input_info.contents {
+            // Copy original contents into input_bytes
+            for chunk in &contents.chunks {
+                state.orig_buf.extend_from_slice(chunk);
+            }
+        } else {
+            // Lets read contents from disk
+            let p = match &input_info.path {
+                Some(p) => p.as_path(),
+                None => {
+                    core.log(
+                        LogLevel::Error,
+                        &format!(
+                            "input[{}] has no content or path info !",
+                            state.cur_input_idx
+                        ),
+                    );
+                    return Err(From::from("No input contents".to_string()));
+                }
+            };
+            // Open file
+            let mut fin = match File::open(p) {
+                Ok(f) => f,
+                _ => return Err(From::from("No input contents".to_string())),
+            };
+            // Read contents
+            if fin.read_to_end(&mut state.orig_buf).is_err() {
+                return Err(From::from("No input contents".to_string()));
+            }
         }
     }
 
+    // Copy orig into fuzz_buf
+    state.fuzz_buf.clear();
+    state.fuzz_buf.extend_from_slice(&state.orig_buf);
+
+    // Make fuzz_buf new input
     state.cur_input.chunks.clear();
-    state.cur_input.chunks.push(state.tmp_buf.as_mut_slice());
+    state.cur_input.chunks.push(state.fuzz_buf.as_mut_slice());
 
     Ok(())
 }
@@ -161,6 +182,7 @@ fn destroy(
 
     let _ = store.remove(STORE_INPUT_IDX);
     let _ = store.remove(STORE_INPUT_BYTES);
+    let _ = store.remove(STORE_REUSE_INPUT);
     let _ = store.remove("select_priority_list");
 
     Ok(())

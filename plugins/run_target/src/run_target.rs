@@ -32,7 +32,8 @@ struct State {
     avg_denominator: &'static u64,
     target_args: Vec<String>,
     input_file: Option<File>,
-    target_exec_time: StatNum,
+    exec_time: u64,
+    avg_exec_time: StatNum,
     exit_status: TargetExitStatus,
 
     target_input_path: Option<String>,
@@ -51,7 +52,8 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             avg_denominator: MaybeUninit::zeroed().assume_init(),
             target_args: Vec::new(),
             input_file: None,
-            target_exec_time: match core.add_stat(STAT_TARGET_EXEC_TIME, NewStat::Num(0)) {
+            exec_time: 0,
+            avg_exec_time: match core.add_stat(STAT_TARGET_EXEC_TIME, NewStat::Num(0)) {
                 Ok(StatVal::Num(v)) => v,
                 _ => return Err(From::from("Failed to reserve stat".to_string())),
             },
@@ -87,6 +89,32 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     store.insert(
         STORE_EXIT_STATUS.to_string(),
         ref_to_raw!(state.exit_status),
+    );
+
+    // Add exec_time to store
+    if store.get(STORE_TARGET_EXEC_TIME).is_some() {
+        core.log(
+            LogLevel::Error,
+            "Another plugin is already filling exec_time !",
+        );
+        return Err(From::from("Duplicate run target plugins".to_string()));
+    }
+    store.insert(
+        STORE_TARGET_EXEC_TIME.to_string(),
+        ref_to_raw!(state.exec_time),
+    );
+
+    // Add avg_exec_time to store
+    if store.get(STORE_AVG_TARGET_EXEC_TIME).is_some() {
+        core.log(
+            LogLevel::Error,
+            "Another plugin is already filling avg_exec_time !",
+        );
+        return Err(From::from("Duplicate run target plugins".to_string()));
+    }
+    store.insert(
+        STORE_AVG_TARGET_EXEC_TIME.to_string(),
+        state.avg_exec_time.val as *mut _ as _,
     );
 
     // Build arg list swapping @@ for file path
@@ -226,9 +254,11 @@ fn run_target(
         Some(child.wait().unwrap())
     };
 
+    state.exec_time = child_start.elapsed().as_micros() as u64;
+
     update_average(
-        state.target_exec_time.val,
-        child_start.elapsed().as_micros() as u64,
+        state.avg_exec_time.val,
+        state.exec_time,
         *state.avg_denominator,
     );
 
@@ -261,6 +291,8 @@ fn destroy(
     let _state = box_take!(plugin_ctx, State);
 
     let _ = store.remove(STORE_EXIT_STATUS);
+    let _ = store.remove(STORE_TARGET_EXEC_TIME);
+    let _ = store.remove(STORE_AVG_TARGET_EXEC_TIME);
 
     Ok(())
 }

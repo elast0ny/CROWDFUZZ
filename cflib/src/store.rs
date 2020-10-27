@@ -40,10 +40,19 @@ pub const STORE_NEW_INPUTS: &str = "new_inputs";
 pub const STORE_INPUT_IDX: &str = "input_idx";
 /// (*mut CfInput) Contents of the selected input
 pub const STORE_INPUT_BYTES: &str = "input_bytes";
+/// (*mut bool) Whether someone wants us to re-select the same input
+pub const STORE_RESTORE_INPUT: &str = "restore_input";
+/// (*mut bool) Whether someone wants us leave the input selection keys untouched
+pub const STORE_NO_SELECT: &str = "no_select";
 
 /* Target exec */
 /// (*mut TargetExitStatus) The exit status for the last run
 pub const STORE_EXIT_STATUS: &str = "exit_status";
+/// (*const u64) Number of US the target took to run the last input
+pub const STORE_TARGET_EXEC_TIME: &str = "exec_time";
+/// (*const u64) Number of US the target takes on average to run 1 input
+pub const STORE_AVG_TARGET_EXEC_TIME: &str = "avg_exec_time";
+
 
 pub enum TargetExitStatus {
     Normal(i32),

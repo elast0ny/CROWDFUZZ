@@ -2,6 +2,8 @@
 
 If you are interested in developing your own plugins, take a look at the plugins/ folder for examples.
 
+All of the common store key definitions reside in [cflib/src/store.rs](../cflib/src/store.rs)
+
 
 ## Store guidelines
 Plugins should generaly add references to the store during their load() and keep those references alive until unload(). This enables other plugins to only have to query the store once during validation() and subsequently just use the saved reference.
@@ -18,7 +20,9 @@ Plugins in this category should create the INPUT_LIST entry and the NEW_INPUTS e
 For simplicity, it is highly recommend to avoid input deletion & reordering in this list so other plugins can use indexes safely.
 
 ## __File selection__
-Responsible for creating the INPUT_BYTES and INPUT_IDX entries.
+Responsible for creating the INPUT_BYTES and INPUT_IDX entries. File selectors must ensure that INPUT_BYTES is a CfInput with a single chunk for the whole file.
+
+It can also chose to respect the RESTORE_INPUT and NO_SELECT keys.
 
 ## __Mutation__
 Mutation plugins should read the INPUT_BYTES entry and push values to MUTATED_INPUT_BYTES.
@@ -33,5 +37,4 @@ AFL_CALIBRATION = true
 ```
 
 ## __Execution__
-Responsible for creating and updating TARGET_EXEC_SPEED and EXIT_STATUS.
-Before an execution, they should pop all the values off of MUTATED_INPUT_BYTES and use them as a single buffer that will be sent to the target for execution.
+Responsible for creating and updating TARGET_EXEC_TIME/AVG_TARGET_EXEC_TIME and EXIT_STATUS. This plugin should feed the contents of INPUT_BYTES to the target application.
