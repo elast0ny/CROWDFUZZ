@@ -13,7 +13,8 @@ cflib::register!(unload, destroy);
 
 struct State {
     cur_input: CfInput,
-    reuse_input: bool,
+    restore_input: bool,
+    no_select: bool,
     cur_input_idx: usize,
     seq_input_idx: usize,
     orig_buf: Vec<u8>,
@@ -35,7 +36,8 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             cur_input: CfInput::default(),
             priority_list: VecDeque::new(),
             input_list: MaybeUninit::zeroed().assume_init(),
-            reuse_input: false,
+            restore_input: false,
+            no_select: false,
             num_priority_inputs: match core.add_stat(
                 &format!("{}num_priority_inputs", TAG_PREFIX_TOTAL),
                 NewStat::Num(0),
@@ -49,7 +51,8 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     // We should be the only plugin with these values
     if store.get(STORE_INPUT_IDX).is_some()
         || store.get(STORE_INPUT_BYTES).is_some()
-        || store.get(STORE_REUSE_INPUT).is_some()
+        || store.get(STORE_RESTORE_INPUT).is_some()
+        || store.get(STORE_NO_SELECT).is_some()
         || store.get("select_priority_list").is_some()
     {
         core.log(
@@ -69,8 +72,12 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         mutref_to_raw!(state.cur_input),
     );
     store.insert(
-        STORE_REUSE_INPUT.to_string(),
-        mutref_to_raw!(state.reuse_input),
+        STORE_RESTORE_INPUT.to_string(),
+        mutref_to_raw!(state.restore_input),
+    );
+    store.insert(
+        STORE_NO_SELECT.to_string(),
+        mutref_to_raw!(state.no_select),
     );
     store.insert(
         "select_priority_list".to_string(),
@@ -110,7 +117,11 @@ fn select_input(
     // Update number of indexes in priority list
     *state.num_priority_inputs.val = state.priority_list.len() as _;
 
-    if !state.reuse_input {
+    if state.no_select {
+        return Ok(());
+    }
+
+    if !state.restore_input {
         // Pick the next input index
         match state.priority_list.pop_front() {
             Some(idx) => state.cur_input_idx = idx,
@@ -182,7 +193,8 @@ fn destroy(
 
     let _ = store.remove(STORE_INPUT_IDX);
     let _ = store.remove(STORE_INPUT_BYTES);
-    let _ = store.remove(STORE_REUSE_INPUT);
+    let _ = store.remove(STORE_RESTORE_INPUT);
+    let _ = store.remove(STORE_NO_SELECT);
     let _ = store.remove("select_priority_list");
 
     Ok(())
