@@ -3,6 +3,7 @@ use crate::*;
 use ::rand::rngs::SmallRng;
 use ::rand::Rng;
 
+#[derive(Debug)]
 pub struct HavocState {
     weight: usize,
     num_iterations: usize,
@@ -40,6 +41,15 @@ impl HavocState {
     }
 }
 
-pub fn havoc(_bytes: &mut [u8], _s: &mut HavocState) -> StageResult {
+pub fn havoc(bytes: &mut [u8], s: &mut HavocState) -> StageResult {
+
+    s.num_iterations -= 1;
+
+    if s.num_iterations == 0 {
+        return StageResult::Done;
+    }
+
+    bytes[0] = 0x00;
+
     StageResult::CantRestoreInput
 }

@@ -55,6 +55,7 @@ impl InterestStage {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct InterestState {
     idx: usize,
     prev_val: Option<(usize, u32)>,
@@ -102,11 +103,13 @@ pub fn interesting(bytes: &mut [u8], s: &mut InterestState) -> StageResult {
             match s.stage.next() {
                 InnerStage::Updated => {}
                 InnerStage::Next(v) => {
-                    s.idx = v.max_idx(bytes.len());
                     s.stage = v;
-                }
+                    return StageResult::Next;
+                },
                 InnerStage::Done => return StageResult::Done,
             };
+
+            s.idx = s.stage.max_idx(bytes.len());
         }
 
         s.idx -= 1;
@@ -117,23 +120,23 @@ pub fn interesting(bytes: &mut [u8], s: &mut InterestState) -> StageResult {
 
             match s.stage {
                 InterestStage::Width8(j, _) => {
-                    orig = *dst as u32;
-                    if could_be_bitflip(orig ^ j as u32) || could_be_arith(orig, j as u32, 1) {
+                    orig = (*dst as u8) as u32;
+                    if could_be_bitflip(orig ^ (j as u8) as u32) || could_be_arith(orig, (j as u8) as u32, 1) {
                         continue;
                     }
                     s.prev_val = Some((s.idx, orig));
-                    *(dst as *mut i8) = j;
+                    *(dst as *mut u8) = j as u8;
                 }
                 InterestStage::Width16(j, _) => {
                     orig = *(dst as *mut u16) as u32;
-                    if could_be_bitflip(orig ^ j as u32)
-                        || could_be_arith(orig, j as u32, 2)
-                        || could_be_interest(orig, j as _, 2, false)
+                    if could_be_bitflip(orig ^ (j as u16) as u32)
+                        || could_be_arith(orig, (j as u16) as u32, 2)
+                        || could_be_interest(orig, (j as u16) as _, 2, false)
                     {
                         continue;
                     }
                     s.prev_val = Some((s.idx, orig));
-                    *(dst as *mut i16) = j;
+                    *(dst as *mut u16) = j as u16;
                 }
                 InterestStage::Width32(j, _) => {
                     orig = *(dst as *mut u32);
@@ -144,7 +147,7 @@ pub fn interesting(bytes: &mut [u8], s: &mut InterestState) -> StageResult {
                         continue;
                     }
                     s.prev_val = Some((s.idx, orig));
-                    *(dst as *mut i32) = j;
+                    *(dst as *mut u32) = j as u32;
                 }
             };
         }

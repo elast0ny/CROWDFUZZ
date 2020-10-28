@@ -303,6 +303,10 @@ impl<'a> CfCore<'a> {
                 self.ctx.cur_plugin_id += 1;
             }
 
+            //if *self.stats.num_execs.val == 100 {
+            //    return Err(From::from("Stop after 10 execs".to_string()));
+            //}
+
             time_elapsed = core_start.elapsed().as_micros() as u64;
             // Update average full iteration time
             cflib::update_average(

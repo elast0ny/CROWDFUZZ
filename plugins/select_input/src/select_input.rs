@@ -66,6 +66,10 @@ fn validate(
     // Make sure someone created INPUT_LIST
     state.input_list = unsafe { store.as_ref(STORE_INPUT_LIST, Some(core))? };
 
+    if !state.input_list.is_empty() {
+        state.seq_input_idx = state.input_list.len() - 1;
+    }
+
     Ok(())
 }
 
@@ -82,6 +86,7 @@ fn select_input(
 
     // Input selection currently disabled
     if *state.no_select {
+        //core.trace("No select !");
         return Ok(());
     }
 
@@ -92,11 +97,11 @@ fn select_input(
             Some(idx) => state.cur_input_idx = idx,
             None => {
                 // Just get the next input
-                state.cur_input_idx = state.seq_input_idx;
                 state.seq_input_idx += 1;
                 if state.seq_input_idx == state.input_list.len() {
                     state.seq_input_idx = 0;
                 }
+                state.cur_input_idx = state.seq_input_idx;
             }
         };
 
@@ -131,6 +136,9 @@ fn select_input(
                 return Err(From::from("No input contents".to_string()));
             }
         }
+        //core.debug("New input !");
+    } else {
+        //core.debug("Restored input !");
     }
 
     // Copy orig into fuzz_buf

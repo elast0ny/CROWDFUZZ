@@ -26,7 +26,7 @@ struct State {
     cur_input_idx: &'static usize,
     restore_input: &'static mut bool,
     no_select: &'static mut bool,
-    globals: &'static mut AflState,
+    //globals: &'static mut AflState,
     inputs: &'static Vec<CfInputInfo>,
     input_stages: Vec<InputMutateStage>,
     prev_input_idx: usize,
@@ -47,7 +47,7 @@ fn init(core: &mut dyn PluginInterface, _store: &mut CfStore) -> Result<*mut u8>
             /// Plugin store values
             cur_input: MaybeUninit::zeroed().assume_init(),
             cur_input_idx: MaybeUninit::zeroed().assume_init(),
-            globals: MaybeUninit::zeroed().assume_init(),
+            //globals: MaybeUninit::zeroed().assume_init(),
             restore_input: MaybeUninit::zeroed().assume_init(),
             no_select: MaybeUninit::zeroed().assume_init(),
             inputs: MaybeUninit::zeroed().assume_init(),
@@ -108,6 +108,8 @@ fn mutate_input(
         state.stage_name.clear();
         stage.write_name(&mut state.stage_name);
         state.stat_cur_stage.set(&state.stage_name);
+        
+        state.prev_input_idx = *state.cur_input_idx;
     }
 
     // Mutate the input
@@ -128,16 +130,17 @@ fn mutate_input(
                 *state.restore_input = false;
                 *state.no_select = false;
             },
-            StageResult::NextStage => {
+            StageResult::Next => {
                 // Update cur_stage stat
                 state.stage_name.clear();
                 stage.write_name(&mut state.stage_name);
                 state.stat_cur_stage.set(&state.stage_name);
-
                 // Loop again to mutate at least once
                 continue;
             }
         };
+
+        //core.trace(&format!("{:?}", state.cur_input.chunks[0]));
         break;
     }
 

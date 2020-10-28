@@ -15,11 +15,12 @@ pub enum StageResult {
     /// Mutated input and will not restore on next iteration
     CantRestoreInput,
     /// Didnt mutate, switching to next stage
-    NextStage,
+    Next,
     /// Stage is done and has not mutated the input
     Done,
 }
 
+#[derive(Debug)]
 pub enum Stages {
     /// Flips groups of bits [1,2,4,8,16,32]
     BitFlip(BitFlipState),
@@ -44,11 +45,13 @@ impl InputMutateStage {
     pub fn new(skip_deterministic: bool, input_len: usize) -> Self {
         // Go straight to havoc is skip_det
         let first_stage = if skip_deterministic {
-            Stages::Havoc(HavocState::new(
+            let s = HavocState::new(
                 SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
-            ))
+            );
+            Stages::Havoc(s)
         } else {
-            Stages::BitFlip(BitFlipState::new(input_len))
+            let s = BitFlipState::new(input_len);
+            Stages::BitFlip(s)
         };
 
         Self {
@@ -61,45 +64,46 @@ impl InputMutateStage {
         // Inputs always have only one chunk
         let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
         
-        let mut result;
-
         match self.cur_stage {
             Stages::BitFlip(ref mut state) => {
-                result = bit_flip(bytes, state);
-                if let StageResult::Done = result {
+                let r = bit_flip(bytes, state);
+                if let StageResult::Done = r {
                     // Next stage with same input
                     self.cur_stage = Stages::Arithmetic(ArithState::new(bytes.len()));
-                    result = StageResult::NextStage;
-                }
-                result
+                    StageResult::Next
+                } else {
+                    r
+                }                
             }
             Stages::Arithmetic(ref mut state) => {
-                result = arithmetic(bytes, state);
-                if let StageResult::Done = result {
+                
+                let r = arithmetic(bytes, state);
+                if let StageResult::Done = r {
                     // Next stage with same input
                     self.cur_stage = Stages::Interesting(InterestState::new(bytes.len()));
-                    result = StageResult::NextStage;
-                }
-                result
+                    StageResult::Next
+                } else {
+                    r
+                }     
             }
             Stages::Interesting(ref mut state) => {
-                result = interesting(bytes, state);
-                if let StageResult::Done = result {
+                let r = interesting(bytes, state);
+                if let StageResult::Done = r {
                     // Next stage with same input
                     self.cur_stage = Stages::Havoc(HavocState::new(
                         SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
                     ));
-                    result = StageResult::NextStage;
-                }
-                result
+                    StageResult::Next
+                } else {
+                    r
+                }     
             }
             Stages::Havoc(ref mut state) => {
-                result = havoc(bytes, state);
-                // If havoc is done, simply reset its state
-                if let StageResult::Done = result {
+                let r = havoc(bytes, state);
+                if let StageResult::Done = r {
                     state.reset();
                 }
-                result
+                r
             }
         }
     }

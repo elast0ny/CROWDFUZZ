@@ -1,7 +1,7 @@
 use crate::*;
 
 #[derive(Clone, Copy, Debug)]
-enum BitWidth {
+pub enum BitWidth {
     Bit1 = 1,
     Bit2 = 2,
     Bit4 = 4,
@@ -19,7 +19,12 @@ impl BitWidth {
         if (*self as u8) < 8 {
             (input_len * 8) - ((*self as u8) - 1) as usize
         } else {
-            input_len - (((*self as u8) / 8) - 1) as usize
+            let delta = (((*self as u8) / 8) - 1) as usize;
+            if delta > input_len {
+                0
+            } else {
+                input_len - delta
+            }
         }
     }
 
@@ -78,8 +83,8 @@ pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> StageResult {
                 BitWidth::Bit4 => {
                     flip_bit(bytes, s.idx);
                     flip_bit(bytes, s.idx + 1);
+                    flip_bit(bytes, s.idx + 2);
                     flip_bit(bytes, s.idx + 3);
-                    flip_bit(bytes, s.idx + 4);
                 }
                 BitWidth::Byte1 => *(bytes.as_mut_ptr().add(s.idx) as *mut u8) = orig_val as _,
                 BitWidth::Byte2 => *(bytes.as_mut_ptr().add(s.idx) as *mut u16) = orig_val as _,
@@ -90,11 +95,12 @@ pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> StageResult {
 
     if s.idx == 0 {
         // Go to the next width
-        s.width = match s.width.next() {
+        match s.width.next() {
             Some(w) => {
                 // Move to next bit_flip width
                 s.idx = w.max_idx(bytes.len());
-                w
+                s.width = w;
+                return StageResult::Next;
             }
             None => {
                 return StageResult::Done;
@@ -107,6 +113,7 @@ pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> StageResult {
 
     unsafe {
         if num_bits < 8 {
+            s.prev_val = Some(0);
             if num_bits >= 1 {
                 flip_bit(bytes, s.idx);
             }
@@ -116,7 +123,7 @@ pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> StageResult {
             if num_bits >= 4 {
                 flip_bit(bytes, s.idx + 2);
                 flip_bit(bytes, s.idx + 3);
-            }
+            }            
         } else if num_bits == 8 {
             let cur = bytes.as_mut_ptr().add(s.idx);
             s.prev_val = Some(*cur as u32);
@@ -131,7 +138,6 @@ pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> StageResult {
             *cur ^= 0xFFFFFFFF;
         }
     }
-    s.idx -= 1;
 
     StageResult::WillRestoreInput
 }

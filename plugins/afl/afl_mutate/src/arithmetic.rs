@@ -1,5 +1,6 @@
 use crate::*;
 
+#[derive(Copy, Clone, Debug)]
 enum ArithStage {
     AddSub8(i8),
     AddSub16(i16),
@@ -14,8 +15,20 @@ impl ArithStage {
     pub fn max_idx(&self, input_len: usize) -> usize {
         match self {
             Self::AddSub8(_) => input_len,
-            Self::AddSub16(_) => input_len - 1,
-            Self::AddSub32(_) => input_len - 3,
+            Self::AddSub16(_) => {
+                if input_len == 1 {
+                    0
+                } else {
+                    input_len - 1
+                }
+            }
+            Self::AddSub32(_) => {
+                if input_len <= 3 {
+                    0
+                } else {
+                    input_len - 3
+                }
+            }
         }
     }
 
@@ -61,6 +74,7 @@ impl ArithStage {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct ArithState {
     idx: usize,
     prev_val: Option<(usize, u32)>,
@@ -109,13 +123,16 @@ pub fn arithmetic(bytes: &mut [u8], s: &mut ArithState) -> StageResult {
         if s.idx == 0 {
             // Process to next stage
             match s.stage.next() {
-                InnerStage::Updated => {}
+                InnerStage::Updated => {},
                 InnerStage::Next(v) => {
-                    s.idx = v.max_idx(bytes.len());
                     s.stage = v;
-                }
+                    return StageResult::Next;
+                },
                 InnerStage::Done => return StageResult::Done,
             };
+
+            // Restart from max idx
+            s.idx = s.stage.max_idx(bytes.len());
         }
 
         s.idx -= 1;
@@ -127,7 +144,7 @@ pub fn arithmetic(bytes: &mut [u8], s: &mut ArithState) -> StageResult {
             match s.stage {
                 ArithStage::AddSub8(j) => {
                     orig = *dst as u32;
-                    let r1 = orig ^ (orig + (j as i32) as u32);
+                    let r1 = orig ^ (orig.overflowing_add((j as i32) as u32)).0;
                     if could_be_bitflip(r1) {
                         continue;
                     }
@@ -136,7 +153,7 @@ pub fn arithmetic(bytes: &mut [u8], s: &mut ArithState) -> StageResult {
                 }
                 ArithStage::AddSub16(j) => {
                     orig = *(dst as *mut u16) as u32;
-                    let r1 = orig ^ (orig + (j as i32) as u32);
+                    let r1 = orig ^ (orig.overflowing_add((j as i32) as u32)).0;
 
                     // If the arith action doest cause an over/under flow
                     if ((j > 0 && (orig & 0xFF) + j as u32 <= 0xFF) || (orig & 0xFF) > j as u32)
@@ -149,7 +166,7 @@ pub fn arithmetic(bytes: &mut [u8], s: &mut ArithState) -> StageResult {
                 }
                 ArithStage::AddSub32(j) => {
                     orig = *(dst as *mut u32);
-                    let r1 = orig ^ (orig + j as u32);
+                    let r1 = orig ^ (orig.overflowing_add((j as i32) as u32)).0;
                     // If the arith action doest cause an over/under flow
                     if ((j > 0 && (orig & 0xFFFF) + j as u32 <= 0xFFFF)
                         || (orig & 0xFFFF) > j as u32)

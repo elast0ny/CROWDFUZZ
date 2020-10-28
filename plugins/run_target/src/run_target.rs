@@ -28,13 +28,13 @@ cflib::register!(unload, destroy);
 struct State {
     /// Reference to the currently selected input
     cur_input: &'static CfInput,
-    target_path: &'static String,
     avg_denominator: &'static u64,
     target_args: Vec<String>,
     input_file: Option<File>,
     exec_time: u64,
     avg_exec_time: StatNum,
     exit_status: TargetExitStatus,
+    cmd: Command,
     target_input_path: Option<String>,
     target_working_dir: Option<String>,
     target_timeout_ms: Option<Duration>,
@@ -42,6 +42,17 @@ struct State {
 
 // Initialize our plugin
 fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
+    
+    // Make sure target_bin points to a file
+    let target_bin_path: &String = unsafe{store.as_ref(STORE_TARGET_BIN, Some(core))?};
+    if !Path::new(target_bin_path).is_file() {
+        core.error(&format!(
+            "Failed to find target binary '{}'",
+            target_bin_path
+        ));
+        return Err(From::from("Invalid target binary path".to_string()));
+    }
+
     #[allow(invalid_value)]
     let mut state = Box::new(unsafe {
         State {
@@ -52,15 +63,18 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             target_input_path: None,
             target_working_dir: None,
             target_timeout_ms: None,
+            cmd: Command::new(target_bin_path),
             // Stats
             avg_exec_time: core.new_stat_num(STAT_TARGET_EXEC_TIME, 0)?,
             // Core store values
-            target_path: store.as_ref(STORE_TARGET_BIN, Some(core))?,
             avg_denominator: store.as_ref(STORE_AVG_DENOMINATOR, Some(core))?,
             // Plugin store values
             cur_input: MaybeUninit::zeroed().assume_init(),
         }
     });
+
+    //close stdout and stderr
+    state.cmd.stdout(Stdio::null()).stderr(Stdio::null());
 
     // Insert our store values
     // EXIT_STATUS
@@ -86,15 +100,6 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
 
     // Parse our config values
     state.load_config(core, plugin_conf)?;
-
-    // Make sure target is a file
-    if !Path::new(state.target_path).is_file() {
-        core.error(&format!(
-            "Failed to find target binary '{}'",
-            state.target_path
-        ));
-        return Err(From::from("Invalid target binary path".to_string()));
-    }
 
     // Build arg list swapping @@ for file path
     let mut input_path = PathBuf::new();
@@ -135,9 +140,26 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         }
     }
 
+    // set command args
+    if !state.target_args.is_empty() {
+        state.cmd.args(&state.target_args);
+    }
+
+    // set command working directory
+    if let Some(ref target_wd) = state.target_working_dir {
+        state.cmd.current_dir(target_wd);
+    }
+
+    // Set input method
+    if state.input_file.is_some() {
+        state.cmd.stdin(Stdio::null());
+    } else {
+        state.cmd.stdin(Stdio::piped());
+    }
+
     core.info(&format!(
         "Running '{}' {:?}",
-        state.target_path, state.target_args
+        target_bin_path, state.target_args
     ));
 
     Ok(Box::into_raw(state) as _)
@@ -165,15 +187,7 @@ fn run_target(
 ) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
 
-    let mut cmd = Command::new(state.target_path);
-    cmd.args(&state.target_args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-
-    if let Some(ref d) = state.target_working_dir {
-        cmd.current_dir(d);
-    }
-
+    // Update file on disk
     if let Some(ref mut f) = state.input_file {
         for chunk in &state.cur_input.chunks {
             let _ = (f.set_len(0), f.seek(std::io::SeekFrom::Start(0)));
@@ -183,22 +197,20 @@ fn run_target(
             }
         }
         let _ = f.flush();
-    } else {
-        cmd.stdin(Stdio::piped());
     }
 
     let child_start: Instant = Instant::now();
-    let mut child = match cmd.spawn() {
+    let mut child = match state.cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
             core.error(&format!(
-                "Failed to spawn child process '{}' {:?} : {}",
-                state.target_path, state.target_args, e
+                "Failed to spawn child process : {}", e
             ));
             return Err(From::from("Failed to spawn target".to_string()));
         }
     };
 
+    // Feed input in stdin if required
     if state.input_file.is_none() {
         let stdin = child.stdin.as_mut().unwrap();
         for chunk in &state.cur_input.chunks {
@@ -209,7 +221,7 @@ fn run_target(
         }
     }
 
-    //TODO : implement timeout
+    // Wait for child
     let result = if let Some(timeout) = state.target_timeout_ms {
         child.wait_timeout(timeout).unwrap()
     } else {
