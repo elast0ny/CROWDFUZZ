@@ -123,11 +123,11 @@ pub fn arithmetic(bytes: &mut [u8], s: &mut ArithState) -> StageResult {
         if s.idx == 0 {
             // Process to next stage
             match s.stage.next() {
-                InnerStage::Updated => {},
+                InnerStage::Updated => {}
                 InnerStage::Next(v) => {
                     s.stage = v;
                     return StageResult::Next;
-                },
+                }
                 InnerStage::Done => return StageResult::Done,
             };
 

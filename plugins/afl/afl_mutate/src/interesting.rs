@@ -105,7 +105,7 @@ pub fn interesting(bytes: &mut [u8], s: &mut InterestState) -> StageResult {
                 InnerStage::Next(v) => {
                     s.stage = v;
                     return StageResult::Next;
-                },
+                }
                 InnerStage::Done => return StageResult::Done,
             };
 
@@ -121,7 +121,9 @@ pub fn interesting(bytes: &mut [u8], s: &mut InterestState) -> StageResult {
             match s.stage {
                 InterestStage::Width8(j, _) => {
                     orig = (*dst as u8) as u32;
-                    if could_be_bitflip(orig ^ (j as u8) as u32) || could_be_arith(orig, (j as u8) as u32, 1) {
+                    if could_be_bitflip(orig ^ (j as u8) as u32)
+                        || could_be_arith(orig, (j as u8) as u32, 1)
+                    {
                         continue;
                     }
                     s.prev_val = Some((s.idx, orig));

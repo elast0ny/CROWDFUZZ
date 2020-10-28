@@ -45,9 +45,7 @@ impl InputMutateStage {
     pub fn new(skip_deterministic: bool, input_len: usize) -> Self {
         // Go straight to havoc is skip_det
         let first_stage = if skip_deterministic {
-            let s = HavocState::new(
-                SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
-            );
+            let s = HavocState::new(SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap());
             Stages::Havoc(s)
         } else {
             let s = BitFlipState::new(input_len);
@@ -63,7 +61,7 @@ impl InputMutateStage {
     pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
         // Inputs always have only one chunk
         let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
-        
+
         match self.cur_stage {
             Stages::BitFlip(ref mut state) => {
                 let r = bit_flip(bytes, state);
@@ -73,10 +71,9 @@ impl InputMutateStage {
                     StageResult::Next
                 } else {
                     r
-                }                
+                }
             }
             Stages::Arithmetic(ref mut state) => {
-                
                 let r = arithmetic(bytes, state);
                 if let StageResult::Done = r {
                     // Next stage with same input
@@ -84,7 +81,7 @@ impl InputMutateStage {
                     StageResult::Next
                 } else {
                     r
-                }     
+                }
             }
             Stages::Interesting(ref mut state) => {
                 let r = interesting(bytes, state);
@@ -96,7 +93,7 @@ impl InputMutateStage {
                     StageResult::Next
                 } else {
                     r
-                }     
+                }
             }
             Stages::Havoc(ref mut state) => {
                 let r = havoc(bytes, state);
@@ -111,9 +108,9 @@ impl InputMutateStage {
     pub fn write_name(&self, dst: &mut String) {
         let _ = match &self.cur_stage {
             Stages::BitFlip(s) => s.desc(dst),
-            Stages::Arithmetic(s) =>  s.desc(dst),
-            Stages::Interesting(s) =>  s.desc(dst),
-            Stages::Havoc(s) =>  s.desc(dst),
+            Stages::Arithmetic(s) => s.desc(dst),
+            Stages::Interesting(s) => s.desc(dst),
+            Stages::Havoc(s) => s.desc(dst),
         };
     }
 }

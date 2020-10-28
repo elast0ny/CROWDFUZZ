@@ -271,12 +271,12 @@ impl<'a> CfCore<'a> {
         loop {
             core_start = Instant::now();
             total_plugin_time = 0;
-            
+
             *self.stats.num_execs.val += 1;
             if self.store.avg_denominator < 20 {
                 self.store.avg_denominator += 1;
             }
-            
+
             self.ctx.cur_plugin_id = self.fuzz_loop_start;
             for plugin in fuzz_loop_plugins.iter_mut() {
                 // run the plugin

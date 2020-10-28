@@ -57,8 +57,7 @@ impl BitFlipState {
     }
     pub fn desc(&self, dst: &mut String) {
         dst.push_str("bitflip ");
-        dst.push_str(
-        match self.width {
+        dst.push_str(match self.width {
             BitWidth::Bit1 => "1/1",
             BitWidth::Bit2 => "2/1",
             BitWidth::Bit4 => "4/1",
@@ -123,7 +122,7 @@ pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> StageResult {
             if num_bits >= 4 {
                 flip_bit(bytes, s.idx + 2);
                 flip_bit(bytes, s.idx + 3);
-            }            
+            }
         } else if num_bits == 8 {
             let cur = bytes.as_mut_ptr().add(s.idx);
             s.prev_val = Some(*cur as u32);

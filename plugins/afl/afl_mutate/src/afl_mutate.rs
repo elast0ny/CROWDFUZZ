@@ -101,14 +101,14 @@ fn mutate_input(
     }
 
     // Get which stage we're at for this input
-    let stage = unsafe {state.input_stages.get_unchecked_mut(*state.cur_input_idx)};
+    let stage = unsafe { state.input_stages.get_unchecked_mut(*state.cur_input_idx) };
 
     // Update stage name if we switched input
     if state.prev_input_idx != *state.cur_input_idx {
         state.stage_name.clear();
         stage.write_name(&mut state.stage_name);
         state.stat_cur_stage.set(&state.stage_name);
-        
+
         state.prev_input_idx = *state.cur_input_idx;
     }
 
@@ -119,17 +119,17 @@ fn mutate_input(
                 // The mutator will restore the testcase
                 *state.no_select = true;
                 *state.restore_input = false;
-            },
+            }
             StageResult::CantRestoreInput => {
                 // Mutator cant restore original testcase
                 *state.restore_input = true;
                 *state.no_select = false;
-            },
+            }
             StageResult::Done => {
                 // Pick a new testcase
                 *state.restore_input = false;
                 *state.no_select = false;
-            },
+            }
             StageResult::Next => {
                 // Update cur_stage stat
                 state.stage_name.clear();

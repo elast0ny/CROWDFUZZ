@@ -42,7 +42,6 @@ impl HavocState {
 }
 
 pub fn havoc(bytes: &mut [u8], s: &mut HavocState) -> StageResult {
-
     s.num_iterations -= 1;
 
     if s.num_iterations == 0 {
