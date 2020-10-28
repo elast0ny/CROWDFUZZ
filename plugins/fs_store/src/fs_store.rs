@@ -44,12 +44,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             queue_dir: PathBuf::new(),
             is_input_list_owner: false,
             is_new_inputs_owner: false,
-            num_inputs: match core
-                .add_stat(&format!("{}num_files", TAG_PREFIX_TOTAL), NewStat::Num(0))
-            {
-                Ok(StatVal::Num(v)) => v,
-                _ => return Err(From::from("Failed to reserve stat".to_string())),
-            },
+            num_inputs: core.new_stat_num(&format!("{}num_files", TAG_PREFIX_TOTAL), 0)?,
             input_list: MaybeUninit::zeroed().assume_init(),
             new_inputs: MaybeUninit::zeroed().assume_init(),
             owned_input_list: Vec::new(),
@@ -88,16 +83,8 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
 
     let tmp: &str = state.queue_dir.to_str().unwrap();
-    state.stat_queue_dir = match core.add_stat(
-        &format!("queue_dir{}", TAG_POSTFIX_PATH),
-        NewStat::Str {
-            max_size: tmp.len(),
-            init_val: tmp,
-        },
-    ) {
-        Ok(StatVal::Str(v)) => v,
-        _ => return Err(From::from("Failed to reserve stat".to_string())),
-    };
+    state.stat_queue_dir =
+        core.new_stat_str(&format!("queue_dir{}", TAG_POSTFIX_PATH), tmp.len(), tmp)?;
 
     // Create filesystem store
     if !state.queue_dir.is_dir() && std::fs::create_dir(&state.queue_dir).is_err() {

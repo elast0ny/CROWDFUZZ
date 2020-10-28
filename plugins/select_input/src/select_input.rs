@@ -38,13 +38,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             input_list: MaybeUninit::zeroed().assume_init(),
             restore_input: false,
             no_select: MaybeUninit::zeroed().assume_init(),
-            num_priority_inputs: match core.add_stat(
-                &format!("{}num_priority_inputs", TAG_PREFIX_TOTAL),
-                NewStat::Num(0),
-            ) {
-                Ok(StatVal::Num(v)) => v,
-                _ => return Err(From::from("Failed to reserve stat".to_string())),
-            },
+            num_priority_inputs: core.new_stat_num(&format!("{}num_priority_inputs", TAG_PREFIX_TOTAL), 0)?,
         }
     });
 

@@ -1,6 +1,6 @@
 use ::log::*;
 
-use crate::stats::Stats;
+use crate::stats::*;
 use crate::Result;
 use cflib::*;
 use std::ffi::CStr;
@@ -49,8 +49,32 @@ impl<'a> PluginInterface for PluginCtx<'a> {
         trace!("[{}] {}", &plugin.name, msg);
     }
 
-    fn add_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal> {
-        self.stats.new_stat(tag, stat)
+    /// Creates a new number in the stats memory
+    /// This can fail if the mapping runs out of space.
+    fn new_stat_num(&mut self, tag: &str, init: u64) -> Result<StatNum> {
+        match self.stats.new_stat(tag, NewStat::Num(init)) {
+            Ok(StatVal::Num(v)) => Ok(v),
+            Err(e) => Err(e),
+            _ => unreachable!(),
+        }
+    }
+    /// Creates a new string in the stats memory
+    /// This can fail if the mapping runs out of space.
+    fn new_stat_str(&mut self, tag: &str, max_size: usize, init_val: &str) -> Result<StatStr> {
+        match self.stats.new_stat(tag, NewStat::Str{max_size,init_val}) {
+            Ok(StatVal::Str(v)) => Ok(v),
+            Err(e) => Err(e),
+            _ => unreachable!(),
+        }
+    }
+    /// Creates a new byte buffer in the stats memory
+    /// This can fail if the mapping runs out of space.
+    fn new_stat_bytes(&mut self, tag: &str, max_size: usize, init_val: &[u8]) -> Result<StatBytes> {
+        match self.stats.new_stat(tag, NewStat::Bytes{max_size, init_val}) {
+            Ok(StatVal::Bytes(v)) => Ok(v),
+            Err(e) => Err(e),
+            _ => unreachable!(),
+        }
     }
 }
 

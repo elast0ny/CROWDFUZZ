@@ -31,13 +31,6 @@ pub(crate) const TAG_POSTFIXES: &[&str] = &[
 /// Plugins that execute a target binary should use this name for consistency
 pub const STAT_TARGET_EXEC_TIME: &str = "avg_target_exec_time_us";
 
-/// Struct used to request stat memory for specific stat types
-pub enum NewStat<'a> {
-    Num(u64),
-    Bytes { max_size: usize, init_val: &'a [u8] },
-    Str { max_size: usize, init_val: &'a str },
-}
-
 /// The states that the fuzzer core can have
 #[derive(SpRead, Debug, Clone, Copy)]
 #[sp(id_type = "u8")]

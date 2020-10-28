@@ -19,9 +19,16 @@ pub trait PluginInterface {
     fn debug(&self, msg: &str);
     /// Logs a message at trace level
     fn trace(&self, msg: &str);
-    /// Adds a statistic in the stats shared memory mapping
+    
+    /// Creates a new number in the stats memory
     /// This can fail if the mapping runs out of space.
-    fn add_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal>;
+    fn new_stat_num(&mut self, tag: &str, init: u64) -> Result<StatNum>;
+    /// Creates a new string in the stats memory
+    /// This can fail if the mapping runs out of space.
+    fn new_stat_str(&mut self, tag: &str, max_size: usize, init: &str) -> Result<StatStr>;
+    /// Creates a new byte buffer in the stats memory
+    /// This can fail if the mapping runs out of space.
+    fn new_stat_bytes(&mut self, tag: &str, max_size: usize, init: &[u8]) -> Result<StatBytes>;
 }
 
 /// Initializes the plugin.

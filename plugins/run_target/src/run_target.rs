@@ -53,10 +53,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             target_args: Vec::new(),
             input_file: None,
             exec_time: 0,
-            avg_exec_time: match core.add_stat(STAT_TARGET_EXEC_TIME, NewStat::Num(0)) {
-                Ok(StatVal::Num(v)) => v,
-                _ => return Err(From::from("Failed to reserve stat".to_string())),
-            },
+            avg_exec_time: core.new_stat_num(STAT_TARGET_EXEC_TIME, 0)?,
             target_input_path: None,
             target_working_dir: None,
             target_timeout_ms: None,

@@ -192,6 +192,13 @@ impl<'a> CfCore<'a> {
     }
 }
 
+/// Struct used to request stat memory for specific stat types
+pub enum NewStat<'a> {
+    Num(u64),
+    Bytes { max_size: usize, init_val: &'a [u8] },
+    Str { max_size: usize, init_val: &'a str },
+}
+
 pub struct Stats<'a> {
     pub buf: &'a mut [u8],
     end_idx: usize,

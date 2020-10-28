@@ -7,21 +7,20 @@ cflib::register!(fuzz, fuzz);
 cflib::register!(unload, destroy);
 
 struct State {
-    num_iter: usize,
+    num_iter: StatNum,
     fuzzer_name: &'static String,
 }
 
 // Initialize our plugin
 fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     let state = Box::new(State {
-        num_iter: 0,
-        fuzzer_name: raw_to_ref!(*store.get(STORE_FUZZER_ID).unwrap(), String),
+        // Create number that lives in the stats memory
+        num_iter: core.new_stat_num(&format!("{}num_iter", TAG_PREFIX_TOTAL), 0)?,
+        // Get refence to store value owned by the core
+        fuzzer_name: unsafe {store.as_ref(STORE_FUZZER_ID, Some(core))}?,
     });
 
-    core.log(
-        LogLevel::Info,
-        &format!("initializing for {} !", state.fuzzer_name),
-    );
+    core.info(&format!("Hello {} !", state.fuzzer_name));
 
     Ok(Box::into_raw(state) as _)
 }
@@ -33,7 +32,8 @@ fn validate(
     plugin_ctx: *mut u8,
 ) -> Result<()> {
     let _state = box_ref!(plugin_ctx, State);
-    core.log(LogLevel::Info, "validating");
+    
+    core.debug("Validating !");
 
     Ok(())
 }
@@ -42,7 +42,7 @@ fn validate(
 fn fuzz(_core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
     let ctx = box_ref!(plugin_ctx, State);
 
-    ctx.num_iter += 1;
+    *ctx.num_iter.val += 1;
 
     std::thread::sleep(std::time::Duration::from_secs(1));
 
@@ -57,7 +57,7 @@ fn destroy(
 ) -> Result<()> {
     let _ctx = box_take!(plugin_ctx, State);
 
-    core.log(LogLevel::Info, "destroying");
+    core.debug("Unloading !");
 
     Ok(())
 }

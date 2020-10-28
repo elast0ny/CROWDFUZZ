@@ -41,18 +41,8 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             tmp_str: String::with_capacity(40),
             crash_dir: PathBuf::new(),
             timeout_dir: PathBuf::new(),
-            num_crashes: match core
-                .add_stat(&format!("{}crashes", TAG_PREFIX_TOTAL), NewStat::Num(0))
-            {
-                Ok(StatVal::Num(v)) => v,
-                _ => return Err(From::from("Failed to reserve stat".to_string())),
-            },
-            num_timeouts: match core
-                .add_stat(&format!("{}timeouts", TAG_PREFIX_TOTAL), NewStat::Num(0))
-            {
-                Ok(StatVal::Num(v)) => v,
-                _ => return Err(From::from("Failed to reserve stat".to_string())),
-            },
+            num_crashes: core.new_stat_num(&format!("{}crashes", TAG_PREFIX_TOTAL), 0)?,
+            num_timeouts: core.new_stat_num(&format!("{}timeouts", TAG_PREFIX_TOTAL), 0)?,
             stat_crash_dir: MaybeUninit::zeroed().assume_init(),
             state_timeout_dir: MaybeUninit::zeroed().assume_init(),
         }
@@ -83,17 +73,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             return Err(From::from(e));
         };
     }
+    // Add crash_dir to stats
     let tmp: &str = state.crash_dir.to_str().unwrap();
-    state.stat_crash_dir = match core.add_stat(
-        &format!("crashes_dir{}", TAG_POSTFIX_PATH),
-        NewStat::Str {
-            max_size: tmp.len(),
-            init_val: tmp,
-        },
-    ) {
-        Ok(StatVal::Str(v)) => v,
-        _ => return Err(From::from("Failed to reserve stat".to_string())),
-    };
+    state.stat_crash_dir =
+        core.new_stat_str(&format!("crashes_dir{}", TAG_POSTFIX_PATH), tmp.len(), tmp)?;
 
     // Create timeouts dir
     state.timeout_dir.push(state_dir);
@@ -112,17 +95,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             return Err(From::from(e));
         };
     }
+    // Add timeout_dir to stats
     let tmp: &str = state.timeout_dir.to_str().unwrap();
-    state.state_timeout_dir = match core.add_stat(
-        &format!("timeouts_dir{}", TAG_POSTFIX_PATH),
-        NewStat::Str {
-            max_size: tmp.len(),
-            init_val: tmp,
-        },
-    ) {
-        Ok(StatVal::Str(v)) => v,
-        _ => return Err(From::from("Failed to reserve stat".to_string())),
-    };
+    state.state_timeout_dir =
+        core.new_stat_str(&format!("timeouts_dir{}", TAG_POSTFIX_PATH), tmp.len(), tmp)?;
 
     Ok(Box::into_raw(state) as _)
 }
