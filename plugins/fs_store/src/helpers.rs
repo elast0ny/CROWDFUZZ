@@ -105,6 +105,7 @@ impl State {
                     uid: self.tmp_uid.to_vec(),
                     path: Some(path),
                     contents: None,
+                    len: self.tmp_buf.len(),
                 });
             }
         }
@@ -115,9 +116,11 @@ impl State {
         let mut saved_one = false;
         let mut cur_input: Vec<&[u8]> = Vec::with_capacity(1);
         let mut cur_fpath: Option<PathBuf>;
+        let mut cur_input_len: usize;
 
         for new_input in self.new_inputs.drain(..) {
             cur_input.clear();
+            cur_input_len = 0;
 
             // Either content was passed or we must read a file
             match new_input.contents {
@@ -125,12 +128,14 @@ impl State {
                     cur_fpath = None;
                     for chunk in v.chunks.iter() {
                         cur_input.push(chunk);
+                        cur_input_len += chunk.len();
                     }
                 }
                 None => {
                     match new_input.path {
                         Some(p) if read_file(p.as_path(), &mut self.tmp_buf) => {
                             cur_fpath = Some(p);
+                            cur_input_len = self.tmp_buf.len();
                             // Borrow checker doesnt realise that vec.clear() drops the immutable ref...
                             cur_input.push(unsafe {
                                 std::slice::from_raw_parts(
@@ -177,6 +182,7 @@ impl State {
                 uid: self.tmp_uid.to_vec(),
                 path: cur_fpath,
                 contents: None,
+                len: cur_input_len,
             });
 
             *self.num_inputs.val += 1;

@@ -12,11 +12,11 @@ impl Default for InterestStage {
     }
 }
 impl InterestStage {
-    pub fn max_idx_for_input(&self, bytes: &[u8]) -> usize {
+    pub fn max_idx(&self, input_len: usize) -> usize {
         match self {
-            Self::Width8(_, _) => bytes.len(),
-            Self::Width16(_, _) => bytes.len() - 1,
-            Self::Width32(_, _) => bytes.len() - 3,
+            Self::Width8(_, _) => input_len,
+            Self::Width16(_, _) => input_len - 1,
+            Self::Width32(_, _) => input_len - 3,
         }
     }
 
@@ -60,9 +60,9 @@ pub struct InterestState {
     stage: InterestStage,
 }
 impl InterestState {
-    pub fn from_input(bytes: &[u8]) -> Self {
+    pub fn new(input_len: usize) -> Self {
         Self {
-            idx: bytes.len(),
+            idx: input_len,
             stage: InterestStage::default(),
         }
     }
@@ -74,7 +74,7 @@ pub fn interesting(bytes: &mut [u8], s: &mut InterestState) -> (bool, bool) {
             match s.stage.next() {
                 GenericStage::Updated => {}
                 GenericStage::Next(v) => {
-                    s.idx = v.max_idx_for_input(bytes);
+                    s.idx = v.max_idx(bytes.len());
                     s.stage = v;
                 }
                 GenericStage::Done => return (true, false),

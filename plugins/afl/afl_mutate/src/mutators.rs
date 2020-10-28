@@ -10,7 +10,6 @@ pub enum GenericStage<T> {
 }
 
 pub enum Stages {
-    None,
     /// Flips groups of bits [1,2,4,8,16,32]
     BitFlip(BitFlipState),
     /// Perform arithmetic operations [8,16,32]
@@ -34,14 +33,21 @@ pub enum Stages {
 }
 
 pub struct InputMutateStage {
-    pub skip_deterministic: bool,
     pub cur_stage: Stages,
 }
 impl InputMutateStage {
-    pub fn new(skip_deterministic: bool) -> Self {
+    pub fn new(skip_deterministic: bool, input_len: usize) -> Self {
+        // Go straight to havoc is skip_det
+        let first_stage = if skip_deterministic {
+            Stages::Havoc(HavocState::from_rng(
+                SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
+            ))
+        } else {
+            Stages::BitFlip(BitFlipState::new(input_len))
+        };
+
         Self {
-            skip_deterministic,
-            cur_stage: Stages::None,
+            cur_stage: first_stage,
         }
     }
 
@@ -52,25 +58,14 @@ impl InputMutateStage {
         let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
         let mut input_mutated = false;
 
-        if let Stages::None = self.cur_stage {
-            self.cur_stage = if self.skip_deterministic {
-                Stages::BitFlip(BitFlipState::from_input(bytes))
-            } else {
-                Stages::Havoc(HavocState::from_rng(
-                    SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
-                ))
-            }
-        }
-
         // Progress through stages as a previous one fails to mutate
         while !input_mutated {
             input_mutated = match self.cur_stage {
-                Stages::None => unreachable!(),
                 Stages::BitFlip(ref mut state) => {
                     let (done, mutated) = bit_flip(bytes, state);
                     if done {
                         // Next stage with same input
-                        self.cur_stage = Stages::Arithmetic(ArithState::from_input(bytes))
+                        self.cur_stage = Stages::Arithmetic(ArithState::new(bytes.len()))
                     }
                     mutated
                 }
@@ -78,7 +73,7 @@ impl InputMutateStage {
                     let (done, mutated) = arithmetic(bytes, state);
                     if done {
                         // Next stage with same input
-                        self.cur_stage = Stages::Interesting(InterestState::from_input(bytes))
+                        self.cur_stage = Stages::Interesting(InterestState::new(bytes.len()))
                     }
                     mutated
                 }

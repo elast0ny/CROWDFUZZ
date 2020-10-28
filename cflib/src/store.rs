@@ -109,6 +109,8 @@ pub struct CfInputInfo {
     pub contents: Option<CfInput>,
     /// Path to the input if it is on disk
     pub path: Option<PathBuf>,
+    /// Size of the contents of the input
+    pub len: usize,
 }
 
 /// Represents the contents of an input

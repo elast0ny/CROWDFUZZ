@@ -11,11 +11,11 @@ impl Default for ArithStage {
     }
 }
 impl ArithStage {
-    pub fn max_idx_for_input(&self, bytes: &[u8]) -> usize {
+    pub fn max_idx(&self, input_len: usize) -> usize {
         match self {
-            Self::AddSub8(_) => bytes.len(),
-            Self::AddSub16(_) => bytes.len() - 1,
-            Self::AddSub32(_) => bytes.len() - 3,
+            Self::AddSub8(_) => input_len,
+            Self::AddSub16(_) => input_len - 1,
+            Self::AddSub32(_) => input_len - 3,
         }
     }
 
@@ -64,10 +64,10 @@ pub struct ArithState {
 }
 
 impl ArithState {
-    pub fn from_input(bytes: &[u8]) -> Self {
+    pub fn new(input_len: usize) -> Self {
         let tmp = ArithStage::default();
         Self {
-            idx: tmp.max_idx_for_input(bytes),
+            idx: tmp.max_idx(input_len),
             stage: tmp,
         }
     }
@@ -80,7 +80,7 @@ pub fn arithmetic(bytes: &mut [u8], s: &mut ArithState) -> (bool, bool) {
             match s.stage.next() {
                 GenericStage::Updated => {}
                 GenericStage::Next(v) => {
-                    s.idx = v.max_idx_for_input(bytes);
+                    s.idx = v.max_idx(bytes.len());
                     s.stage = v;
                 }
                 GenericStage::Done => return (true, false),

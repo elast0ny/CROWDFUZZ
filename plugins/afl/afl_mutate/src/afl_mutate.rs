@@ -26,7 +26,8 @@ struct State {
     cur_input_idx: &'static usize,
     reuse_input: &'static mut bool,
     globals: &'static mut AflState,
-    stage: Vec<MutateStage>,
+    inputs: &'static Vec<CfInputInfo>,
+    input_stages: Vec<InputMutateStage>,
 }
 
 // Initialize our plugin
@@ -34,11 +35,14 @@ fn init(_core: &mut dyn PluginInterface, _store: &mut CfStore) -> Result<*mut u8
     #[allow(invalid_value)]
     let state = Box::new(unsafe {
         State {
+            input_stages: Vec::new(),
+
+            /// Plugin store values
             cur_input: MaybeUninit::zeroed().assume_init(),
             cur_input_idx: MaybeUninit::zeroed().assume_init(),
-            reuse_input: MaybeUninit::zeroed().assume_init(),
             globals: MaybeUninit::zeroed().assume_init(),
-            stage: Vec::new(),
+            reuse_input: MaybeUninit::zeroed().assume_init(),
+            inputs: MaybeUninit::zeroed().assume_init(),
         }
     });
 
@@ -54,15 +58,13 @@ fn validate(
     let state = box_ref!(plugin_ctx, State);
 
     // Grab all the keys we need to function
-    state.cur_input = raw_to_mutref!(
-        store_get_mandatory!(core, store, STORE_INPUT_BYTES),
-        CfInput
-    );
-    state.cur_input_idx = raw_to_ref!(store_get_mandatory!(core, store, STORE_INPUT_IDX), usize);
-    state.reuse_input =
-        raw_to_mutref!(store_get_mandatory!(core, store, STORE_RESTORE_INPUT), bool);
-    state.globals = raw_to_mutref!(store_get_mandatory!(core, store, STORE_AFL_STATE), AflState);
-
+    unsafe {
+        state.cur_input = store.as_mutref(STORE_INPUT_BYTES, Some(core))?;
+        state.cur_input_idx = store.as_ref(STORE_INPUT_IDX, Some(core))?;
+        state.globals = store.as_mutref(STORE_AFL_STATE, Some(core))?;
+        state.reuse_input = store.as_mutref(STORE_RESTORE_INPUT, Some(core))?;
+        state.inputs = store.as_mutref(STORE_INPUT_LIST, Some(core))?;
+    }
     Ok(())
 }
 
@@ -74,19 +76,24 @@ fn mutate_input(
 ) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
 
-    // Add new stage entries for new inputs
-    if *state.cur_input_idx >= state.stage.len() {
-        state.stage.resize_with(
-            state.cur_input_idx + 1,
-            InputMutateStage::new(state.globals.skip_deterministic),
-        )
+    // Detect new inputs and init their mutate stage
+    if *state.cur_input_idx >= state.input_stages.len() {
+        let num_new_inputs = (state.cur_input_idx + 1) - state.input_stages.len();
+        let input_info = unsafe { state.inputs.get_unchecked(*state.cur_input_idx) };
+        state.input_stages.reserve(num_new_inputs);
+        for _i in 0..num_new_inputs {
+            state.input_stages.push(InputMutateStage::new(
+                state.globals.skip_deterministic,
+                input_info.len,
+            ));
+        }
     }
 
     // Get which stage we're at for this input
-    let stage = unsafe { state.stage.get_unchecked_mut(*state.cur_input_idx) };
+    let stage = unsafe { state.input_stages.get_unchecked_mut(*state.cur_input_idx) };
 
     // Progress through the mutation stage
-    *state.reuse_input = stage.mutate(state.globals.skip_deterministic, state.cur_input);
+    *state.reuse_input = stage.mutate(state.cur_input);
 
     Ok(())
 }

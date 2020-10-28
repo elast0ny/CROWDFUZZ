@@ -15,11 +15,11 @@ impl Default for BitWidth {
     }
 }
 impl BitWidth {
-    pub fn max_idx_for_input(&self, bytes: &[u8]) -> usize {
+    pub fn max_idx(&self, input_len: usize) -> usize {
         if (*self as u8) < 8 {
-            (bytes.len() * 8) - ((*self as u8) - 1) as usize
+            (input_len * 8) - ((*self as u8) - 1) as usize
         } else {
-            bytes.len() - (((*self as u8) / 8) - 1) as usize
+            input_len - (((*self as u8) / 8) - 1) as usize
         }
     }
 
@@ -41,10 +41,10 @@ pub struct BitFlipState {
     width: BitWidth,
 }
 impl BitFlipState {
-    pub fn from_input(bytes: &[u8]) -> Self {
+    pub fn new(input_len: usize) -> Self {
         let width = BitWidth::default();
         Self {
-            idx: width.max_idx_for_input(bytes),
+            idx: width.max_idx(input_len),
             width,
         }
     }
@@ -58,7 +58,7 @@ pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> (bool, bool) {
         // Go to the next width
         s.width = match s.width.next() {
             Some(w) => {
-                s.idx = w.max_idx_for_input(bytes);
+                s.idx = w.max_idx(bytes.len());
                 w
             }
             None => return (true, false),
