@@ -271,21 +271,14 @@ impl<'a> CfCore<'a> {
         loop {
             core_start = Instant::now();
             total_plugin_time = 0;
+            
             *self.stats.num_execs.val += 1;
             if self.store.avg_denominator < 20 {
                 self.store.avg_denominator += 1;
             }
+            
             self.ctx.cur_plugin_id = self.fuzz_loop_start;
             for plugin in fuzz_loop_plugins.iter_mut() {
-                // Check if ctrl-c has been hit
-                if self.exiting.load(Ordering::Relaxed) {
-                    self.ctx.cur_plugin_id = num_plugins;
-                    return Err(From::from(format!(
-                        "CTRL-C while fuzzing (about to call '{}')",
-                        plugin.name()
-                    )));
-                }
-
                 // run the plugin
                 plugin_start = Instant::now();
                 plugin.do_work(&mut self.ctx, &mut self.store.content)?;
@@ -296,16 +289,16 @@ impl<'a> CfCore<'a> {
                     time_elapsed,
                     self.store.avg_denominator,
                 );
-
                 // Keep track of time spent in plugins
                 total_plugin_time += time_elapsed;
-
                 self.ctx.cur_plugin_id += 1;
             }
 
-            //if *self.stats.num_execs.val == 100 {
-            //    return Err(From::from("Stop after 10 execs".to_string()));
-            //}
+            // Check if ctrl-c has been hit
+            if self.exiting.load(Ordering::Relaxed) {
+                self.ctx.cur_plugin_id = num_plugins;
+                return Err(From::from("CTRL-C while fuzzing".to_string()));
+            }
 
             time_elapsed = core_start.elapsed().as_micros() as u64;
             // Update average full iteration time
@@ -314,6 +307,7 @@ impl<'a> CfCore<'a> {
                 time_elapsed,
                 self.store.avg_denominator,
             );
+
             // Update core's exec time
             cflib::update_average(
                 self.stats.exec_time.val,
