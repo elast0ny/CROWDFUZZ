@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub struct Store {
     pub avg_denominator: u64,
     pub no_mutate: bool,
+    pub no_select: bool,
     pub content: CfStore,
 }
 
@@ -14,6 +15,7 @@ impl Default for Store {
         Self {
             avg_denominator: 0,
             no_mutate: false,
+            no_select: false,
             content: HashMap::new(),
         }
     }
@@ -23,38 +25,19 @@ impl<'a> CfCore<'a> {
     /// Add all of the store keys that the core controls
     pub fn init_public_store(&mut self) {
         let store = &mut self.store.content;
-        store.insert(STORE_INPUT_DIR.to_string(), ref_to_raw!(self.config.input));
-        store.insert(STORE_STATE_DIR.to_string(), ref_to_raw!(self.config.state));
-        store.insert(
-            STORE_RESULTS_DIR.to_string(),
-            ref_to_raw!(self.config.results),
-        );
-        store.insert(
-            STORE_TARGET_BIN.to_string(),
-            ref_to_raw!(self.config.target),
-        );
-        store.insert(
-            STORE_TARGET_ARGS.to_string(),
-            ref_to_raw!(self.config.target_args),
-        );
-        store.insert(STORE_CWD.to_string(), ref_to_raw!(self.config.cwd));
-        store.insert(STORE_FUZZER_ID.to_string(), ref_to_raw!(self.config.prefix));
-        store.insert(
-            STORE_PLUGIN_CONF.to_string(),
-            ref_to_raw!(self.config.plugin_conf),
-        );
-        store.insert(
-            STORE_AVG_DENOMINATOR.to_string(),
-            ref_to_raw!(self.store.avg_denominator),
-        );
-        store.insert(
-            STORE_NUM_EXECS.to_string(),
-            ref_to_raw!(self.stats.num_execs.val),
-        );
-        store.insert(
-            STORE_NO_MUTATE.to_string(),
-            mutref_to_raw!(self.store.no_mutate),
-        );
+        
+        let _ = store.insert_exclusive(STORE_INPUT_DIR, &self.config.input, None);
+        let _ = store.insert_exclusive(STORE_STATE_DIR, &self.config.state, None);
+        let _ = store.insert_exclusive(STORE_RESULTS_DIR, &self.config.results, None);
+        let _ = store.insert_exclusive(STORE_TARGET_BIN, &self.config.target, None);
+        let _ = store.insert_exclusive(STORE_TARGET_ARGS, &self.config.target_args, None);
+        let _ = store.insert_exclusive(STORE_CWD, &self.config.cwd, None);
+        let _ = store.insert_exclusive(STORE_FUZZER_ID, &self.config.prefix, None);
+        let _ = store.insert_exclusive(STORE_PLUGIN_CONF, &self.config.plugin_conf, None);
+        let _ = store.insert_exclusive(STORE_AVG_DENOMINATOR, &self.store.avg_denominator, None);
+        let _ = store.insert_exclusive(STORE_NUM_EXECS, self.stats.num_execs.val, None);
+        let _ = store.insert_exclusive(STORE_NO_MUTATE, &self.store.no_mutate, None);
+        let _ = store.insert_exclusive(STORE_NO_SELECT, &self.store.no_select, None);
     }
 
     pub fn clear_public_store(&mut self) {

@@ -55,13 +55,16 @@ fn validate(
 
     // Grab all the keys we need to function
     state.cur_input = raw_to_mutref!(
-        *store_get_mandatory!(core, store, STORE_INPUT_BYTES),
+        store_get_mandatory!(core, store, STORE_INPUT_BYTES),
         CfInput
     );
-    state.cur_input_idx = raw_to_ref!(*store_get_mandatory!(core, store, STORE_INPUT_IDX), usize);
-    state.reuse_input = raw_to_mutref!(*store_get_mandatory!(core, store, STORE_RESTORE_INPUT), bool);
+    state.cur_input_idx = raw_to_ref!(store_get_mandatory!(core, store, STORE_INPUT_IDX), usize);
+    state.reuse_input = raw_to_mutref!(
+        store_get_mandatory!(core, store, STORE_RESTORE_INPUT),
+        bool
+    );
     state.globals = raw_to_mutref!(
-        *store_get_mandatory!(core, store, STORE_AFL_STATE),
+        store_get_mandatory!(core, store, STORE_AFL_STATE),
         AflState
     );
 
@@ -78,11 +81,14 @@ fn mutate_input(
 
     // Add new stage entries for new inputs
     if *state.cur_input_idx >= state.stage.len() {
-        state.stage.resize_with(state.cur_input_idx + 1, MutateStage::default)
+        state.stage.resize_with(
+            state.cur_input_idx + 1,
+            InputMutateStage::new(state.globals.skip_deterministic),
+        )
     }
 
     // Get which stage we're at for this input
-    let stage = unsafe {state.stage.get_unchecked_mut(*state.cur_input_idx)};
+    let stage = unsafe { state.stage.get_unchecked_mut(*state.cur_input_idx) };
 
     // Progress through the mutation stage
     *state.reuse_input = stage.mutate(state.globals.skip_deterministic, state.cur_input);

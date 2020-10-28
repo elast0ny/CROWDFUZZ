@@ -123,7 +123,7 @@ impl State {
             match new_input.contents {
                 Some(v) => {
                     cur_fpath = None;
-                    for chunk in raw_to_ref!(v, CfInput).chunks.iter() {
+                    for chunk in v.chunks.iter() {
                         cur_input.push(chunk);
                     }
                 }

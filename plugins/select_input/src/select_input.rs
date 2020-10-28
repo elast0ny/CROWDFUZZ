@@ -14,12 +14,12 @@ cflib::register!(unload, destroy);
 struct State {
     cur_input: CfInput,
     restore_input: bool,
-    no_select: bool,
     cur_input_idx: usize,
     seq_input_idx: usize,
     orig_buf: Vec<u8>,
     fuzz_buf: Vec<u8>,
-    input_list: &'static mut Vec<CfInputInfo>,
+    input_list: &'static Vec<CfInputInfo>,
+    no_select: &'static bool,
     priority_list: VecDeque<usize>,
     num_priority_inputs: StatNum,
 }
@@ -37,7 +37,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             priority_list: VecDeque::new(),
             input_list: MaybeUninit::zeroed().assume_init(),
             restore_input: false,
-            no_select: false,
+            no_select: MaybeUninit::zeroed().assume_init(),
             num_priority_inputs: match core.add_stat(
                 &format!("{}num_priority_inputs", TAG_PREFIX_TOTAL),
                 NewStat::Num(0),
@@ -48,41 +48,16 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         }
     });
 
-    // We should be the only plugin with these values
-    if store.get(STORE_INPUT_IDX).is_some()
-        || store.get(STORE_INPUT_BYTES).is_some()
-        || store.get(STORE_RESTORE_INPUT).is_some()
-        || store.get(STORE_NO_SELECT).is_some()
-        || store.get("select_priority_list").is_some()
-    {
-        core.log(
-            LogLevel::Error,
-            "Another plugin is already selecting inputs !",
-        );
-        return Err(From::from("Duplicate select plugins".to_string()));
-    }
-
     // Add our values to the store
-    store.insert(
-        STORE_INPUT_IDX.to_string(),
-        ref_to_raw!(state.cur_input_idx),
-    );
-    store.insert(
-        STORE_INPUT_BYTES.to_string(),
-        mutref_to_raw!(state.cur_input),
-    );
-    store.insert(
-        STORE_RESTORE_INPUT.to_string(),
-        mutref_to_raw!(state.restore_input),
-    );
-    store.insert(
-        STORE_NO_SELECT.to_string(),
-        mutref_to_raw!(state.no_select),
-    );
-    store.insert(
-        "select_priority_list".to_string(),
-        mutref_to_raw!(state.priority_list),
-    );
+    store.insert_exclusive(STORE_INPUT_IDX, &state.cur_input_idx, Some(core))?;
+    store.insert_exclusive(STORE_INPUT_BYTES, &state.cur_input, Some(core))?;
+    store.insert_exclusive(STORE_RESTORE_INPUT, &state.restore_input, Some(core))?;
+    store.insert_exclusive("select_priority_list", &state.priority_list, Some(core))?;
+
+    // Take core store values
+    unsafe {
+        state.no_select = store.as_ref(STORE_NO_SELECT, Some(core))?;
+    }
 
     Ok(Box::into_raw(state) as _)
 }
@@ -95,12 +70,9 @@ fn validate(
 ) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
 
-    match store.get(STORE_INPUT_LIST) {
-        Some(v) => state.input_list = raw_to_mutref!(*v, Vec<CfInputInfo>),
-        None => {
-            core.log(LogLevel::Error, "No plugin managing input_list !");
-            return Err(From::from("No inputs".to_string()));
-        }
+    // Make sure someone created INPUT_LIST
+    state.input_list = unsafe {
+        store.as_ref(STORE_INPUT_LIST, Some(core))?
     };
 
     Ok(())
@@ -117,7 +89,7 @@ fn select_input(
     // Update number of indexes in priority list
     *state.num_priority_inputs.val = state.priority_list.len() as _;
 
-    if state.no_select {
+    if *state.no_select {
         return Ok(());
     }
 
@@ -191,10 +163,10 @@ fn destroy(
 ) -> Result<()> {
     let _ctx = box_take!(plugin_ctx, State);
 
+    // Remove our store entries
     let _ = store.remove(STORE_INPUT_IDX);
     let _ = store.remove(STORE_INPUT_BYTES);
     let _ = store.remove(STORE_RESTORE_INPUT);
-    let _ = store.remove(STORE_NO_SELECT);
     let _ = store.remove("select_priority_list");
 
     Ok(())

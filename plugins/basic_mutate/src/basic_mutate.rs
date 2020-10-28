@@ -39,12 +39,7 @@ fn validate(
     let state = box_ref!(plugin_ctx, State);
 
     // We need a plugin that creates in input_bytes
-    if let Some(v) = store.get(STORE_INPUT_BYTES) {
-        state.cur_input = raw_to_mutref!(*v, CfInput);
-    } else {
-        core.log(LogLevel::Error, "No plugin create input_bytes !");
-        return Err(From::from("No selected input".to_string()));
-    }
+    state.cur_input = unsafe{store.as_mutref(STORE_INPUT_BYTES, Some(core))?};
 
     Ok(())
 }

@@ -63,8 +63,29 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         }
     });
 
-    state.target_path = raw_to_ref!(*store.get(STORE_TARGET_BIN).unwrap(), String);
-    state.avg_denominator = raw_to_ref!(*store.get(STORE_AVG_DENOMINATOR).unwrap(), u64);
+    // Insert our store values
+    // EXIT_STATUS
+    store.insert_exclusive(STORE_EXIT_STATUS, &state.exit_status, Some(core))?;
+    // TARGET_EXEC_TIME
+    store.insert_exclusive(STORE_TARGET_EXEC_TIME, &state.exec_time, Some(core))?;
+    // AVG_TARGET_EXEC_TIME
+    store.insert_exclusive(STORE_AVG_TARGET_EXEC_TIME, state.avg_exec_time.val, Some(core))?;
+
+    // Get reference to core store values
+    let plugin_conf: &HashMap<String, String>;
+    let state_dir: &String;
+    let target_args: &Vec<String>;
+    unsafe {
+        state.target_path = store.as_ref(STORE_TARGET_BIN, Some(core))?;
+        state.avg_denominator = store.as_ref(STORE_AVG_DENOMINATOR, Some(core))?;
+        plugin_conf = store.as_ref(STORE_PLUGIN_CONF, Some(core))?;
+        target_args = store.as_ref(STORE_TARGET_ARGS, Some(core))?;
+        state_dir = store.as_ref(STORE_STATE_DIR, Some(core))?;
+    }
+    
+    // Parse our config values
+    state.load_config(core, plugin_conf)?;
+
     // Make sure target is a file
     if !Path::new(state.target_path).is_file() {
         core.log(
@@ -74,51 +95,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         return Err(From::from("Invalid target binary path".to_string()));
     }
 
-    // Parse our config values
-    let plugin_conf = raw_to_ref!(*store.get(STORE_PLUGIN_CONF).unwrap(), HashMap<String, String>);
-    state.load_config(core, plugin_conf)?;
-
-    // Add exit_status to store
-    if store.get(STORE_EXIT_STATUS).is_some() {
-        core.log(
-            LogLevel::Error,
-            "Another plugin is already filling exit_status !",
-        );
-        return Err(From::from("Duplicate run target plugins".to_string()));
-    }
-    store.insert(
-        STORE_EXIT_STATUS.to_string(),
-        ref_to_raw!(state.exit_status),
-    );
-
-    // Add exec_time to store
-    if store.get(STORE_TARGET_EXEC_TIME).is_some() {
-        core.log(
-            LogLevel::Error,
-            "Another plugin is already filling exec_time !",
-        );
-        return Err(From::from("Duplicate run target plugins".to_string()));
-    }
-    store.insert(
-        STORE_TARGET_EXEC_TIME.to_string(),
-        ref_to_raw!(state.exec_time),
-    );
-
-    // Add avg_exec_time to store
-    if store.get(STORE_AVG_TARGET_EXEC_TIME).is_some() {
-        core.log(
-            LogLevel::Error,
-            "Another plugin is already filling avg_exec_time !",
-        );
-        return Err(From::from("Duplicate run target plugins".to_string()));
-    }
-    store.insert(
-        STORE_AVG_TARGET_EXEC_TIME.to_string(),
-        state.avg_exec_time.val as *mut _ as _,
-    );
-
     // Build arg list swapping @@ for file path
-    let target_args = raw_to_ref!(*store.get(STORE_TARGET_ARGS).unwrap(), Vec<String>);
     let mut input_path = PathBuf::new();
     for arg in target_args {
         if "@@" == arg {
@@ -127,7 +104,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
                     .target_args
                     .push(input_path.to_str().unwrap().to_string()),
                 None => {
-                    input_path.push(raw_to_ref!(*store.get(STORE_STATE_DIR).unwrap(), String));
+                    input_path.push(state_dir);
                     if let Some(ref p) = state.target_input_path {
                         input_path.push(p);
                     } else {
@@ -164,6 +141,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         LogLevel::Info,
         &format!("Running '{}' {:?}", state.target_path, state.target_args),
     );
+
     Ok(Box::into_raw(state) as _)
 }
 
@@ -174,13 +152,10 @@ fn validate(
     plugin_ctx: *mut u8,
 ) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
+    
     // Make sure someone is providing us input bytes
-    match store.get(STORE_INPUT_BYTES) {
-        Some(v) => state.cur_input = raw_to_ref!(*v, CfInput),
-        None => {
-            core.log(LogLevel::Error, "No plugin created input_bytes !");
-            return Err(From::from("No input".to_string()));
-        }
+    state.cur_input = unsafe {
+        store.as_ref(STORE_INPUT_BYTES, Some(core))?
     };
 
     Ok(())

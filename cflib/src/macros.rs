@@ -33,49 +33,6 @@ macro_rules! register {
     };
 }
 
-/// Converts a T to *mut u8
-#[macro_export]
-macro_rules! ref_to_raw {
-    ($var:expr) => {
-        &$var as *const _ as *mut u8
-    };
-}
-#[macro_export]
-macro_rules! mutref_to_raw {
-    ($var:expr) => {
-        &mut $var as *const _ as *mut u8
-    };
-}
-
-/// Converts a *mut u8 to &T
-/// # Safety
-/// This macro is extremely unsafe. use with caution.
-#[macro_export]
-macro_rules! raw_to_ref {
-    ($var:expr, $typ:ty) => {
-        unsafe { &*($var as *mut $typ) }
-    };
-}
-/// Converts a *mut u8 to &mut T
-/// # Safety
-/// This macro is extremely unsafe. use with caution.
-#[macro_export]
-macro_rules! raw_to_mutref {
-    ($var:expr, $typ:ty) => {
-        unsafe { &mut *($var as *mut $typ) }
-    };
-}
-
-/// Converts a *mut u8 to &mut T
-/// # Safety
-/// This macro is extremely unsafe. use with caution.
-#[macro_export]
-macro_rules! mutref_from_raw {
-    ($var:expr, $typ:ty) => {
-        unsafe { &mut *($var as *mut $typ) }
-    };
-}
-
 /// Converts a *mut u8 to &mut T
 /// # Safety
 /// This macro is extremely unsafe. use with caution.
@@ -96,34 +53,3 @@ macro_rules! box_take {
     };
 }
 
-
-/// Insert an item or error out if it already exists
-#[macro_export]
-macro_rules! store_insert_exclusive {
-    ($core:ident, $store:ident, $key:ident, $val:expr) => {
-        if $store.get($key).is_some() {
-            $core.log(
-                ::cflib::LogLevel::Error,
-                &format!("Another plugin already created {} !", $key),
-            );
-            return Err(From::from("Plugin store conflict".to_string()));
-        }
-        $store.insert(
-            $key.to_string(),
-            $val,
-        );
-    };
-}
-
-/// Get an item or error out if it doesnt exists
-#[macro_export]
-macro_rules! store_get_mandatory {
-    ($core:ident, $store:ident, $key:ident) => {
-        if let Some(v) = $store.get($key) {
-            v
-        } else {
-            $core.log(::cflib::LogLevel::Error, &format!("No plugin created {} !", $key));
-            return Err(From::from("Missing plugin store key".to_string()));
-        }
-    };
-}

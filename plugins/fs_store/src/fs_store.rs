@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::mem::MaybeUninit;
 use std::path::PathBuf;
 
@@ -58,13 +58,27 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         }
     });
 
-    let plugin_conf = raw_to_ref!(*store.get(STORE_PLUGIN_CONF).unwrap(), std::collections::HashMap<String, String>);
+    // Grab needed values from plugin store
+    let input_dir: &String;
+    let state_dir: &String;
+    let plugin_conf: &HashMap<String, String>;
+    unsafe { 
+        state_dir = store.as_ref(STORE_STATE_DIR, Some(core))?;
+        input_dir = store.as_ref(STORE_INPUT_DIR, Some(core))?;
+        plugin_conf = store.as_ref(STORE_PLUGIN_CONF, Some(core))?;
+
+        let (val, is_owned) = store.as_mutref_or_insert(STORE_INPUT_LIST, &mut state.owned_input_list, Some(core))?;
+        state.input_list = val;
+        state.is_input_list_owner = is_owned;
+
+        let (val, is_owned) = store.as_mutref_or_insert(STORE_NEW_INPUTS, &mut state.owned_new_inputs, Some(core))?;
+        state.new_inputs = val;
+        state.is_new_inputs_owner = is_owned;
+    }
 
     // Create queue dir
     // Save our files in <state>/X
-    state
-        .queue_dir
-        .push(raw_to_ref!(*store.get(STORE_STATE_DIR).unwrap(), String));
+    state.queue_dir.push(state_dir);
     if let Some(p) = plugin_conf.get("queue_dir") {
         state.queue_dir.push(p);
     } else {
@@ -94,49 +108,6 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         );
         return Err(From::from("Failed to create directory".to_string()));
     }
-
-    // Grab or create input_list
-    loop {
-        if let Some(v) = store.get(STORE_INPUT_LIST) {
-            if !state.is_input_list_owner {
-                core.log(
-                    LogLevel::Info,
-                    &format!("Using existing '{}' in store !", STORE_INPUT_LIST),
-                );
-            }
-            state.input_list = raw_to_mutref!(*v, Vec<CfInputInfo>);
-            break;
-        } else {
-            store.insert(
-                String::from(STORE_INPUT_LIST),
-                mutref_to_raw!(state.owned_input_list),
-            );
-            state.is_input_list_owner = true;
-        }
-    }
-
-    // Grab or create new_inputs
-    loop {
-        if let Some(v) = store.get(STORE_NEW_INPUTS) {
-            if !state.is_new_inputs_owner {
-                core.log(
-                    LogLevel::Info,
-                    &format!("Using existing '{}' in store !", STORE_NEW_INPUTS),
-                );
-            }
-            state.new_inputs = raw_to_mutref!(*v, Vec<CfNewInput>);
-            break;
-        } else {
-            store.insert(
-                String::from(STORE_NEW_INPUTS),
-                mutref_to_raw!(state.owned_new_inputs),
-            );
-            state.is_new_inputs_owner = true;
-        }
-    }
-
-    // Get the input direcory with starting testcases
-    let input_dir = raw_to_ref!(*store.get(STORE_INPUT_DIR).unwrap(), String);
 
     // Build our input_list from the filesystem
     core.log(LogLevel::Info, "Scanning for inputs...");
@@ -169,7 +140,6 @@ fn validate(
     _plugin_ctx: *mut u8,
 ) -> Result<()> {
     // We dont rely on any other plugin
-
     Ok(())
 }
 

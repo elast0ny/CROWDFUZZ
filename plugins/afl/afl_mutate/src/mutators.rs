@@ -33,26 +33,27 @@ pub enum Stages {
     Havoc(HavocState),
 }
 
-pub struct MutateStage {
-    cur_stage: Stages,
+pub struct InputMutateStage {
+    pub skip_deterministic: bool,
+    pub cur_stage: Stages,
 }
-impl Default for MutateStage {
-    fn default() -> Self {
+impl InputMutateStage {
+    pub fn new(skip_deterministic: bool) -> Self {
         Self {
+            skip_deterministic,
             cur_stage: Stages::None,
         }
     }
-}
-impl MutateStage {
+
     /// Mutates a given input based on the current stage. Return false when we dont want
     /// to keep mutating the same input
-    pub fn mutate(&mut self, skip_det: bool, input: &mut CfInput) -> bool {
+    pub fn mutate(&mut self, input: &mut CfInput) -> bool {
         // Inputs always have only one chunk
         let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
         let mut input_mutated = false;
 
         if let Stages::None = self.cur_stage {
-            self.cur_stage = if skip_det {
+            self.cur_stage = if self.skip_deterministic {
                 Stages::BitFlip(BitFlipState::from_input(bytes))
             } else {
                 Stages::Havoc(HavocState::from_rng(SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap()))

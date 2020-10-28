@@ -137,6 +137,7 @@ impl Config {
         Ok(())
     }
 
+    /// Picks a unique fuzzer prefix based on current state directory
     fn set_prefix(&mut self) -> Result<()> {
         let mut fuzz_num = 1;
         // Check how many fuzzer stats files there are in the state directory

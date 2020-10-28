@@ -15,9 +15,9 @@ cflib::register!(unload, destroy);
 struct State {
     /// Reference to the currently selected input
     exit_status: &'static TargetExitStatus,
-    cur_input: &'static mut CfInput,
+    cur_input: &'static CfInput,
     cur_input_idx: &'static usize,
-    input_list: &'static mut Vec<CfInputInfo>,
+    input_list: &'static Vec<CfInputInfo>,
 
     tmp_str: String,
     crash_dir: PathBuf,
@@ -58,8 +58,13 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         }
     });
 
-    let plugin_conf = raw_to_ref!(*store.get(STORE_PLUGIN_CONF).unwrap(), HashMap<String, String>);
-    let state_dir = raw_to_ref!(*store.get(STORE_STATE_DIR).unwrap(), String);
+    let plugin_conf: &HashMap<String,String>;
+    let state_dir: &String;
+    // Get core store values
+    unsafe {
+        plugin_conf = store.as_ref(STORE_PLUGIN_CONF, Some(core))?;
+        state_dir = store.as_ref(STORE_STATE_DIR, Some(core))?;
+    }
 
     // Create crashes dir
     state.crash_dir.push(state_dir);
@@ -136,36 +141,13 @@ fn validate(
 ) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
 
-    // We need a plugin that creates in exit_status
-    if let Some(v) = store.get(STORE_EXIT_STATUS) {
-        state.exit_status = raw_to_ref!(*v, TargetExitStatus);
-    } else {
-        core.log(LogLevel::Error, "No plugin created exit_status !");
-        return Err(From::from("No exit_status".to_string()));
+    // Get all the plugin store values we need
+    unsafe {
+        state.exit_status = store.as_ref(STORE_EXIT_STATUS, Some(core))?;
+        state.cur_input = store.as_ref(STORE_INPUT_BYTES, Some(core))?;
+        state.cur_input_idx = store.as_ref(STORE_INPUT_IDX, Some(core))?;
+        state.input_list = store.as_ref(STORE_INPUT_LIST, Some(core))?;
     }
-
-    // We need a plugin that creates in input_bytes
-    if let Some(v) = store.get(STORE_INPUT_BYTES) {
-        state.cur_input = raw_to_mutref!(*v, CfInput);
-    } else {
-        core.log(LogLevel::Error, "No plugin created input_bytes !");
-        return Err(From::from("No selected input".to_string()));
-    }
-
-    if let Some(v) = store.get(STORE_INPUT_IDX) {
-        state.cur_input_idx = raw_to_mutref!(*v, usize);
-    } else {
-        core.log(LogLevel::Error, "No plugin created input_idx !");
-        return Err(From::from("No selected input".to_string()));
-    }
-
-    match store.get(STORE_INPUT_LIST) {
-        Some(v) => state.input_list = raw_to_mutref!(*v, Vec<CfInputInfo>),
-        None => {
-            core.log(LogLevel::Error, "No plugin managing input_list !");
-            return Err(From::from("No inputs".to_string()));
-        }
-    };
 
     Ok(())
 }
