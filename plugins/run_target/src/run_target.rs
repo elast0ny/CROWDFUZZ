@@ -27,12 +27,11 @@ cflib::register!(unload, destroy);
 
 struct State {
     /// Reference to the currently selected input
-    cur_input: &'static CfInput,
-    avg_denominator: &'static u64,
-    target_args: Vec<String>,
     input_file: Option<File>,
     exec_time: u64,
     avg_exec_time: StatNum,
+    cur_input: &'static CfInput,
+    avg_denominator: &'static u64,
     exit_status: TargetExitStatus,
     cmd: Command,
     target_input_path: Option<String>,
@@ -42,9 +41,8 @@ struct State {
 
 // Initialize our plugin
 fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
-    
     // Make sure target_bin points to a file
-    let target_bin_path: &String = unsafe{store.as_ref(STORE_TARGET_BIN, Some(core))?};
+    let target_bin_path: &String = unsafe { store.as_ref(STORE_TARGET_BIN, Some(core))? };
     if !Path::new(target_bin_path).is_file() {
         core.error(&format!(
             "Failed to find target binary '{}'",
@@ -57,7 +55,6 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     let mut state = Box::new(unsafe {
         State {
             exit_status: TargetExitStatus::Normal(0),
-            target_args: Vec::new(),
             input_file: None,
             exec_time: 0,
             target_input_path: None,
@@ -91,42 +88,39 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     // Get reference to core store values
     let plugin_conf: &HashMap<String, String>;
     let state_dir: &String;
-    let target_args: &Vec<String>;
+    let orig_target_args: &Vec<String>;
     unsafe {
         plugin_conf = store.as_ref(STORE_PLUGIN_CONF, Some(core))?;
-        target_args = store.as_ref(STORE_TARGET_ARGS, Some(core))?;
+        orig_target_args = store.as_ref(STORE_TARGET_ARGS, Some(core))?;
         state_dir = store.as_ref(STORE_STATE_DIR, Some(core))?;
     }
 
     // Parse our config values
     state.load_config(core, plugin_conf)?;
 
-    // Build arg list swapping @@ for file path
+    // Create potential input file name
     let mut input_path = PathBuf::new();
-    for arg in target_args {
+    input_path.push(state_dir);
+    if let Some(ref custom_fname) = state.target_input_path {
+        input_path.push(custom_fname);
+    } else {
+        input_path.push("cur_input");
+    }
+    let input_path = input_path.to_str().unwrap().to_string();
+    let mut target_args = Vec::with_capacity(orig_target_args.len());
+    // Build arg list swapping @@ for file path
+    for arg in orig_target_args {
         if "@@" == arg {
             match state.input_file {
-                Some(_) => state
-                    .target_args
-                    .push(input_path.to_str().unwrap().to_string()),
+                Some(_) => target_args.push(&input_path),
                 None => {
-                    input_path.push(state_dir);
-                    if let Some(ref p) = state.target_input_path {
-                        input_path.push(p);
-                    } else {
-                        input_path.push("cur_input");
-                    }
-
-                    state
-                        .target_args
-                        .push(input_path.to_str().unwrap().to_string());
+                    target_args.push(&input_path);
                     state.input_file = Some(match File::create(&input_path) {
                         Ok(f) => f,
                         Err(e) => {
                             core.error(&format!(
                                 "Failed to create input file {} : {}",
-                                input_path.to_string_lossy(),
-                                e
+                                input_path, e
                             ));
                             return Err(From::from(
                                 "Failed to create input file for target".to_string(),
@@ -136,13 +130,13 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
                 }
             };
         } else {
-            state.target_args.push(arg.clone());
+            target_args.push(&arg);
         }
     }
 
     // set command args
-    if !state.target_args.is_empty() {
-        state.cmd.args(&state.target_args);
+    if !target_args.is_empty() {
+        state.cmd.args(&target_args);
     }
 
     // set command working directory
@@ -157,10 +151,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         state.cmd.stdin(Stdio::piped());
     }
 
-    core.info(&format!(
-        "Running '{}' {:?}",
-        target_bin_path, state.target_args
-    ));
+    core.info(&format!("Running '{}' {:?}", target_bin_path, target_args));
 
     Ok(Box::into_raw(state) as _)
 }
@@ -203,9 +194,7 @@ fn run_target(
     let mut child = match state.cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            core.error(&format!(
-                "Failed to spawn child process : {}", e
-            ));
+            core.error(&format!("Failed to spawn child process : {}", e));
             return Err(From::from("Failed to spawn target".to_string()));
         }
     };
