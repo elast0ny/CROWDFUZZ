@@ -37,7 +37,6 @@ pub enum Stages {
     /// Do anything
     Havoc(HavocState),
 }
-
 pub struct InputMutateStage {
     pub cur_stage: Stages,
 }
@@ -104,14 +103,26 @@ impl InputMutateStage {
             }
         }
     }
-
-    pub fn write_name(&self, dst: &mut String) {
-        let _ = match &self.cur_stage {
-            Stages::BitFlip(s) => s.desc(dst),
-            Stages::Arithmetic(s) => s.desc(dst),
-            Stages::Interesting(s) => s.desc(dst),
-            Stages::Havoc(s) => s.desc(dst),
-        };
+    pub fn update_info(&self, stage_desc: &mut String, iterations: &mut u64) {
+        stage_desc.clear();
+        match &self.cur_stage {
+            Stages::BitFlip(s) => {
+                let _ = s.desc(stage_desc);
+                *iterations = s.iterations() as u64;
+            }
+            Stages::Arithmetic(s) => {
+                let _ = s.desc(stage_desc);
+                *iterations = s.iterations() as u64;
+            }
+            Stages::Interesting(s) => {
+                let _ = s.desc(stage_desc);
+                *iterations = s.iterations() as u64;
+            }
+            Stages::Havoc(s) => {
+                let _ = s.desc(stage_desc);
+                *iterations = s.iterations() as u64;
+            }
+        }
     }
 }
 

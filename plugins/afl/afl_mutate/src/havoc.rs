@@ -22,9 +22,11 @@ impl HavocState {
     }
 
     pub fn desc(&self, dst: &mut String) {
-        use std::fmt::Write;
-        dst.push_str("havoc ");
-        let _ = write!(dst, "{}", self.num_iterations);
+        dst.push_str("havoc");
+    }
+
+    pub fn iterations(&self) -> usize {
+        self.num_iterations
     }
 
     pub fn reset(&mut self) {

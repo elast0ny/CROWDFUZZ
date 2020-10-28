@@ -99,6 +99,10 @@ impl ArithState {
             ArithStage::AddSub32(_) => "32/8",
         });
     }
+
+    pub fn iterations(&self) -> usize {
+        self.idx * 2 * (ARITH_MAX as usize)
+    }
 }
 
 /// Increment/decrement values
@@ -123,16 +127,17 @@ pub fn arithmetic(bytes: &mut [u8], s: &mut ArithState) -> StageResult {
         if s.idx == 0 {
             // Process to next stage
             match s.stage.next() {
-                InnerStage::Updated => {}
+                // Moving to next arith value
+                InnerStage::Updated => s.idx = s.stage.max_idx(bytes.len()),
+                // Moving to next arith width
                 InnerStage::Next(v) => {
                     s.stage = v;
+                    s.idx = s.stage.max_idx(bytes.len());
                     return StageResult::Next;
                 }
+                // Done all stages
                 InnerStage::Done => return StageResult::Done,
             };
-
-            // Restart from max idx
-            s.idx = s.stage.max_idx(bytes.len());
         }
 
         s.idx -= 1;

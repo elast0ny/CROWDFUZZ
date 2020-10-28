@@ -118,6 +118,10 @@ impl State {
         let mut cur_fpath: Option<PathBuf>;
         let mut cur_input_len: usize;
 
+        if self.new_inputs.is_empty() {
+            return saved_one;
+        }
+
         for new_input in self.new_inputs.drain(..) {
             cur_input.clear();
             cur_input_len = 0;

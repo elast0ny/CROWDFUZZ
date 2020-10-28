@@ -66,6 +66,9 @@ impl BitFlipState {
             BitWidth::Byte4 => "32/2",
         });
     }
+    pub fn iterations(&self) -> usize {
+        self.idx
+    }
 }
 
 /// Flips bits in the input starting from the end

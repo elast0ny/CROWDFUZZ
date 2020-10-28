@@ -32,6 +32,7 @@ struct State {
     prev_input_idx: usize,
     stage_name: String,
     stat_cur_stage: StatStr,
+    stat_num_iterations: StatNum,
 }
 
 // Initialize our plugin
@@ -43,7 +44,8 @@ fn init(core: &mut dyn PluginInterface, _store: &mut CfStore) -> Result<*mut u8>
             prev_input_idx: 0,
             stage_name: String::new(),
             /// Stats
-            stat_cur_stage: core.new_stat_str("cur_stage", 128, "[init]")?,
+            stat_cur_stage: core.new_stat_str("stage", 128, "[init]")?,
+            stat_num_iterations: core.new_stat_num("iterations", 0)?,
             /// Plugin store values
             cur_input: MaybeUninit::zeroed().assume_init(),
             cur_input_idx: MaybeUninit::zeroed().assume_init(),
@@ -105,10 +107,8 @@ fn mutate_input(
 
     // Update stage name if we switched input
     if state.prev_input_idx != *state.cur_input_idx {
-        state.stage_name.clear();
-        stage.write_name(&mut state.stage_name);
+        stage.update_info(&mut state.stage_name, state.stat_num_iterations.val);
         state.stat_cur_stage.set(&state.stage_name);
-
         state.prev_input_idx = *state.cur_input_idx;
     }
 
@@ -132,9 +132,9 @@ fn mutate_input(
             }
             StageResult::Next => {
                 // Update cur_stage stat
-                state.stage_name.clear();
-                stage.write_name(&mut state.stage_name);
+                stage.update_info(&mut state.stage_name, state.stat_num_iterations.val);
                 state.stat_cur_stage.set(&state.stage_name);
+                
                 // Loop again to mutate at least once
                 continue;
             }

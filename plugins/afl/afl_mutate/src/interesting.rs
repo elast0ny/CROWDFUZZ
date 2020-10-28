@@ -78,6 +78,14 @@ impl InterestState {
             InterestStage::Width32(_, _) => "32/8",
         });
     }
+
+    pub fn iterations(&self) -> usize {
+        self.idx * match self.stage {
+            InterestStage::Width8(_, _) => INTERESTING_8.len(),
+            InterestStage::Width16(_, _) => INTERESTING_16.len(),
+            InterestStage::Width32(_, _) => INTERESTING_32.len(),
+        }
+    }
 }
 
 pub fn interesting(bytes: &mut [u8], s: &mut InterestState) -> StageResult {
@@ -101,15 +109,17 @@ pub fn interesting(bytes: &mut [u8], s: &mut InterestState) -> StageResult {
     loop {
         if s.idx == 0 {
             match s.stage.next() {
-                InnerStage::Updated => {}
+                // Moving to next interesting value
+                InnerStage::Updated => s.idx = s.stage.max_idx(bytes.len()),
+                // Moving to next interesting width
                 InnerStage::Next(v) => {
                     s.stage = v;
+                    s.idx = s.stage.max_idx(bytes.len());
                     return StageResult::Next;
                 }
+                // Done all stages
                 InnerStage::Done => return StageResult::Done,
             };
-
-            s.idx = s.stage.max_idx(bytes.len());
         }
 
         s.idx -= 1;
