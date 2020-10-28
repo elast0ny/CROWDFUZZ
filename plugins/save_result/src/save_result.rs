@@ -25,7 +25,7 @@ struct State {
     num_crashes: StatNum,
     num_timeouts: StatNum,
     stat_crash_dir: StatStr,
-    state_timeout_dir: StatStr,
+    stat_timeout_dir: StatStr,
 }
 
 // Initialize our plugin
@@ -33,18 +33,21 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     #[allow(invalid_value)]
     let mut state = Box::new(unsafe {
         State {
+            tmp_str: String::with_capacity(40),
+            crash_dir: PathBuf::new(),
+            timeout_dir: PathBuf::new(),
+
+            // Stats
+            num_crashes: core.new_stat_num(&format!("{}crashes", TAG_PREFIX_TOTAL), 0)?,
+            num_timeouts: core.new_stat_num(&format!("{}timeouts", TAG_PREFIX_TOTAL), 0)?,
+            stat_crash_dir: MaybeUninit::zeroed().assume_init(),
+            stat_timeout_dir: MaybeUninit::zeroed().assume_init(),
+
+            // Plugin store values
             exit_status: MaybeUninit::zeroed().assume_init(),
             cur_input: MaybeUninit::zeroed().assume_init(),
             input_list: MaybeUninit::zeroed().assume_init(),
             cur_input_idx: MaybeUninit::zeroed().assume_init(),
-
-            tmp_str: String::with_capacity(40),
-            crash_dir: PathBuf::new(),
-            timeout_dir: PathBuf::new(),
-            num_crashes: core.new_stat_num(&format!("{}crashes", TAG_PREFIX_TOTAL), 0)?,
-            num_timeouts: core.new_stat_num(&format!("{}timeouts", TAG_PREFIX_TOTAL), 0)?,
-            stat_crash_dir: MaybeUninit::zeroed().assume_init(),
-            state_timeout_dir: MaybeUninit::zeroed().assume_init(),
         }
     });
 
@@ -97,7 +100,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
     // Add timeout_dir to stats
     let tmp: &str = state.timeout_dir.to_str().unwrap();
-    state.state_timeout_dir =
+    state.stat_timeout_dir =
         core.new_stat_str(&format!("timeouts_dir{}", TAG_POSTFIX_PATH), tmp.len(), tmp)?;
 
     Ok(Box::into_raw(state) as _)

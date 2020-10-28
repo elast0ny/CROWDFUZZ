@@ -23,6 +23,7 @@ fn init(_core: &mut dyn PluginInterface, _store: &mut CfStore) -> Result<*mut u8
     let state = Box::new(unsafe {
         State {
             rng: SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
+            // Plugin store values
             cur_input: MaybeUninit::zeroed().assume_init(),
         }
     });
@@ -39,7 +40,9 @@ fn validate(
     let state = box_ref!(plugin_ctx, State);
 
     // We need a plugin that creates in input_bytes
-    state.cur_input = unsafe { store.as_mutref(STORE_INPUT_BYTES, Some(core))? };
+    unsafe {
+        state.cur_input = store.as_mutref(STORE_INPUT_BYTES, Some(core))?;
+    }
 
     Ok(())
 }

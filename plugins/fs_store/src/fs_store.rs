@@ -45,10 +45,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             is_input_list_owner: false,
             is_new_inputs_owner: false,
             num_inputs: core.new_stat_num(&format!("{}num_files", TAG_PREFIX_TOTAL), 0)?,
-            input_list: MaybeUninit::zeroed().assume_init(),
-            new_inputs: MaybeUninit::zeroed().assume_init(),
             owned_input_list: Vec::new(),
             owned_new_inputs: Vec::new(),
+            input_list: MaybeUninit::zeroed().assume_init(),
+            new_inputs: MaybeUninit::zeroed().assume_init(),
             stat_queue_dir: MaybeUninit::zeroed().assume_init(),
         }
     });

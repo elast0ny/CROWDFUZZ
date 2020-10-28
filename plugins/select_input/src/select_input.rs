@@ -27,7 +27,7 @@ struct State {
 // Initialize our plugin
 fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     #[allow(invalid_value)]
-    let mut state = Box::new(unsafe {
+    let state = Box::new(unsafe {
         State {
             cur_input_idx: 0,
             seq_input_idx: 0,
@@ -35,10 +35,14 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             fuzz_buf: Vec::new(),
             cur_input: CfInput::default(),
             priority_list: VecDeque::new(),
-            input_list: MaybeUninit::zeroed().assume_init(),
             restore_input: false,
-            no_select: MaybeUninit::zeroed().assume_init(),
-            num_priority_inputs: core.new_stat_num(&format!("{}num_priority_inputs", TAG_PREFIX_TOTAL), 0)?,
+            // Stats
+            num_priority_inputs: core
+                .new_stat_num(&format!("{}num_priority_inputs", TAG_PREFIX_TOTAL), 0)?,
+            // Core store values
+            no_select: store.as_ref(STORE_NO_SELECT, Some(core))?,
+            // Plugin store values
+            input_list: MaybeUninit::zeroed().assume_init(),
         }
     });
 
@@ -47,11 +51,6 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     store.insert_exclusive(STORE_INPUT_BYTES, &state.cur_input, Some(core))?;
     store.insert_exclusive(STORE_RESTORE_INPUT, &state.restore_input, Some(core))?;
     store.insert_exclusive("select_priority_list", &state.priority_list, Some(core))?;
-
-    // Take core store values
-    unsafe {
-        state.no_select = store.as_ref(STORE_NO_SELECT, Some(core))?;
-    }
 
     Ok(Box::into_raw(state) as _)
 }

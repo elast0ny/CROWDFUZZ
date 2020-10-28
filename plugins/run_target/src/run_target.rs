@@ -35,7 +35,6 @@ struct State {
     exec_time: u64,
     avg_exec_time: StatNum,
     exit_status: TargetExitStatus,
-
     target_input_path: Option<String>,
     target_working_dir: Option<String>,
     target_timeout_ms: Option<Duration>,
@@ -47,16 +46,19 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     let mut state = Box::new(unsafe {
         State {
             exit_status: TargetExitStatus::Normal(0),
-            target_path: MaybeUninit::zeroed().assume_init(),
-            cur_input: MaybeUninit::zeroed().assume_init(),
-            avg_denominator: MaybeUninit::zeroed().assume_init(),
             target_args: Vec::new(),
             input_file: None,
             exec_time: 0,
-            avg_exec_time: core.new_stat_num(STAT_TARGET_EXEC_TIME, 0)?,
             target_input_path: None,
             target_working_dir: None,
             target_timeout_ms: None,
+            // Stats
+            avg_exec_time: core.new_stat_num(STAT_TARGET_EXEC_TIME, 0)?,
+            // Core store values
+            target_path: store.as_ref(STORE_TARGET_BIN, Some(core))?,
+            avg_denominator: store.as_ref(STORE_AVG_DENOMINATOR, Some(core))?,
+            // Plugin store values
+            cur_input: MaybeUninit::zeroed().assume_init(),
         }
     });
 
@@ -77,8 +79,6 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     let state_dir: &String;
     let target_args: &Vec<String>;
     unsafe {
-        state.target_path = store.as_ref(STORE_TARGET_BIN, Some(core))?;
-        state.avg_denominator = store.as_ref(STORE_AVG_DENOMINATOR, Some(core))?;
         plugin_conf = store.as_ref(STORE_PLUGIN_CONF, Some(core))?;
         target_args = store.as_ref(STORE_TARGET_ARGS, Some(core))?;
         state_dir = store.as_ref(STORE_STATE_DIR, Some(core))?;

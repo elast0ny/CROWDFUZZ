@@ -19,7 +19,7 @@ pub trait PluginInterface {
     fn debug(&self, msg: &str);
     /// Logs a message at trace level
     fn trace(&self, msg: &str);
-    
+
     /// Creates a new number in the stats memory
     /// This can fail if the mapping runs out of space.
     fn new_stat_num(&mut self, tag: &str, init: u64) -> Result<StatNum>;
