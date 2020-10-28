@@ -369,7 +369,7 @@ impl<'a> Stats<'a> {
                 self.end_idx += size_of::<u64>();
                 // buf
                 copy_nonoverlapping(init_val.as_ptr(), buf.add(self.end_idx), init_val.len());
-                self.end_idx += init_val.len();
+                self.end_idx += max_size;
             }
         }
 
