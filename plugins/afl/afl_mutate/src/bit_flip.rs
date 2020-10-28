@@ -38,6 +38,7 @@ impl BitWidth {
 #[derive(Clone, Copy, Debug)]
 pub struct BitFlipState {
     idx: usize,
+    prev_val: Option<u32>,
     width: BitWidth,
 }
 impl BitFlipState {
@@ -45,23 +46,59 @@ impl BitFlipState {
         let width = BitWidth::default();
         Self {
             idx: width.max_idx(input_len),
+            prev_val: None,
             width,
         }
+    }
+    pub fn desc(&self, dst: &mut String) {
+        dst.push_str("bitflip ");
+        dst.push_str(
+        match self.width {
+            BitWidth::Bit1 => "1/1",
+            BitWidth::Bit2 => "2/1",
+            BitWidth::Bit4 => "4/1",
+            BitWidth::Byte1 => "8/8",
+            BitWidth::Byte2 => "16/8",
+            BitWidth::Byte4 => "32/2",
+        });
     }
 }
 
 /// Flips bits in the input starting from the end
-/// # Safety
-/// <why unsafe ?>
-pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> (bool, bool) {
+pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> StageResult {
+    // Restore the orig input
+    if let Some(orig_val) = s.prev_val.take() {
+        unsafe {
+            match s.width {
+                BitWidth::Bit1 => flip_bit(bytes, s.idx),
+                BitWidth::Bit2 => {
+                    flip_bit(bytes, s.idx);
+                    flip_bit(bytes, s.idx + 1);
+                }
+                BitWidth::Bit4 => {
+                    flip_bit(bytes, s.idx);
+                    flip_bit(bytes, s.idx + 1);
+                    flip_bit(bytes, s.idx + 3);
+                    flip_bit(bytes, s.idx + 4);
+                }
+                BitWidth::Byte1 => *(bytes.as_mut_ptr().add(s.idx) as *mut u8) = orig_val as _,
+                BitWidth::Byte2 => *(bytes.as_mut_ptr().add(s.idx) as *mut u16) = orig_val as _,
+                BitWidth::Byte4 => *(bytes.as_mut_ptr().add(s.idx) as *mut u32) = orig_val as _,
+            }
+        }
+    }
+
     if s.idx == 0 {
         // Go to the next width
         s.width = match s.width.next() {
             Some(w) => {
+                // Move to next bit_flip width
                 s.idx = w.max_idx(bytes.len());
                 w
             }
-            None => return (true, false),
+            None => {
+                return StageResult::Done;
+            }
         }
     };
 
@@ -81,18 +118,30 @@ pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> (bool, bool) {
                 flip_bit(bytes, s.idx + 3);
             }
         } else if num_bits == 8 {
-            *bytes.get_unchecked_mut(s.idx) ^= 0xFF;
+            let cur = bytes.as_mut_ptr().add(s.idx);
+            s.prev_val = Some(*cur as u32);
+            *cur ^= 0xFF;
         } else if num_bits == 16 {
-            *((bytes.as_mut_ptr().add(s.idx)) as *mut u16) ^= 0xFFFF;
+            let cur = bytes.as_mut_ptr().add(s.idx) as *mut u16;
+            s.prev_val = Some(*cur as u32);
+            *cur ^= 0xFFFF;
         } else {
-            *((bytes.as_mut_ptr().add(s.idx)) as *mut u32) ^= 0xFFFFFFFF;
+            let cur = bytes.as_mut_ptr().add(s.idx) as *mut u32;
+            s.prev_val = Some(*cur);
+            *cur ^= 0xFFFFFFFF;
         }
     }
     s.idx -= 1;
 
-    (false, true)
+    StageResult::WillRestoreInput
 }
 
+/** Helper function to see if a particular change (xor_val = old ^ new) could
+be a product of deterministic bit flips with the lengths and stepovers
+attempted by afl-fuzz. This is used to avoid dupes in some of the
+deterministic fuzzing operations that follow bit flips. We also
+return 1 if xor_val is zero, which implies that the old and attempted new
+values are identical and the exec would be a waste of time. */
 pub fn could_be_bitflip(mut xor_val: u32) -> bool {
     let mut sh: u8 = 0;
 
