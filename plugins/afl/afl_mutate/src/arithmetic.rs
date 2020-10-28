@@ -22,7 +22,6 @@ impl ArithStage {
     pub fn next(&mut self) -> GenericStage<Self> {
         match self {
             Self::AddSub8(j) => {
-            
                 if *j == ARITH_MAX as _ {
                     GenericStage::Next(Self::AddSub16(-(ARITH_MAX as i16)))
                 } else {
@@ -76,11 +75,10 @@ impl ArithState {
 
 /// Increment/decrement values
 pub fn arithmetic(bytes: &mut [u8], s: &mut ArithState) -> (bool, bool) {
-
     loop {
         if s.idx == 0 {
             match s.stage.next() {
-                GenericStage::Updated => {},
+                GenericStage::Updated => {}
                 GenericStage::Next(v) => {
                     s.idx = v.max_idx_for_input(bytes);
                     s.stage = v;

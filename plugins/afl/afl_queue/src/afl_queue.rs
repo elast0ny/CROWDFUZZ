@@ -27,19 +27,9 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     });
 
     // Insert the AflState vec to the store
-    store_insert_exclusive!(
-        core,
-        store,
-        STORE_AFL_STATE,
-        mutref_to_raw!(state.globals)
-    );
+    store_insert_exclusive!(core, store, STORE_AFL_STATE, mutref_to_raw!(state.globals));
     // Insert the AflInputInfo vec to the store
-    store_insert_exclusive!(
-        core,
-        store,
-        STORE_AFL_QUEUE,
-        mutref_to_raw!(state.queue)
-    );
+    store_insert_exclusive!(core, store, STORE_AFL_QUEUE, mutref_to_raw!(state.queue));
 
     Ok(Box::into_raw(state) as _)
 }
@@ -68,7 +58,9 @@ fn update_state(
 
     // Increase our queue vec if indexing above it
     if *state.cur_input_idx >= state.queue.len() {
-        state.queue.resize_with(*state.cur_input_idx + 1, Default::default);
+        state
+            .queue
+            .resize_with(*state.cur_input_idx + 1, Default::default);
     }
 
     Ok(())

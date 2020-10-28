@@ -39,7 +39,7 @@ fn validate(
     let state = box_ref!(plugin_ctx, State);
 
     // We need a plugin that creates in input_bytes
-    state.cur_input = unsafe{store.as_mutref(STORE_INPUT_BYTES, Some(core))?};
+    state.cur_input = unsafe { store.as_mutref(STORE_INPUT_BYTES, Some(core))? };
 
     Ok(())
 }

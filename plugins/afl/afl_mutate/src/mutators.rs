@@ -6,7 +6,7 @@ use ::rand::SeedableRng;
 pub enum GenericStage<T> {
     Updated,
     Next(T),
-    Done
+    Done,
 }
 
 pub enum Stages {
@@ -56,7 +56,9 @@ impl InputMutateStage {
             self.cur_stage = if self.skip_deterministic {
                 Stages::BitFlip(BitFlipState::from_input(bytes))
             } else {
-                Stages::Havoc(HavocState::from_rng(SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap()))
+                Stages::Havoc(HavocState::from_rng(
+                    SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
+                ))
             }
         }
 
@@ -79,15 +81,17 @@ impl InputMutateStage {
                         self.cur_stage = Stages::Interesting(InterestState::from_input(bytes))
                     }
                     mutated
-                },
+                }
                 Stages::Interesting(ref mut state) => {
                     let (done, mutated) = interesting(bytes, state);
                     if done {
                         // Next stage with same input
-                        self.cur_stage = Stages::Havoc(HavocState::from_rng(SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap()))
+                        self.cur_stage = Stages::Havoc(HavocState::from_rng(
+                            SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
+                        ))
                     }
                     mutated
-                },
+                }
                 Stages::Havoc(ref mut state) => {
                     let (done, mutated) = havoc(bytes, state);
                     if done {

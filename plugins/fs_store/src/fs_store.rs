@@ -62,16 +62,18 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     let input_dir: &String;
     let state_dir: &String;
     let plugin_conf: &HashMap<String, String>;
-    unsafe { 
+    unsafe {
         state_dir = store.as_ref(STORE_STATE_DIR, Some(core))?;
         input_dir = store.as_ref(STORE_INPUT_DIR, Some(core))?;
         plugin_conf = store.as_ref(STORE_PLUGIN_CONF, Some(core))?;
 
-        let (val, is_owned) = store.as_mutref_or_insert(STORE_INPUT_LIST, &mut state.owned_input_list, Some(core))?;
+        let (val, is_owned) =
+            store.as_mutref_or_insert(STORE_INPUT_LIST, &mut state.owned_input_list, Some(core))?;
         state.input_list = val;
         state.is_input_list_owner = is_owned;
 
-        let (val, is_owned) = store.as_mutref_or_insert(STORE_NEW_INPUTS, &mut state.owned_new_inputs, Some(core))?;
+        let (val, is_owned) =
+            store.as_mutref_or_insert(STORE_NEW_INPUTS, &mut state.owned_new_inputs, Some(core))?;
         state.new_inputs = val;
         state.is_new_inputs_owner = is_owned;
     }
@@ -99,36 +101,27 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
 
     // Create filesystem store
     if !state.queue_dir.is_dir() && std::fs::create_dir(&state.queue_dir).is_err() {
-        core.log(
-            LogLevel::Error,
-            &format!(
-                "Failed to create directory '{}'",
-                state.queue_dir.to_string_lossy()
-            ),
-        );
+        core.error(&format!(
+            "Failed to create directory '{}'",
+            state.queue_dir.to_string_lossy()
+        ));
         return Err(From::from("Failed to create directory".to_string()));
     }
 
     // Build our input_list from the filesystem
-    core.log(LogLevel::Info, "Scanning for inputs...");
+    core.info("Scanning for inputs...");
     state.init(core, input_dir.as_str());
 
     if state.input_list.is_empty() {
-        core.log(
-            LogLevel::Error,
-            &format!(
-                "No inputs found in {} or {}",
-                input_dir,
-                state.queue_dir.to_string_lossy()
-            ),
-        );
+        core.error(&format!(
+            "No inputs found in {} or {}",
+            input_dir,
+            state.queue_dir.to_string_lossy()
+        ));
         return Err(From::from("No inputs".to_string()));
     }
 
-    core.log(
-        LogLevel::Info,
-        &format!("Found {} input(s) !", state.input_list.len()),
-    );
+    core.info(&format!("Found {} input(s) !", state.input_list.len()));
 
     Ok(Box::into_raw(state) as _)
 }

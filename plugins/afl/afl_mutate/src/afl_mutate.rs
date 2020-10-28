@@ -59,14 +59,9 @@ fn validate(
         CfInput
     );
     state.cur_input_idx = raw_to_ref!(store_get_mandatory!(core, store, STORE_INPUT_IDX), usize);
-    state.reuse_input = raw_to_mutref!(
-        store_get_mandatory!(core, store, STORE_RESTORE_INPUT),
-        bool
-    );
-    state.globals = raw_to_mutref!(
-        store_get_mandatory!(core, store, STORE_AFL_STATE),
-        AflState
-    );
+    state.reuse_input =
+        raw_to_mutref!(store_get_mandatory!(core, store, STORE_RESTORE_INPUT), bool);
+    state.globals = raw_to_mutref!(store_get_mandatory!(core, store, STORE_AFL_STATE), AflState);
 
     Ok(())
 }

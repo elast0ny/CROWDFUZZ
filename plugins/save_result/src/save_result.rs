@@ -58,7 +58,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         }
     });
 
-    let plugin_conf: &HashMap<String,String>;
+    let plugin_conf: &HashMap<String, String>;
     let state_dir: &String;
     // Get core store values
     unsafe {
@@ -75,14 +75,11 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
     if !state.crash_dir.is_dir() {
         if let Err(e) = fs::create_dir_all(&state.crash_dir) {
-            core.log(
-                LogLevel::Error,
-                &format!(
-                    "Failed to create crashes directory {} : {}",
-                    state.crash_dir.to_string_lossy(),
-                    e
-                ),
-            );
+            core.error(&format!(
+                "Failed to create crashes directory {} : {}",
+                state.crash_dir.to_string_lossy(),
+                e
+            ));
             return Err(From::from(e));
         };
     }
@@ -107,14 +104,11 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
     if !state.timeout_dir.is_dir() {
         if let Err(e) = fs::create_dir_all(&state.timeout_dir) {
-            core.log(
-                LogLevel::Error,
-                &format!(
-                    "Failed to create timeouts directory {} : {}",
-                    state.timeout_dir.to_string_lossy(),
-                    e
-                ),
-            );
+            core.error(&format!(
+                "Failed to create timeouts directory {} : {}",
+                state.timeout_dir.to_string_lossy(),
+                e
+            ));
             return Err(From::from(e));
         };
     }

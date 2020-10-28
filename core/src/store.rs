@@ -25,7 +25,6 @@ impl<'a> CfCore<'a> {
     /// Add all of the store keys that the core controls
     pub fn init_public_store(&mut self) {
         let store = &mut self.store.content;
-        
         let _ = store.insert_exclusive(STORE_INPUT_DIR, &self.config.input, None);
         let _ = store.insert_exclusive(STORE_STATE_DIR, &self.config.state, None);
         let _ = store.insert_exclusive(STORE_RESULTS_DIR, &self.config.results, None);
@@ -54,5 +53,6 @@ impl<'a> CfCore<'a> {
         let _ = store.remove(STORE_AVG_DENOMINATOR);
         let _ = store.remove(STORE_NUM_EXECS);
         let _ = store.remove(STORE_NO_MUTATE);
+        let _ = store.remove(STORE_NO_SELECT);
     }
 }

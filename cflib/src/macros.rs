@@ -52,4 +52,3 @@ macro_rules! box_take {
         unsafe { Box::from_raw($var as *mut $typ) }
     };
 }
-

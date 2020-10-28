@@ -9,13 +9,10 @@ pub struct HavocState {
 }
 impl HavocState {
     pub fn from_rng(rng: SmallRng) -> Self {
-        Self {
-            rng,
-        }
+        Self { rng }
     }
 }
 
 pub fn havoc(bytes: &mut [u8], s: &mut HavocState) -> (bool, bool) {
-    
     (true, true)
 }

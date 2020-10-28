@@ -6,25 +6,43 @@ use crate::*;
 pub type CfStore = HashMap<String, *mut u8>;
 pub trait CfStoreUtil {
     /// Inserts this reference casted to a raw pointer into the store.
-    fn insert_exclusive<T>(&mut self, key: &str, val: &T, core: Option<&mut dyn PluginInterface>) -> Result<()>;
-    
+    fn insert_exclusive<T>(
+        &mut self,
+        key: &str,
+        val: &T,
+        core: Option<&mut dyn PluginInterface>,
+    ) -> Result<()>;
+
     /// Casts the value of this store's key entry to &T
     /// # Safety
     /// This function cannot validate any information about the store's values.
     /// Casting to the wrong T and bad assumptions about the lifetime of this reference will result in issues.
-    unsafe fn as_ref<T>(&mut self, key: &str, core: Option<&mut dyn PluginInterface>) -> Result<&'static T>;
-    
+    unsafe fn as_ref<T>(
+        &mut self,
+        key: &str,
+        core: Option<&mut dyn PluginInterface>,
+    ) -> Result<&'static T>;
+
     /// Casts the value of this store's key entry to &mut T
     /// # Safety
     /// This function cannot validate any information about the store's values.
     /// Casting to the wrong T and bad assumptions about the lifetime of this reference will result in issues.
-    unsafe fn as_mutref<T>(&mut self, key: &str, core: Option<&mut dyn PluginInterface>) -> Result<&'static mut T>;
-    
+    unsafe fn as_mutref<T>(
+        &mut self,
+        key: &str,
+        core: Option<&mut dyn PluginInterface>,
+    ) -> Result<&'static mut T>;
+
     /// Calls as_mutref() and if it fails, inserts the provided value instead.
     /// # Safety
     /// This function cannot validate any information about the store's values.
     /// Casting to the wrong T and bad assumptions about the lifetime of this reference will result in issues.
-    unsafe fn as_mutref_or_insert<T>(&mut self, key: &str, val: &mut T, core: Option<&mut dyn PluginInterface>) -> Result<(&'static mut T, bool)>;
+    unsafe fn as_mutref_or_insert<T>(
+        &mut self,
+        key: &str,
+        val: &mut T,
+        core: Option<&mut dyn PluginInterface>,
+    ) -> Result<(&'static mut T, bool)>;
 }
 
 /* Values managed by the core */
@@ -77,7 +95,6 @@ pub const STORE_TARGET_EXEC_TIME: &str = "exec_time";
 /// (*const u64) Number of US the target takes on average to run 1 input
 pub const STORE_AVG_TARGET_EXEC_TIME: &str = "avg_exec_time";
 
-
 pub enum TargetExitStatus {
     Normal(i32),
     Timeout,
@@ -116,7 +133,7 @@ pub struct CfNewInput {
 fn get_valid_ptr(store: &mut CfStore, key: &str) -> Result<*mut u8> {
     if let Some(v) = store.get(key) {
         if v.is_null() {
-            Err(From::from("Store pointer is null".to_string()))   
+            Err(From::from("Store pointer is null".to_string()))
         } else {
             Ok(*v)
         }
@@ -126,50 +143,59 @@ fn get_valid_ptr(store: &mut CfStore, key: &str) -> Result<*mut u8> {
 }
 
 impl CfStoreUtil for CfStore {
-    fn insert_exclusive<T>(&mut self, key: &str, val: &T, core: Option<&mut dyn PluginInterface>) -> Result<()> {
+    fn insert_exclusive<T>(
+        &mut self,
+        key: &str,
+        val: &T,
+        core: Option<&mut dyn PluginInterface>,
+    ) -> Result<()> {
         if self.get(key).is_some() {
             if let Some(ref core) = core {
-                core.log(
-                    LogLevel::Error,
-                    &format!("Another plugin already created {} !", key),
-                );
+                core.error(&format!("Another plugin already created {} !", key));
             }
-            
+
             return Err(From::from("Plugin store conflict".to_string()));
         }
         self.insert(key.to_string(), val as *const T as *mut u8);
 
         Ok(())
     }
-    unsafe fn as_ref<T>(&mut self, key: &str, core: Option<&mut dyn PluginInterface>) -> Result<&'static T> {
+    unsafe fn as_ref<T>(
+        &mut self,
+        key: &str,
+        core: Option<&mut dyn PluginInterface>,
+    ) -> Result<&'static T> {
         match get_valid_ptr(self, key) {
             Err(e) => {
                 if let Some(ref core) = core {
-                    core.log(
-                        LogLevel::Error,
-                        &format!("Failed to get mandatory store value {} !", key),
-                    );
+                    core.error(&format!("Failed to get mandatory store value {} !", key));
                 }
                 Err(e)
-            },
+            }
             Ok(raw_ptr) => Ok(&*(raw_ptr as *mut T as *const T)),
         }
     }
-    unsafe fn as_mutref<T>(&mut self, key: &str, core: Option<&mut dyn PluginInterface>) -> Result<&'static mut T> {
+    unsafe fn as_mutref<T>(
+        &mut self,
+        key: &str,
+        core: Option<&mut dyn PluginInterface>,
+    ) -> Result<&'static mut T> {
         match get_valid_ptr(self, key) {
             Err(e) => {
                 if let Some(ref core) = core {
-                    core.log(
-                        LogLevel::Error,
-                        &format!("Failed to get mandatory store value {} !", key),
-                    );
+                    core.error(&format!("Failed to get mandatory store value {} !", key));
                 }
                 Err(e)
-            },
+            }
             Ok(raw_ptr) => Ok(&mut *(raw_ptr as *mut T)),
         }
     }
-    unsafe fn as_mutref_or_insert<T>(&mut self, key: &str, val: &mut T, core: Option<&mut dyn PluginInterface>) -> Result<(&'static mut T, bool)> {
+    unsafe fn as_mutref_or_insert<T>(
+        &mut self,
+        key: &str,
+        val: &mut T,
+        core: Option<&mut dyn PluginInterface>,
+    ) -> Result<(&'static mut T, bool)> {
         match self.as_mutref(key, None) {
             Ok(v) => Ok((v, false)),
             Err(_) => {
@@ -178,7 +204,7 @@ impl CfStoreUtil for CfStore {
                     Ok(v) => Ok((v, true)),
                     Err(e) => Err(e),
                 }
-            },
-        }        
+            }
+        }
     }
 }

@@ -8,21 +8,17 @@ All of the common store key definitions reside in [cflib/src/store.rs](../cflib/
 ## Store guidelines
 Plugins should generaly add references to the store during their load() and keep those references alive until unload(). This enables other plugins to only have to query the store once during validation() and subsequently just use the saved reference.
 
-In general, you should make sure that the struct you are referencing is either Box'ed or a child of a box'ed struct.
-
-cflib provides a few unsafe macros that abstract converting raw pointers into rust references :
-- box_ref / box_take
-- ref_to_raw / raw_to_ref
+In general, you should make sure that the struct you are referencing is either Box'ed or a child of a box'ed struct. Make sure to never store  the result of functions such as `String.as_str()`, `vec.as_slice()`, etc.. as they create temporary fat pointers to the owned struct versus being real references to the owned struct.
 
 ## __Corpus management__
-Plugins in this category should create the INPUT_LIST entry and the NEW_INPUTS entry if they accept new inputs.
+Plugins in this category should create/use the INPUT_LIST entry and the NEW_INPUTS entry if they accept new inputs.
 
 For simplicity, it is highly recommend to avoid input deletion & reordering in this list so other plugins can use indexes safely.
 
 ## __File selection__
 Responsible for creating the INPUT_BYTES and INPUT_IDX entries. File selectors must ensure that INPUT_BYTES is a CfInput with a single chunk for the whole file.
 
-It can also chose to respect the RESTORE_INPUT and NO_SELECT keys.
+It should also aim to respect the RESTORE_INPUT and NO_SELECT keys.
 
 ## __Mutation__
 Mutation plugins should read the INPUT_BYTES entry and push values to MUTATED_INPUT_BYTES.
@@ -32,7 +28,7 @@ e.g.
 ```Rust
 // disable all mutators
 NO_MUTATE = true
-// Tell afl_mutation plugin to simply forward INPUT_BYTES
+// because we are doing afl calibration
 AFL_CALIBRATION = true 
 ```
 

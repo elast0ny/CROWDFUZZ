@@ -130,7 +130,7 @@ impl AflState {
         } else {
             perf_score *= 5;
         }
-    
+
         if perf_score > HAVOC_MAX_MULT * 100 {
             perf_score = HAVOC_MAX_MULT * 100;
         }

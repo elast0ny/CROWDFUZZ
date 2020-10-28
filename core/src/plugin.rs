@@ -28,21 +28,27 @@ pub struct PluginCtx<'a> {
 }
 
 impl<'a> PluginInterface for PluginCtx<'a> {
-    fn log(&self, level: LogLevel, msg: &str) {
+    fn info(&self, msg: &str) {
         let plugin = unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id) };
-        log!(
-            match level {
-                LogLevel::Info => ::log::Level::Info,
-                LogLevel::Warn => ::log::Level::Warn,
-                LogLevel::Error => ::log::Level::Error,
-                LogLevel::Debug => ::log::Level::Debug,
-                LogLevel::Trace => ::log::Level::Trace,
-            },
-            "[{}] {}",
-            &plugin.name,
-            msg
-        );
+        info!("[{}] {}", &plugin.name, msg);
     }
+    fn warn(&self, msg: &str) {
+        let plugin = unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id) };
+        warn!("[{}] {}", &plugin.name, msg);
+    }
+    fn error(&self, msg: &str) {
+        let plugin = unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id) };
+        error!("[{}] {}", &plugin.name, msg);
+    }
+    fn debug(&self, msg: &str) {
+        let plugin = unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id) };
+        debug!("[{}] {}", &plugin.name, msg);
+    }
+    fn trace(&self, msg: &str) {
+        let plugin = unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id) };
+        trace!("[{}] {}", &plugin.name, msg);
+    }
+
     fn add_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal> {
         self.stats.new_stat(tag, stat)
     }

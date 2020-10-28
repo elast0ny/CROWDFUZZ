@@ -13,14 +13,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "afl_init"
-version = "0.0.1"
-dependencies = [
- "afl_lib",
- "cflib",
-]
-
-[[package]]
 name = "afl_lib"
 version = "0.0.1"
 
@@ -31,6 +23,14 @@ dependencies = [
  "afl_lib",
  "cflib",
  "rand 0.7.3",
+]
+
+[[package]]
+name = "afl_queue"
+version = "0.0.1"
+dependencies = [
+ "afl_lib",
+ "cflib",
 ]
 
 [[package]]

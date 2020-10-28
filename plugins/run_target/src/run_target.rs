@@ -69,7 +69,11 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     // TARGET_EXEC_TIME
     store.insert_exclusive(STORE_TARGET_EXEC_TIME, &state.exec_time, Some(core))?;
     // AVG_TARGET_EXEC_TIME
-    store.insert_exclusive(STORE_AVG_TARGET_EXEC_TIME, state.avg_exec_time.val, Some(core))?;
+    store.insert_exclusive(
+        STORE_AVG_TARGET_EXEC_TIME,
+        state.avg_exec_time.val,
+        Some(core),
+    )?;
 
     // Get reference to core store values
     let plugin_conf: &HashMap<String, String>;
@@ -82,16 +86,16 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         target_args = store.as_ref(STORE_TARGET_ARGS, Some(core))?;
         state_dir = store.as_ref(STORE_STATE_DIR, Some(core))?;
     }
-    
+
     // Parse our config values
     state.load_config(core, plugin_conf)?;
 
     // Make sure target is a file
     if !Path::new(state.target_path).is_file() {
-        core.log(
-            LogLevel::Error,
-            &format!("Failed to find target binary '{}'", state.target_path),
-        );
+        core.error(&format!(
+            "Failed to find target binary '{}'",
+            state.target_path
+        ));
         return Err(From::from("Invalid target binary path".to_string()));
     }
 
@@ -117,14 +121,11 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
                     state.input_file = Some(match File::create(&input_path) {
                         Ok(f) => f,
                         Err(e) => {
-                            core.log(
-                                LogLevel::Error,
-                                &format!(
-                                    "Failed to create input file {} : {}",
-                                    input_path.to_string_lossy(),
-                                    e
-                                ),
-                            );
+                            core.error(&format!(
+                                "Failed to create input file {} : {}",
+                                input_path.to_string_lossy(),
+                                e
+                            ));
                             return Err(From::from(
                                 "Failed to create input file for target".to_string(),
                             ));
@@ -137,10 +138,10 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         }
     }
 
-    core.log(
-        LogLevel::Info,
-        &format!("Running '{}' {:?}", state.target_path, state.target_args),
-    );
+    core.info(&format!(
+        "Running '{}' {:?}",
+        state.target_path, state.target_args
+    ));
 
     Ok(Box::into_raw(state) as _)
 }
@@ -152,11 +153,9 @@ fn validate(
     plugin_ctx: *mut u8,
 ) -> Result<()> {
     let state = box_ref!(plugin_ctx, State);
-    
+
     // Make sure someone is providing us input bytes
-    state.cur_input = unsafe {
-        store.as_ref(STORE_INPUT_BYTES, Some(core))?
-    };
+    state.cur_input = unsafe { store.as_ref(STORE_INPUT_BYTES, Some(core))? };
 
     Ok(())
 }
@@ -182,10 +181,7 @@ fn run_target(
         for chunk in &state.cur_input.chunks {
             let _ = (f.set_len(0), f.seek(std::io::SeekFrom::Start(0)));
             if let Err(e) = f.write_all(chunk) {
-                core.log(
-                    LogLevel::Error,
-                    &format!("Failed to write target input : {}", e),
-                );
+                core.error(&format!("Failed to write target input : {}", e));
                 return Err(From::from("Failed to write target input".to_string()));
             }
         }
@@ -198,13 +194,10 @@ fn run_target(
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            core.log(
-                LogLevel::Error,
-                &format!(
-                    "Failed to spawn child process '{}' {:?} : {}",
-                    state.target_path, state.target_args, e
-                ),
-            );
+            core.error(&format!(
+                "Failed to spawn child process '{}' {:?} : {}",
+                state.target_path, state.target_args, e
+            ));
             return Err(From::from("Failed to spawn target".to_string()));
         }
     };
@@ -213,10 +206,7 @@ fn run_target(
         let stdin = child.stdin.as_mut().unwrap();
         for chunk in &state.cur_input.chunks {
             if let Err(e) = stdin.write_all(chunk) {
-                core.log(
-                    LogLevel::Error,
-                    &format!("Failed to write target stdin : {}", e),
-                );
+                core.error(&format!("Failed to write target stdin : {}", e));
                 return Err(From::from("Failed to write target stdin".to_string()));
             }
         }
@@ -287,13 +277,10 @@ impl State {
             match v.parse::<usize>() {
                 Ok(num) => self.target_timeout_ms = Some(Duration::from_millis(num as _)),
                 Err(e) => {
-                    core.log(
-                        LogLevel::Error,
-                        &format!(
-                            "Failed to parse number in target_timeout_ms config '{}' : {}",
-                            v, e
-                        ),
-                    );
+                    core.error(&format!(
+                        "Failed to parse number in target_timeout_ms config '{}' : {}",
+                        v, e
+                    ));
                     return Err(From::from("Invalid config".to_string()));
                 }
             }
@@ -302,10 +289,7 @@ impl State {
         if let Some(v) = conf.get("target_wd") {
             // Make sure its a valid directory
             if !Path::new(v.as_str()).is_dir() {
-                core.log(
-                    LogLevel::Error,
-                    &format!("Target working directory does not exist '{}'", v),
-                );
+                core.error(&format!("Target working directory does not exist '{}'", v));
                 return Err(From::from("Invalid config".to_string()));
             }
             self.target_working_dir = Some(v.clone());

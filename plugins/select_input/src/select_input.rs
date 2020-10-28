@@ -71,9 +71,7 @@ fn validate(
     let state = box_ref!(plugin_ctx, State);
 
     // Make sure someone created INPUT_LIST
-    state.input_list = unsafe {
-        store.as_ref(STORE_INPUT_LIST, Some(core))?
-    };
+    state.input_list = unsafe { store.as_ref(STORE_INPUT_LIST, Some(core))? };
 
     Ok(())
 }
@@ -89,10 +87,12 @@ fn select_input(
     // Update number of indexes in priority list
     *state.num_priority_inputs.val = state.priority_list.len() as _;
 
+    // Input selection currently disabled
     if *state.no_select {
         return Ok(());
     }
 
+    // We will select a new input
     if !state.restore_input {
         // Pick the next input index
         match state.priority_list.pop_front() {
@@ -107,13 +107,12 @@ fn select_input(
             }
         };
 
-        // Read the contents
+        // Get current input info
         let input_info = unsafe { state.input_list.get_unchecked(state.cur_input_idx) };
 
         state.orig_buf.clear();
-        // No need to read off disk, content was inlined in the input info
+        // If content is inlined in the input info
         if let Some(contents) = &input_info.contents {
-            // Copy original contents into input_bytes
             for chunk in &contents.chunks {
                 state.orig_buf.extend_from_slice(chunk);
             }
@@ -122,13 +121,10 @@ fn select_input(
             let p = match &input_info.path {
                 Some(p) => p.as_path(),
                 None => {
-                    core.log(
-                        LogLevel::Error,
-                        &format!(
-                            "input[{}] has no content or path info !",
-                            state.cur_input_idx
-                        ),
-                    );
+                    core.error(&format!(
+                        "input[{}] has no content or path info !",
+                        state.cur_input_idx
+                    ));
                     return Err(From::from("No input contents".to_string()));
                 }
             };

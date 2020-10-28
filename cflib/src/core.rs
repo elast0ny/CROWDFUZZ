@@ -8,17 +8,19 @@ pub enum PluginStatus {
     Error,
 }
 
-#[derive(Debug)]
-pub enum LogLevel {
-    Info,
-    Warn,
-    Error,
-    Debug,
-    Trace,
-}
-
 pub trait PluginInterface {
-    fn log(&self, level: LogLevel, msg: &str);
+    /// Logs a message at info level
+    fn info(&self, msg: &str);
+    /// Logs a message at warn level
+    fn warn(&self, msg: &str);
+    /// Logs a message at error level
+    fn error(&self, msg: &str);
+    /// Logs a message at debug level
+    fn debug(&self, msg: &str);
+    /// Logs a message at trace level
+    fn trace(&self, msg: &str);
+    /// Adds a statistic in the stats shared memory mapping
+    /// This can fail if the mapping runs out of space.
     fn add_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal>;
 }
 
