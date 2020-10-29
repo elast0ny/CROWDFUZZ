@@ -235,13 +235,6 @@ impl<'a> CfCore<'a> {
                 *self.stats.num_execs.val,
             );
             debug!("\tTime : {} ns", *plugin.exec_time.val);
-            //Adjust the plugin's exec_time average
-            cflib::update_average(
-                plugin.exec_time.val,
-                time_elapsed,
-                *self.stats.num_execs.val + 1,
-            );
-            debug!("\tTime : {} ns", *plugin.exec_time.val);
 
             self.ctx.cur_plugin_id += 1;
         }
