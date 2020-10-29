@@ -26,6 +26,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "afl_queue"
+version = "0.0.1"
+dependencies = [
+ "afl_lib",
+ "cflib",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "0.7.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

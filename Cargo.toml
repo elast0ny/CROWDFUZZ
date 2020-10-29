@@ -11,6 +11,6 @@ members = [
     "plugins/save_result",
     
     "plugins/afl/afl_lib",
-    #"plugins/afl/afl_queue",
+    "plugins/afl/afl_queue",
     "plugins/afl/afl_mutate",
 ]

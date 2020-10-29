@@ -20,37 +20,35 @@ impl InterestStage {
         }
     }
 
-    pub fn next(&mut self) -> InnerStage<Self> {
+    pub fn next_stage(&mut self) -> bool {
         unsafe {
             match self {
                 Self::Width8(ref mut val, ref mut idx) => {
-                    if *idx + 1 == INTERESTING_8.len() {
-                        InnerStage::Next(Self::Width16(INTERESTING_16[0], 0))
+                    *idx += 1;
+                    if *idx == INTERESTING_8.len() {
+                        *self = Self::Width16(INTERESTING_16[0], 0);
                     } else {
-                        *idx += 1;
                         *val = *INTERESTING_8.get_unchecked(*idx);
-                        InnerStage::Updated
                     }
                 }
                 Self::Width16(ref mut val, ref mut idx) => {
-                    if *idx + 1 == INTERESTING_16.len() {
-                        InnerStage::Next(Self::Width32(INTERESTING_32[0], 0))
+                    *idx += 1;
+                    if *idx == INTERESTING_16.len() {
+                        *self = Self::Width32(INTERESTING_32[0], 0);
                     } else {
-                        *idx += 1;
                         *val = *INTERESTING_16.get_unchecked(*idx);
-                        InnerStage::Updated
                     }
                 }
                 Self::Width32(ref mut val, ref mut idx) => {
-                    if *idx + 1 == INTERESTING_32.len() {
-                        InnerStage::Done
+                    *idx += 1;
+                    if *idx == INTERESTING_32.len() {
+                        return false;
                     } else {
-                        *idx += 1;
                         *val = *INTERESTING_32.get_unchecked(*idx);
-                        InnerStage::Updated
                     }
                 }
-            }
+            };
+            true
         }
     }
 }
@@ -62,9 +60,10 @@ pub struct InterestState {
     stage: InterestStage,
 }
 impl InterestState {
-    pub fn new(input_len: usize) -> Self {
+    pub fn new(input: &CfInput) -> Self {
+        let bytes = unsafe {input.chunks.get_unchecked(0)};
         Self {
-            idx: input_len,
+            idx: bytes.len(),
             prev_val: None,
             stage: InterestStage::default(),
         }
@@ -87,88 +86,83 @@ impl InterestState {
                 InterestStage::Width32(_, _) => INTERESTING_32.len(),
             }
     }
-}
 
-pub fn interesting(bytes: &mut [u8], s: &mut InterestState) -> StageResult {
-    // Restore the orig input
-    if let Some((idx, orig_val)) = s.prev_val.take() {
-        unsafe {
-            match s.stage {
-                InterestStage::Width8(_, _) => {
-                    *(bytes.as_mut_ptr().add(idx) as *mut u8) = orig_val as _
-                }
-                InterestStage::Width16(_, _) => {
-                    *(bytes.as_mut_ptr().add(idx) as *mut u16) = orig_val as _
-                }
-                InterestStage::Width32(_, _) => {
-                    *(bytes.as_mut_ptr().add(idx) as *mut u32) = orig_val as _
+    pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
+        let bytes = unsafe {input.chunks.get_unchecked_mut(0)};
+        // Restore the orig input
+        if let Some((idx, orig_val)) = self.prev_val.take() {
+            unsafe {
+                match self.stage {
+                    InterestStage::Width8(_, _) => {
+                        *(bytes.as_mut_ptr().add(idx) as *mut u8) = orig_val as _
+                    }
+                    InterestStage::Width16(_, _) => {
+                        *(bytes.as_mut_ptr().add(idx) as *mut u16) = orig_val as _
+                    }
+                    InterestStage::Width32(_, _) => {
+                        *(bytes.as_mut_ptr().add(idx) as *mut u32) = orig_val as _
+                    }
                 }
             }
         }
-    }
-
-    loop {
-        if s.idx == 0 {
-            match s.stage.next() {
-                // Moving to next interesting value
-                InnerStage::Updated => s.idx = s.stage.max_idx(bytes.len()),
-                // Moving to next interesting width
-                InnerStage::Next(v) => {
-                    s.stage = v;
-                    s.idx = s.stage.max_idx(bytes.len());
-                    return StageResult::Next;
-                }
-                // Done all stages
-                InnerStage::Done => return StageResult::Done,
-            };
+    
+        loop {
+            if self.idx == 0 {
+                return if self.stage.next_stage() {
+                    self.idx = self.stage.max_idx(bytes.len());
+                    StageResult::Update
+                } else {
+                    StageResult::Done
+                };
+            }
+    
+            self.idx -= 1;
+    
+            unsafe {
+                let dst = bytes.as_mut_ptr().add(self.idx);
+                let orig: u32;
+    
+                match self.stage {
+                    InterestStage::Width8(j, _) => {
+                        orig = (*dst as u8) as u32;
+                        if could_be_bitflip(orig ^ (j as u8) as u32)
+                            || could_be_arith(orig, (j as u8) as u32, 1)
+                        {
+                            continue;
+                        }
+                        self.prev_val = Some((self.idx, orig));
+                        *(dst as *mut u8) = j as u8;
+                    }
+                    InterestStage::Width16(j, _) => {
+                        orig = *(dst as *mut u16) as u32;
+                        if could_be_bitflip(orig ^ (j as u16) as u32)
+                            || could_be_arith(orig, (j as u16) as u32, 2)
+                            || could_be_interest(orig, (j as u16) as _, 2, false)
+                        {
+                            continue;
+                        }
+                        self.prev_val = Some((self.idx, orig));
+                        *(dst as *mut u16) = j as u16;
+                    }
+                    InterestStage::Width32(j, _) => {
+                        orig = *(dst as *mut u32);
+                        if could_be_bitflip(orig ^ j as u32)
+                            || could_be_arith(orig, j as u32, 4)
+                            || could_be_interest(orig, j as _, 4, false)
+                        {
+                            continue;
+                        }
+                        self.prev_val = Some((self.idx, orig));
+                        *(dst as *mut u32) = j as u32;
+                    }
+                };
+            }
+    
+            break;
         }
-
-        s.idx -= 1;
-
-        unsafe {
-            let dst = bytes.as_mut_ptr().add(s.idx);
-            let orig: u32;
-
-            match s.stage {
-                InterestStage::Width8(j, _) => {
-                    orig = (*dst as u8) as u32;
-                    if could_be_bitflip(orig ^ (j as u8) as u32)
-                        || could_be_arith(orig, (j as u8) as u32, 1)
-                    {
-                        continue;
-                    }
-                    s.prev_val = Some((s.idx, orig));
-                    *(dst as *mut u8) = j as u8;
-                }
-                InterestStage::Width16(j, _) => {
-                    orig = *(dst as *mut u16) as u32;
-                    if could_be_bitflip(orig ^ (j as u16) as u32)
-                        || could_be_arith(orig, (j as u16) as u32, 2)
-                        || could_be_interest(orig, (j as u16) as _, 2, false)
-                    {
-                        continue;
-                    }
-                    s.prev_val = Some((s.idx, orig));
-                    *(dst as *mut u16) = j as u16;
-                }
-                InterestStage::Width32(j, _) => {
-                    orig = *(dst as *mut u32);
-                    if could_be_bitflip(orig ^ j as u32)
-                        || could_be_arith(orig, j as u32, 4)
-                        || could_be_interest(orig, j as _, 4, false)
-                    {
-                        continue;
-                    }
-                    s.prev_val = Some((s.idx, orig));
-                    *(dst as *mut u32) = j as u32;
-                }
-            };
-        }
-
-        break;
+    
+        StageResult::WillRestoreInput
     }
-
-    StageResult::WillRestoreInput
 }
 
 /* Last but not least, a similar helper to see if insertion of an

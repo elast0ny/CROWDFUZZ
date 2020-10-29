@@ -21,38 +21,52 @@ cflib::register!(fuzz, mutate_input);
 cflib::register!(unload, destroy);
 
 struct State {
-    /// Reference to the currently selected input
-    cur_input: &'static mut CfInput,
-    cur_input_idx: &'static usize,
+    force_update: bool,
+    /// Used to notice when the input changes
+    prev_input_idx: usize,
+    /// Buffer to hold the current stage name
+    stage_name: String,
+    /// State info for the current mutator stage
+    cur_stage: MutatorStage,
+    /// Stage name that lives in the fuzzer stats memory
+    stat_cur_stage: StatStr,
+    /// Stage iterations that lives in the fuzzer stats memory
+    stat_num_iterations: StatNum,
+    
     restore_input: &'static mut bool,
     no_select: &'static mut bool,
-    //globals: &'static mut AflState,
+    no_mutate: &'static bool,
+
     inputs: &'static Vec<CfInputInfo>,
-    input_stages: Vec<InputMutateStage>,
-    prev_input_idx: usize,
-    stage_name: String,
-    stat_cur_stage: StatStr,
-    stat_num_iterations: StatNum,
+    cur_input_idx: &'static usize,
+    cur_input: &'static mut CfInput,
+    afl_vars: &'static mut AflGlobals,
+    afl_queue: &'static mut AflQueue,    
 }
 
 // Initialize our plugin
-fn init(core: &mut dyn PluginInterface, _store: &mut CfStore) -> Result<*mut u8> {
+fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     #[allow(invalid_value)]
     let state = Box::new(unsafe {
         State {
-            input_stages: Vec::new(),
+            force_update: true,
             prev_input_idx: 0,
             stage_name: String::new(),
-            /// Stats
+            cur_stage: MutatorStage::default(),
+            // Stats
             stat_cur_stage: core.new_stat_str("stage", 128, "[init]")?,
             stat_num_iterations: core.new_stat_num("iterations", 0)?,
-            /// Plugin store values
-            cur_input: MaybeUninit::zeroed().assume_init(),
-            cur_input_idx: MaybeUninit::zeroed().assume_init(),
-            //globals: MaybeUninit::zeroed().assume_init(),
-            restore_input: MaybeUninit::zeroed().assume_init(),
-            no_select: MaybeUninit::zeroed().assume_init(),
+            // Core store values
+            restore_input: store.as_mutref(STORE_RESTORE_INPUT, Some(core))?,
+            no_select: store.as_mutref(STORE_NO_SELECT, Some(core))?,
+            no_mutate: store.as_mutref(STORE_NO_MUTATE, Some(core))?,
+
+            // Plugin store values
             inputs: MaybeUninit::zeroed().assume_init(),
+            cur_input_idx: MaybeUninit::zeroed().assume_init(),
+            cur_input: MaybeUninit::zeroed().assume_init(),
+            afl_vars: MaybeUninit::zeroed().assume_init(),
+            afl_queue: MaybeUninit::zeroed().assume_init(),
         }
     });
 
@@ -69,13 +83,13 @@ fn validate(
 
     // Grab all the keys we need to function
     unsafe {
-        state.cur_input = store.as_mutref(STORE_INPUT_BYTES, Some(core))?;
-        state.cur_input_idx = store.as_ref(STORE_INPUT_IDX, Some(core))?;
-        //state.globals = store.as_mutref(STORE_AFL_STATE, Some(core))?;
-        state.restore_input = store.as_mutref(STORE_RESTORE_INPUT, Some(core))?;
-        state.no_select = store.as_mutref(STORE_NO_SELECT, Some(core))?;
         state.inputs = store.as_mutref(STORE_INPUT_LIST, Some(core))?;
+        state.cur_input_idx = store.as_ref(STORE_INPUT_IDX, Some(core))?;
+        state.cur_input = store.as_mutref(STORE_INPUT_BYTES, Some(core))?;
+        state.afl_vars = store.as_mutref(STORE_AFL_GLOBALS, Some(core))?;
+        state.afl_queue = store.as_mutref(STORE_AFL_QUEUE, Some(core))?;        
     }
+
     Ok(())
 }
 
@@ -85,58 +99,64 @@ fn mutate_input(
     _store: &mut CfStore,
     plugin_ctx: *mut u8,
 ) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
+    let s = box_ref!(plugin_ctx, State);
 
-    // Detect new inputs and init their mutate stage
-    if *state.cur_input_idx >= state.input_stages.len() {
-        let num_new_inputs = (state.cur_input_idx + 1) - state.input_stages.len();
-        let input_info = unsafe { state.inputs.get_unchecked(*state.cur_input_idx) };
-        state.input_stages.reserve(num_new_inputs);
-        for _i in 0..num_new_inputs {
-            state.input_stages.push(InputMutateStage::new(
-                /*state.globals.skip_deterministic*/ false,
-                input_info.len,
-            ));
+    if *s.no_mutate {
+        if !s.force_update {
+            s.stat_cur_stage.set("None");
+            *s.stat_num_iterations.val = 0;
+            s.force_update = true;
         }
-        // Set prev_input to not match on purpose
-        state.prev_input_idx = *state.cur_input_idx + 1;
+        return Ok(());
     }
-
-    // Get which stage we're at for this input
-    let stage = unsafe { state.input_stages.get_unchecked_mut(*state.cur_input_idx) };
+    
+    let stage = &mut s.cur_stage;
+    let input = &mut s.cur_input;
+    let afl = &mut s.afl_vars;
+    let q = unsafe {
+        s.afl_queue.get_unchecked_mut(*s.cur_input_idx)
+    };
 
     // Update stage name if we switched input
-    if state.prev_input_idx != *state.cur_input_idx {
-        stage.update_info(&mut state.stage_name, state.stat_num_iterations.val);
-        state.stat_cur_stage.set(&state.stage_name);
-        state.prev_input_idx = *state.cur_input_idx;
+    if s.force_update || s.prev_input_idx != *s.cur_input_idx {
+            // Reset stage 
+            stage.sync_to_input(q, afl, input);
+            // Update stage name
+            stage.update_info(&mut s.stage_name, s.stat_num_iterations.val);
+            s.stat_cur_stage.set(&s.stage_name);
+            
+            s.prev_input_idx = *s.cur_input_idx;
+            s.force_update = false;
     }
 
     // Mutate the input
     loop {
-        match stage.mutate(state.cur_input) {
+        match stage.mutate(input) {
             StageResult::WillRestoreInput => {
                 // The mutator will restore the testcase
-                *state.no_select = true;
-                *state.restore_input = false;
+                *s.no_select = true;
+                *s.restore_input = false;
             }
             StageResult::CantRestoreInput => {
                 // Mutator cant restore original testcase
-                *state.restore_input = true;
-                *state.no_select = false;
+                *s.restore_input = true;
+                *s.no_select = false;
             }
-            StageResult::Done => {
-                // Pick a new testcase
-                *state.restore_input = false;
-                *state.no_select = false;
-            }
-            StageResult::Next => {
+            StageResult::Update => {
                 // Update cur_stage stat
-                stage.update_info(&mut state.stage_name, state.stat_num_iterations.val);
-                state.stat_cur_stage.set(&state.stage_name);
-
+                stage.update_info(&mut s.stage_name, s.stat_num_iterations.val);
+                s.stat_cur_stage.set(&s.stage_name);
                 // Loop again to mutate at least once
                 continue;
+            },
+            StageResult::Done => {
+                // Can we progress to the next stage ?
+                if stage.next(q, afl, input) {
+                    continue;
+                }
+                // Pick a new testcase
+                *s.restore_input = false;
+                *s.no_select = false;
             }
         };
 

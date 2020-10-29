@@ -28,15 +28,16 @@ impl BitWidth {
         }
     }
 
-    pub fn next(self) -> Option<Self> {
+    pub fn next_stage(&mut self) -> bool {
         match self {
-            Self::Bit1 => Some(Self::Bit2),
-            Self::Bit2 => Some(Self::Bit4),
-            Self::Bit4 => Some(Self::Byte1),
-            Self::Byte1 => Some(Self::Byte2),
-            Self::Byte2 => Some(Self::Byte4),
-            Self::Byte4 => None,
-        }
+            Self::Bit1 => *self = Self::Bit2,
+            Self::Bit2 => *self = Self::Bit4,
+            Self::Bit4 => *self = Self::Byte1,
+            Self::Byte1 => *self = Self::Byte2,
+            Self::Byte2 => *self = Self::Byte4,
+            Self::Byte4 => return false,
+        };
+        true
     }
 }
 
@@ -47,10 +48,15 @@ pub struct BitFlipState {
     width: BitWidth,
 }
 impl BitFlipState {
-    pub fn new(input_len: usize) -> Self {
+    pub fn new(input: &CfInput) -> Self {
         let width = BitWidth::default();
+        let input_len = if input.chunks.is_empty() {
+            0
+        } else {
+            width.max_idx(unsafe { input.chunks.get_unchecked(0) }.len())
+        };
         Self {
-            idx: width.max_idx(input_len),
+            idx: input_len,
             prev_val: None,
             width,
         }
@@ -69,79 +75,82 @@ impl BitFlipState {
     pub fn iterations(&self) -> usize {
         self.idx
     }
-}
 
-/// Flips bits in the input starting from the end
-pub fn bit_flip(bytes: &mut [u8], s: &mut BitFlipState) -> StageResult {
-    // Restore the orig input
-    if let Some(orig_val) = s.prev_val.take() {
-        unsafe {
-            match s.width {
-                BitWidth::Bit1 => flip_bit(bytes, s.idx),
-                BitWidth::Bit2 => {
-                    flip_bit(bytes, s.idx);
-                    flip_bit(bytes, s.idx + 1);
+    /// Flips bits in the input starting from the end
+    pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
+        let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
+        // Restore the orig input
+        if let Some(orig_val) = self.prev_val.take() {
+            unsafe {
+                match self.width {
+                    BitWidth::Bit1 => flip_bit(bytes, self.idx),
+                    BitWidth::Bit2 => {
+                        flip_bit(bytes, self.idx);
+                        flip_bit(bytes, self.idx + 1);
+                    }
+                    BitWidth::Bit4 => {
+                        flip_bit(bytes, self.idx);
+                        flip_bit(bytes, self.idx + 1);
+                        flip_bit(bytes, self.idx + 2);
+                        flip_bit(bytes, self.idx + 3);
+                    }
+                    BitWidth::Byte1 => {
+                        *(bytes.as_mut_ptr().add(self.idx) as *mut u8) = orig_val as _
+                    }
+                    BitWidth::Byte2 => {
+                        *(bytes.as_mut_ptr().add(self.idx) as *mut u16) = orig_val as _
+                    }
+                    BitWidth::Byte4 => {
+                        *(bytes.as_mut_ptr().add(self.idx) as *mut u32) = orig_val as _
+                    }
                 }
-                BitWidth::Bit4 => {
-                    flip_bit(bytes, s.idx);
-                    flip_bit(bytes, s.idx + 1);
-                    flip_bit(bytes, s.idx + 2);
-                    flip_bit(bytes, s.idx + 3);
-                }
-                BitWidth::Byte1 => *(bytes.as_mut_ptr().add(s.idx) as *mut u8) = orig_val as _,
-                BitWidth::Byte2 => *(bytes.as_mut_ptr().add(s.idx) as *mut u16) = orig_val as _,
-                BitWidth::Byte4 => *(bytes.as_mut_ptr().add(s.idx) as *mut u32) = orig_val as _,
             }
         }
-    }
 
-    if s.idx == 0 {
-        // Go to the next width
-        match s.width.next() {
-            Some(w) => {
-                // Move to next bit_flip width
-                s.idx = w.max_idx(bytes.len());
-                s.width = w;
-                return StageResult::Next;
-            }
-            None => {
+        if self.idx == 0 {
+            // Go to the next width
+            if self.width.next_stage() {
+                // Calculate new index
+                self.idx = self.width.max_idx(bytes.len());
+                // Let caller know what we updated ourselves
+                return StageResult::Update;
+            } else {
                 return StageResult::Done;
             }
-        }
-    };
+        };
 
-    s.idx -= 1;
-    let num_bits = s.width as u8;
-
-    unsafe {
-        if num_bits < 8 {
-            s.prev_val = Some(0);
-            if num_bits >= 1 {
-                flip_bit(bytes, s.idx);
+        self.idx -= 1;
+        let num_bits = self.width as u8;
+        unsafe {
+            if num_bits < 8 {
+                self.prev_val = Some(0);
+                if num_bits >= 1 {
+                    flip_bit(bytes, self.idx);
+                }
+                if num_bits >= 2 {
+                    flip_bit(bytes, self.idx + 1);
+                }
+                if num_bits >= 4 {
+                    flip_bit(bytes, self.idx + 2);
+                    flip_bit(bytes, self.idx + 3);
+                }
+            } else if num_bits == 8 {
+                let cur = bytes.as_mut_ptr().add(self.idx);
+                self.prev_val = Some(*cur as u32);
+                *cur ^= 0xFF;
+            } else if num_bits == 16 {
+                let cur = bytes.as_mut_ptr().add(self.idx) as *mut u16;
+                self.prev_val = Some(*cur as u32);
+                *cur ^= 0xFFFF;
+            } else {
+                let cur = bytes.as_mut_ptr().add(self.idx) as *mut u32;
+                self.prev_val = Some(*cur);
+                *cur ^= 0xFFFFFFFF;
             }
-            if num_bits >= 2 {
-                flip_bit(bytes, s.idx + 1);
-            }
-            if num_bits >= 4 {
-                flip_bit(bytes, s.idx + 2);
-                flip_bit(bytes, s.idx + 3);
-            }
-        } else if num_bits == 8 {
-            let cur = bytes.as_mut_ptr().add(s.idx);
-            s.prev_val = Some(*cur as u32);
-            *cur ^= 0xFF;
-        } else if num_bits == 16 {
-            let cur = bytes.as_mut_ptr().add(s.idx) as *mut u16;
-            s.prev_val = Some(*cur as u32);
-            *cur ^= 0xFFFF;
-        } else {
-            let cur = bytes.as_mut_ptr().add(s.idx) as *mut u32;
-            s.prev_val = Some(*cur);
-            *cur ^= 0xFFFFFFFF;
         }
+
+        StageResult::WillRestoreInput
     }
-
-    StageResult::WillRestoreInput
 }
 
 /** Helper function to see if a particular change (xor_val = old ^ new) could
