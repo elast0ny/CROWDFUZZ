@@ -1,4 +1,5 @@
 use std::mem::MaybeUninit;
+use std::collections::{BinaryHeap, HashMap};
 
 use ::afl_lib::*;
 use ::cflib::*;
@@ -10,28 +11,38 @@ cflib::register!(fuzz, update_state);
 cflib::register!(unload, destroy);
 
 struct State {
-    globals: AflState,
+    globals: AflGlobals,
     queue: Vec<AflQueueEntry>,
-    cur_input_idx: &'static usize,
+    inputs: &'static Vec<CfInputInfo>,
+    num_execs: &'static u64,
 }
 
 // Initialize our plugin
 fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     #[allow(invalid_value)]
-    let mut state = Box::new(unsafe {
+    let mut s = Box::new(unsafe {
         State {
-            globals: AflState::default(),
+            globals: AflGlobals::default(),
             queue: Vec::new(),
-            cur_input_idx: MaybeUninit::zeroed().assume_init(),
+            // Core store vals
+            num_execs: store.as_ref(STORE_NUM_EXECS, Some(core))?,
+            // Plugin store vals
+            inputs: MaybeUninit::zeroed().assume_init(),
         }
     });
 
-    // Insert the AflState vec to the store
-    store_insert_exclusive!(core, store, STORE_AFL_STATE, mutref_to_raw!(state.globals));
-    // Insert the AflInputInfo vec to the store
-    store_insert_exclusive!(core, store, STORE_AFL_QUEUE, mutref_to_raw!(state.queue));
+    store.insert_exclusive(STORE_AFL_GLOBALS, &s.globals, Some(core))?;
+    store.insert_exclusive(STORE_AFL_QUEUE, &s.globals, Some(core))?;
 
-    Ok(Box::into_raw(state) as _)
+    let plugin_conf: &HashMap<String, String>;
+    unsafe {
+        plugin_conf = store.as_ref(STORE_PLUGIN_CONF, Some(core))?
+    }
+
+    s.load_conf(plugin_conf)?;
+
+
+    Ok(Box::into_raw(s) as _)
 }
 
 // Make sure we have everything to fuzz properly
@@ -40,10 +51,13 @@ fn validate(
     store: &mut CfStore,
     plugin_ctx: *mut u8,
 ) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
+    let s = box_ref!(plugin_ctx, State);
 
-    // Take ref to cur_input_idx
-    state.cur_input_idx = raw_to_ref!(*store_get_mandatory!(core, store, STORE_INPUT_IDX), usize);
+    unsafe {
+        s.inputs = store.as_ref(STORE_INPUT_LIST, Some(core))?;
+    }
+
+    s.queue.resize_with(s.inputs.len(), Default::default);
 
     Ok(())
 }
@@ -54,13 +68,13 @@ fn update_state(
     _store: &mut CfStore,
     plugin_ctx: *mut u8,
 ) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
+    let s = box_ref!(plugin_ctx, State);
 
-    // Increase our queue vec if indexing above it
-    if *state.cur_input_idx >= state.queue.len() {
-        state
-            .queue
-            .resize_with(*state.cur_input_idx + 1, Default::default);
+    // New inputs have been added to our input list !
+    if s.inputs.len() > s.queue.len() {
+        let mut val = AflQueueEntry::default();
+        val.handicap = *s.num_execs - 1;
+        s.queue.resize(s.inputs.len(), val);
     }
 
     Ok(())
@@ -74,8 +88,19 @@ fn destroy(
 ) -> Result<()> {
     let _state = box_take!(plugin_ctx, State);
 
-    let _ = store.remove(STORE_AFL_STATE).unwrap();
-    let _ = store.remove(STORE_AFL_QUEUE).unwrap();
+    store.remove(STORE_AFL_GLOBALS).unwrap();
+    store.remove(STORE_AFL_QUEUE).unwrap();
 
     Ok(())
+}
+
+
+
+impl State {
+    pub fn load_conf(&mut self, plugin_conf: &HashMap<String,String>) -> Result<()> {
+
+
+
+        Ok(())
+    }
 }

@@ -6,7 +6,7 @@ pub const STORE_AFL_GLOBALS: &str = "afl_globals";
 /// (*mut Vec<AflQueueEntry>) Holds AFL specific information about the current inputs
 pub const STORE_AFL_QUEUE: &str = "afl_queue";
 
-
+#[derive(Copy,Clone)]
 pub struct AflQueueEntry {
     pub cal_failed: bool,
     pub time_done: bool,
@@ -24,7 +24,6 @@ pub struct AflQueueEntry {
     pub handicap: u64,
     pub depth: u64,
 }
-
 impl Default for AflQueueEntry {
     fn default() -> Self {
         Self {

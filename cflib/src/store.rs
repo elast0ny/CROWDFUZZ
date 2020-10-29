@@ -122,6 +122,13 @@ pub struct InputPriority {
     /// The index of the input
     pub idx: usize,
 }
+impl InputPriority {
+    pub fn from(weight: usize, idx: usize) -> Self {
+        Self {
+            weight, idx,
+        }
+    }
+}
 
 /// Represents the contents of an input
 pub struct CfInput {
