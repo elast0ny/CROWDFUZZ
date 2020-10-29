@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "afl_queue"
+name = "afl_state"
 version = "0.0.1"
 dependencies = [
  "afl_lib",

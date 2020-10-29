@@ -86,7 +86,14 @@ fn validate(
         state.inputs = store.as_mutref(STORE_INPUT_LIST, Some(core))?;
         state.cur_input_idx = store.as_ref(STORE_INPUT_IDX, Some(core))?;
         state.cur_input = store.as_mutref(STORE_INPUT_BYTES, Some(core))?;
-        state.afl_vars = store.as_mutref(STORE_AFL_GLOBALS, Some(core))?;
+        
+        match store.as_mutref(STORE_AFL_GLOBALS, None) {
+            Ok(v) => state.afl_vars = v,
+            Err(e) => {
+                core.warn("Missing AFL globals ! Is the `afl_state` plugin running ?");
+                return Err(e);
+            }
+        };
         state.afl_queue = store.as_mutref(STORE_AFL_QUEUE, Some(core))?;        
     }
 

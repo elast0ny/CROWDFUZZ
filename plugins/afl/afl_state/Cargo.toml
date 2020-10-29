@@ -1,12 +1,12 @@
 [package]
-name = "afl_queue"
+name = "afl_state"
 version = "0.0.1"
 authors = ["Elast0ny <Elast0ny00@gmail.com>"]
 edition = "2018"
 
 [lib]
-path = "src/afl_queue.rs"
-name = "afl_queue"
+path = "src/afl_state.rs"
+name = "afl_state"
 crate-type = ["cdylib"] # Compile to native lib
 
 [dependencies]
