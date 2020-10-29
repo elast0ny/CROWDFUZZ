@@ -217,7 +217,7 @@ fn run_target(
         Some(child.wait().unwrap())
     };
 
-    state.exec_time = child_start.elapsed().as_micros() as u64;
+    state.exec_time = child_start.elapsed().as_nanos() as u64;
 
     update_average(
         state.avg_exec_time.val,

@@ -90,9 +90,9 @@ pub const STORE_RESTORE_INPUT: &str = "restore_input";
 /* Target exec */
 /// (*mut TargetExitStatus) The exit status for the last run
 pub const STORE_EXIT_STATUS: &str = "exit_status";
-/// (*const u64) Number of US the target took to run the last input
+/// (*const u64) Number of nanoseconds the target took to run the last input
 pub const STORE_TARGET_EXEC_TIME: &str = "exec_time";
-/// (*const u64) Number of US the target takes on average to run 1 input
+/// (*const u64) Average nanoseconds the target takes to run
 pub const STORE_AVG_TARGET_EXEC_TIME: &str = "avg_exec_time";
 
 pub enum TargetExitStatus {

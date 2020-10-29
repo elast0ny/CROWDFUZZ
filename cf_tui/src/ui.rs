@@ -297,9 +297,9 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
                 // Rename first stat to core/plugin time
                 let cur_tag = if stat_idx == 0 {
                     if plugin_idx == 0 {
-                        "avg_core_time_us"
+                        "avg_core_time_ns"
                     } else {
-                        "avg_plugin_time_us"
+                        "avg_plugin_time_ns"
                     }
                 } else {
                     stat.tag.as_str()
@@ -353,19 +353,19 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
         if tag.len() > max_plugin_name_len {
             max_plugin_name_len = tag.len();
         }
-        val.update_str_repr((None, Some(TAG_POSTFIX_US)));
+        val.update_str_repr((None, Some(TAG_POSTFIX_NS)));
     }
 
     // Be nice to plugins runing a target and substract the target_exec
     // from the plugin_time
-    let mut substract_time = 0;
+    let mut substract_time = None;
     for (tag, val) in state.ui.plugins_view.iter_mut() {
         if STAT_TARGET_EXEC_TIME != tag.as_str() {
             continue;
         }
 
         if let CachedStatVal::Num(ref v) = val.val {
-            substract_time = *v;
+            substract_time = Some(*v);
             break;
         }
     }
@@ -377,11 +377,15 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
         }
 
         if idx == 0 {
-            if let CachedStatVal::Num(ref mut v) = val.val {
-                if *v > substract_time {
-                    *v -= substract_time;
+            match (&mut val.val, substract_time) {
+                (CachedStatVal::Num(ref mut v), Some(sub_v)) => {
+                    if sub_v > *v {
+                        *v = 0;
+                    }
+                    *v -= sub_v;
                 }
-            }
+                (_, _) => {}
+            };
         }
 
         val.update_str_repr(tag_hints);

@@ -80,11 +80,12 @@ impl InterestState {
     }
 
     pub fn iterations(&self) -> usize {
-        self.idx * match self.stage {
-            InterestStage::Width8(_, _) => INTERESTING_8.len(),
-            InterestStage::Width16(_, _) => INTERESTING_16.len(),
-            InterestStage::Width32(_, _) => INTERESTING_32.len(),
-        }
+        self.idx
+            * match self.stage {
+                InterestStage::Width8(_, _) => INTERESTING_8.len(),
+                InterestStage::Width16(_, _) => INTERESTING_16.len(),
+                InterestStage::Width32(_, _) => INTERESTING_32.len(),
+            }
     }
 }
 

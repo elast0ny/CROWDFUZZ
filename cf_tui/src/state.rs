@@ -118,6 +118,7 @@ impl State {
                 continue;
             }
             changed = true;
+
             // New fuzzer
             self.fuzzers.push(fuzzer);
         }

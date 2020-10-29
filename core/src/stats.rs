@@ -53,7 +53,7 @@ impl<'a> CfCore<'a> {
         let mut tag = format!(
             "{}exec_time{}",
             cflib::TAG_PREFIX_AVG,
-            cflib::TAG_POSTFIX_US
+            cflib::TAG_POSTFIX_NS
         );
         self.stats.exec_time = match self.ctx.stats.new_stat(&tag, NewStat::Num(0)) {
             Ok(StatVal::Num(v)) => v,
@@ -110,7 +110,7 @@ impl<'a> CfCore<'a> {
             &mut tag,
             "{}iteration_time{}",
             cflib::TAG_PREFIX_AVG,
-            cflib::TAG_POSTFIX_US
+            cflib::TAG_POSTFIX_NS
         );
         self.stats.total_exec_time = match self.ctx.stats.new_stat(&tag, NewStat::Num(0)) {
             Ok(StatVal::Num(v)) => v,

@@ -134,7 +134,7 @@ fn mutate_input(
                 // Update cur_stage stat
                 stage.update_info(&mut state.stage_name, state.stat_num_iterations.val);
                 state.stat_cur_stage.set(&state.stage_name);
-                
+
                 // Loop again to mutate at least once
                 continue;
             }

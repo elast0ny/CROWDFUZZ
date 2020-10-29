@@ -131,7 +131,7 @@ impl<'a> CfCore<'a> {
                 &format!(
                     "{}exec_time{}",
                     cflib::TAG_PREFIX_AVG,
-                    cflib::TAG_POSTFIX_US
+                    cflib::TAG_POSTFIX_NS
                 ),
                 NewStat::Num(0),
             ) {
@@ -224,7 +224,7 @@ impl<'a> CfCore<'a> {
 
             plugin_start = Instant::now();
             plugin.do_work(&mut self.ctx, &mut self.store.content)?;
-            time_elapsed = plugin_start.elapsed().as_micros() as u64;
+            time_elapsed = plugin_start.elapsed().as_nanos() as u64;
 
             total_plugin_time += time_elapsed;
 
@@ -234,7 +234,14 @@ impl<'a> CfCore<'a> {
                 time_elapsed,
                 *self.stats.num_execs.val,
             );
-            debug!("\tTime : {} us", *plugin.exec_time.val);
+            debug!("\tTime : {} ns", *plugin.exec_time.val);
+            //Adjust the plugin's exec_time average
+            cflib::update_average(
+                plugin.exec_time.val,
+                time_elapsed,
+                *self.stats.num_execs.val + 1,
+            );
+            debug!("\tTime : {} ns", *plugin.exec_time.val);
 
             self.ctx.cur_plugin_id += 1;
         }
@@ -242,7 +249,7 @@ impl<'a> CfCore<'a> {
         self.ctx.cur_plugin_id = num_plugins;
 
         //Adjust the core's exec_time average
-        time_elapsed = core_start.elapsed().as_micros() as u64;
+        time_elapsed = core_start.elapsed().as_nanos() as u64;
         cflib::update_average(
             self.stats.total_exec_time.val,
             time_elapsed,
@@ -282,7 +289,7 @@ impl<'a> CfCore<'a> {
                 // run the plugin
                 plugin_start = Instant::now();
                 plugin.do_work(&mut self.ctx, &mut self.store.content)?;
-                time_elapsed = plugin_start.elapsed().as_micros() as u64;
+                time_elapsed = plugin_start.elapsed().as_nanos() as u64;
                 // Update plugin's exec time
                 cflib::update_average(
                     plugin.exec_time.val,
@@ -300,7 +307,7 @@ impl<'a> CfCore<'a> {
                 return Err(From::from("CTRL-C while fuzzing".to_string()));
             }
 
-            time_elapsed = core_start.elapsed().as_micros() as u64;
+            time_elapsed = core_start.elapsed().as_nanos() as u64;
             // Update average full iteration time
             cflib::update_average(
                 self.stats.total_exec_time.val,

@@ -4,6 +4,12 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::*;
 
+pub const US_TO_NS: u64 = 1_000; //microseconds
+pub const MS_TO_NS: u64 = 1_000_000; // milliseconds
+pub const S_TO_NS: u64 = 1_000_000_000; // seconds
+pub const M_TO_NS: u64 = 60 * S_TO_NS;
+pub const H_TO_NS: u64 = 60 * M_TO_NS;
+
 pub fn update_average(cur_avg: &mut u64, new_val: u64, val_num: u64) {
     let cur_val = *cur_avg;
     *cur_avg = if cur_val > new_val {
@@ -67,23 +73,19 @@ pub fn pretty_num(
 
     let mut generated_str = false;
 
-    const US_IN_MS: u64 = 1000;
-    const US_IN_S: u64 = 1000 * US_IN_MS;
-    const US_IN_M: u64 = 60 * US_IN_S;
-    const US_IN_H: u64 = 60 * US_IN_M;
-
     if let Some(postfix) = type_hints.1 {
         val = match postfix {
             TAG_POSTFIX_HEX => {
                 let _ = write!(dst, "0x{:X}", val);
                 return;
             }
-            // Convert time number to US
-            TAG_POSTFIX_MS => val * US_IN_MS,
-            TAG_POSTFIX_SEC | TAG_POSTFIX_EPOCHS => val * US_IN_S,
-            TAG_POSTFIX_MIN => val * US_IN_M,
-            TAG_POSTFIX_HOUR => val * US_IN_H,
-            TAG_POSTFIX_US => val,
+            // Convert time number to ns
+            TAG_POSTFIX_NS => val,
+            TAG_POSTFIX_US => val * US_TO_NS,
+            TAG_POSTFIX_MS => val * MS_TO_NS,
+            TAG_POSTFIX_SEC | TAG_POSTFIX_EPOCHS => val * S_TO_NS,
+            TAG_POSTFIX_MIN => val * M_TO_NS,
+            TAG_POSTFIX_HOUR => val * H_TO_NS,
             // Any other postfix dont apply to numbers
             _ => {
                 let _ = write!(dst, "{}?", val);
@@ -92,21 +94,21 @@ pub fn pretty_num(
         };
 
         // Attempt to write "long" timescales
-        if val > US_IN_H {
-            let _ = write!(dst, "{}h", val / US_IN_H);
-            val %= US_IN_H;
+        if val > H_TO_NS {
+            let _ = write!(dst, "{}h", val / H_TO_NS);
+            val %= H_TO_NS;
             generated_str = true;
         }
-        if val > US_IN_M {
-            let _ = write!(dst, "{}m", val / US_IN_M);
-            val %= US_IN_M;
+        if val > M_TO_NS {
+            let _ = write!(dst, "{}m", val / M_TO_NS);
+            val %= M_TO_NS;
             generated_str = true;
         }
-        if val > US_IN_S {
-            let _ = write!(dst, "{}", val / US_IN_S);
-            val %= US_IN_S;
-            if val > US_IN_MS {
-                let _ = write!(dst, ".{:03}s", val / US_IN_MS);
+        if val > S_TO_NS {
+            let _ = write!(dst, "{}", val / S_TO_NS);
+            val %= S_TO_NS;
+            if val > MS_TO_NS {
+                let _ = write!(dst, ".{:03}s", val / MS_TO_NS);
             } else {
                 dst.push('s');
             }
@@ -115,14 +117,15 @@ pub fn pretty_num(
 
         // Write smaller time scales
         if !generated_str {
-            if val > US_IN_MS {
-                let _ = write!(dst, "{} ms", val / US_IN_MS);
+            if val > MS_TO_NS {
+                let _ = write!(dst, "{} ms", val / MS_TO_NS);
+            } else if val > 2 * US_TO_NS {
+                let _ = write!(dst, "{} us", val / US_TO_NS);
             } else if val > 0 {
-                let _ = write!(dst, "{} us", val);
+                let _ = write!(dst, "{}.{:03} us", val / US_TO_NS, val % US_TO_NS);
             } else {
-                dst.push_str("<1 us");
+                dst.push_str("<1 ns");
             }
-
             generated_str = true;
         }
     }

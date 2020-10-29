@@ -136,7 +136,7 @@ fn select_input(
                 return Err(From::from("No input contents".to_string()));
             }
         }
-        //core.debug("New input !");
+    //core.debug("New input !");
     } else {
         //core.debug("Restored input !");
     }
