@@ -113,14 +113,15 @@ impl State {
 
     /// Save any new file
     pub fn save_new_inputs(&mut self, _core: &dyn PluginInterface, write_to_queue: bool) -> bool {
+
+        if self.new_inputs.is_empty() {
+            return false;
+        }
+
         let mut saved_one = false;
         let mut cur_input: Vec<&[u8]> = Vec::with_capacity(1);
         let mut cur_fpath: Option<PathBuf>;
         let mut cur_input_len: usize;
-
-        if self.new_inputs.is_empty() {
-            return saved_one;
-        }
 
         for new_input in self.new_inputs.drain(..) {
             cur_input.clear();

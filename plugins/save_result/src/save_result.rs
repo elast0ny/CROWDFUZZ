@@ -152,6 +152,12 @@ fn destroy(
 impl State {
     /// Saves the current input if exit_status was interesting
     pub fn save_input(&mut self) -> Result<bool> {
+        
+        // Likely path first 
+        if let TargetExitStatus::Normal(_) = self.exit_status {
+            return Ok(false);
+        }
+
         let dst: &mut PathBuf = match self.exit_status {
             TargetExitStatus::Crash(_) => {
                 *self.num_crashes.val += 1;
@@ -161,7 +167,7 @@ impl State {
                 *self.num_timeouts.val += 1;
                 &mut self.crash_dir
             }
-            _ => return Ok(false),
+            TargetExitStatus::Normal(_) => unreachable!(),
         };
 
         let input_info = unsafe { self.input_list.get_unchecked(*self.cur_input_idx) };
