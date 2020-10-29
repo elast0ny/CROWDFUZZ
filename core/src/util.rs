@@ -1,10 +1,10 @@
-use log::*;
+use ::log::*;
 use sysinfo::{ProcessExt, RefreshKind, System, SystemExt};
 
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
-use crate::Result;
+use crate::*;
 
 pub fn get_num_instances() -> Result<usize> {
     let mut num_found = 0;
@@ -39,67 +39,36 @@ use ::affinity::set_process_affinity as set_affinity;
 #[cfg(not(target_os = "windows"))]
 use ::affinity::set_thread_affinity as set_affinity;
 
-/// Binds the current process to the specified core. If None, the function will search existing processes
-/// and increment the core ID for every fuzzer process that is running
-pub fn bind_to_core(target_core: isize) -> Result<usize> {
-    let num_cores = affinity::get_core_num() as isize;
-    let requested_core = target_core % num_cores;
-    let target_core_id: usize;
-    if target_core < 0 {
-        target_core_id = (num_cores + requested_core) as usize;
-    } else {
-        target_core_id = requested_core as usize;
-    }
-
-    // Make sure we are getting a valid cpu index
-    if requested_core != target_core {
-        warn!(
-            "Tried to bind to core {} but only {} cores available, using core {} instead...",
-            target_core, num_cores, target_core_id,
-        );
-    }
-
-    set_affinity(&[target_core_id])?;
-
-    Ok(target_core_id)
+/// Binds the current process to the specified core.
+pub fn bind_to_core(target_core: usize) -> Result<usize> {
+    set_affinity(&[target_core])?;
+    Ok(target_core)
 }
 
 /// Spawns another instance of the fuzzer
-pub fn spawn_next_instance(instance_num: isize, cwd: &Path) -> Result<Option<Child>> {
-    let mut new_inst_num = instance_num;
-    let num_cores = affinity::get_core_num() as isize;
-    if instance_num <= 0 {
-        new_inst_num = (num_cores as isize) + instance_num;
-        if new_inst_num <= 0 {
-            return Ok(None);
-        }
-    }
-
-    if new_inst_num == 1 {
-        return Ok(None);
-    }
-
-    info!("Spawning {} instances", new_inst_num);
+pub fn spawn_self(cwd: &Path, allow_stdout: bool) -> Result<Option<Child>> {
 
     let mut args = std::env::args();
     let process_path = args.next().unwrap();
-
-    let mut last_is_instance = false;
     let mut new_args: Vec<String> = Vec::new();
+
+    let mut skip_next = false;
+
     for arg in args {
-        // strip verbose from child process
-        if arg == "--verbose" || (arg.starts_with("-v") && arg.chars().skip(1).all(|c| c == 'v')) {
+
+        if skip_next {
+            skip_next = false;
             continue;
         }
 
-        if last_is_instance {
-            new_args.push((new_inst_num - 1).to_string());
-            last_is_instance = false;
+        // strip verbose from child process
+        if !allow_stdout && (arg == ARG_VERBOSE_LONG || (arg.starts_with(ARG_VERBOSE_SHORT) && arg.chars().skip(1).all(|c| c == 'v'))) {
+            continue;
+        } else if arg == ARG_INSTANCES_LONG || arg == ARG_INSTANCES_SHORT {
+            skip_next = true;
             continue;
         }
-        if arg == "--num_instances" || arg == "-n" {
-            last_is_instance = true;
-        }
+
         new_args.push(arg);
     }
 
@@ -108,18 +77,24 @@ pub fn spawn_next_instance(instance_num: isize, cwd: &Path) -> Result<Option<Chi
 
     // Change to directory that invoked us before spawning
     std::env::set_current_dir(&cwd)?;
-    //info!("{}\\{} {:?}", cwd.to_string_lossy(), process_path, new_args);
+    trace!("{}\\{} {:?}", cwd.to_string_lossy(), process_path, new_args);
     let child = match Command::new(&process_path)
         .args(&new_args)
         .current_dir(cwd)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(if allow_stdout {
+            Stdio::inherit()
+        } else {
+            Stdio::null()
+        })
+        .stderr(if allow_stdout {
+            Stdio::inherit()
+        } else {
+            Stdio::null()
+        })
         .spawn()
     {
         Ok(child) => {
-            //debug!("{}", std::str::from_utf8(&child.wait_with_output().unwrap().stderr).unwrap());
-            //None
             Some(child)
         }
         Err(e) => {
@@ -135,7 +110,5 @@ pub fn spawn_next_instance(instance_num: isize, cwd: &Path) -> Result<Option<Chi
 
     //restore cwd
     std::env::set_current_dir(&cur_dir)?;
-
-    info!("Spawned next fuzzer instance !");
     Ok(child)
 }

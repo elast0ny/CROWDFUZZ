@@ -9,8 +9,8 @@
 "fuzz_loop" : 
   - '..\target\release\fs_store.dll'
   - '..\target\release\select_input.dll'
-  #- '..\target\release\basic_mutate.dll'
-  - '..\target\release\afl_mutate.dll'
+  - '..\target\release\basic_mutate.dll'
+  #- '..\target\release\afl_mutate.dll'
   - '..\target\release\run_target.dll'
   - '..\target\release\save_result.dll'
 

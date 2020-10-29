@@ -1,18 +1,17 @@
 use std::path::{Path, PathBuf};
 use std::{
     collections::HashMap,
-    fs,
     fs::{create_dir_all, File},
 };
 
 use ::log::*;
-use ::serde_derive::{Deserialize, Serialize};
-use ::shared_memory::ShmemConf;
+use ::serde_derive::{Deserialize};
+use ::shared_memory::{ShmemConf, Shmem};
 use ::sysinfo::{ProcessExt, RefreshKind, System, SystemExt};
 
 use crate::Result;
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct Config {
     /// Path to directory holding starting testcases
     pub input: String,
@@ -38,7 +37,7 @@ pub struct Config {
     #[serde(default = "String::new")]
     pub cwd: String,
     /// Size of the memory used for statistics for UIs
-    #[serde(default = "default_smem_size")]
+    #[serde(default = "default_shmem_size")]
     pub shmem_size: usize,
     /// Path of the statistic file
     #[serde(default = "default_stats_path")]
@@ -48,18 +47,25 @@ pub struct Config {
     #[serde(default = "String::new")]
     pub prefix: String,
     #[serde(skip_deserializing)]
+    pub instance_id: usize,
+    
+    #[serde(skip_deserializing)]
+    pub shmem: Option<Shmem>,
+
+    #[serde(skip_deserializing)]
     #[serde(default = "PathBuf::new")]
-    pub prev_wd: PathBuf,
+    pub invoke_dir: PathBuf,
 }
 
-fn default_smem_size() -> usize {
-    4096
+fn default_shmem_size() -> usize {
+    4096 // 1 page is the lowest the OS gives anyway
 }
 fn default_stats_path() -> String {
     String::from("fuzzer_stats")
 }
 
-fn cleanup_dead_fuzzer(stats_file: &Path) -> bool {
+/// Attempts to delete a dead fuzzer's stat file. Returns true if the file is succesfully deleted.
+fn is_fuzzer_alive(stats_file: &Path) -> bool {
     debug!("Openning shmem link");
     let shmem = match ShmemConf::new().flink(stats_file).open() {
         Ok(m) => m,
@@ -80,11 +86,11 @@ fn cleanup_dead_fuzzer(stats_file: &Path) -> bool {
 
     if !fuzzer_alive {
         debug!("Deleting shmem link");
-        return std::fs::remove_file(stats_file).is_ok();
+        return std::fs::remove_file(stats_file).is_err();
     }
 
     // Nothing was deleted
-    false
+    fuzzer_alive
 }
 
 impl Config {
@@ -138,46 +144,64 @@ impl Config {
     }
 
     /// Picks a unique fuzzer prefix based on current state directory
-    fn set_prefix(&mut self) -> Result<()> {
-        let mut fuzz_num = 1;
-        // Check how many fuzzer stats files there are in the state directory
-        if let Ok(mut dir_list) = fs::read_dir(&self.state) {
-            while let Some(Ok(entry)) = dir_list.next() {
-                let fname = entry.file_name();
-                let file_name = fname.to_str().unwrap();
-
-                if !file_name.starts_with(&self.stats_file) {
-                    continue;
-                }
-                // TODO : Read the fuzzer stats file and ensure that the pid is still a live fuzzer process
-                if cleanup_dead_fuzzer(entry.path().as_path()) {
-                    warn!("Deleted stats file from dead fuzzer : {}", file_name);
-                    continue;
-                }
-                fuzz_num += 1;
-            }
-        }
-        self.prefix.push_str(&fuzz_num.to_string());
-
-        self.stats_file.push_str("_");
-        self.stats_file.push_str(&self.prefix);
-
+    fn create_next_instance(&mut self) -> Result<()> {
+        use std::fmt::Write;
         let mut tmp_path = PathBuf::from(&self.state);
-
-        tmp_path.push(&self.stats_file);
-        self.stats_file = tmp_path.to_str().unwrap().to_string();
-        tmp_path.pop();
-
-        tmp_path.push(&self.prefix);
-        self.state = tmp_path.to_str().unwrap().to_string();
-        if !tmp_path.is_dir() {
-            warn!("Folder \"{}\" does not exist. Creating...", self.state);
-            if let Err(e) = create_dir_all(&tmp_path) {
-                return Err(From::from(format!(
-                    "Failed to create directory : '{}' with {}",
-                    self.state, e
-                )));
+        let mut tmp_name = String::with_capacity(self.prefix.len() + 4);
+        let mut tmp_stat_name = String::new();
+        
+        let mut shmem_attempts = 0;
+        self.instance_id = 0;
+        loop {
+            self.instance_id += 1;
+            tmp_name.clear();
+            tmp_stat_name.clear();
+            let _ = write!(&mut tmp_name, "{}{}", self.prefix, self.instance_id);
+            let _ = write!(&mut tmp_stat_name, "{}_{}", self.stats_file, tmp_name);
+            
+            tmp_path.push(&tmp_stat_name);
+            // If the file exist and fuzzer is still alive
+            if tmp_path.is_file() && is_fuzzer_alive(tmp_path.as_path()) {
+                debug!("Fuzzer '{}' is currently running!", tmp_name);
+                tmp_path.pop();
+                continue
             }
+
+            // Lock in the stat file asap
+            self.shmem = match ShmemConf::new().flink(&tmp_path).size(self.shmem_size).create() {
+                Ok(s) => Some(s),
+                Err(_) => {
+                    tmp_path.pop();
+
+                    if shmem_attempts >= 5 {
+                        return Err(From::from(format!("Failed to create unused fuzzer stats {} times...", shmem_attempts)));
+                    }
+                    // Maybe another fuzzer snatched it before us !
+                    // Try again just to make sure the fuzzer is alive
+                    shmem_attempts += 1;
+                    self.instance_id -= 1;
+                    continue;
+                }
+            };
+
+            // Save the fuzzer name & stat_file path
+            self.prefix = tmp_name;
+            self.stats_file = tmp_path.to_str().unwrap().to_string();
+            tmp_path.pop();
+
+            // Create the fuzzer's state directory
+            tmp_path.push(&self.prefix);
+            self.state = tmp_path.to_str().unwrap().to_string();
+            if !tmp_path.is_dir() {
+                warn!("Folder \"{}\" does not exist. Creating...", self.state);
+                if let Err(e) = create_dir_all(&tmp_path) {
+                    return Err(From::from(format!(
+                        "Failed to create directory : '{}' with {}",
+                        self.state, e
+                    )));
+                }
+            }
+            break;
         }
 
         Ok(())
@@ -218,10 +242,10 @@ impl Config {
         };
 
         // Set the current working directory to be the config's directory
-        config.prev_wd = std::env::current_dir().unwrap();
+        config.invoke_dir = std::env::current_dir().unwrap();
         config.cwd = String::from(match path.parent() {
             Some(d) => {
-                if config.prev_wd != d {
+                if config.invoke_dir != d {
                     debug!("Changing to config directory '{}'", d.to_string_lossy());
                     if let Err(e) = std::env::set_current_dir(d) {
                         return Err(From::from(format!(
@@ -232,14 +256,15 @@ impl Config {
                 }
                 d.to_str().unwrap()
             }
-            None => config.prev_wd.to_str().unwrap(),
+            None => config.invoke_dir.to_str().unwrap(),
         });
         config.prefix = String::from(prefix.as_ref());
 
         // Validate base directories
         config.validate()?;
 
-        config.set_prefix()?;
+        // Create files for the next available instance in this project
+        config.create_next_instance()?;
 
         Ok(config)
     }

@@ -34,25 +34,27 @@ pub struct CfCore<'a> {
 }
 
 impl<'a> CfCore<'a> {
-    pub fn init(prefix: &str, config_path: &str) -> Result<Pin<Box<Self>>> {
-        info!("Loading project config");
-        let config = Config::new(prefix, config_path)?;
-
+    pub fn init(mut config: Config) -> Result<Pin<Box<Self>>> {
         info!(
             "Allocating space for fuzzer statistics '{}'",
             config.stats_file
         );
-        let shmem = match ShmemConf::new()
-            .flink(&config.stats_file)
-            .size(config.shmem_size)
-            .create()
-        {
-            Ok(m) => m,
-            Err(e) => {
-                return Err(From::from(format!(
-                    "Failed to create shared memory mapping of size {} with error : {:?}",
-                    config.shmem_size, e
-                )))
+        let shmem = match config.shmem.take() {
+            Some(s) => s,
+            None => {
+                match ShmemConf::new()
+                    .flink(&config.stats_file)
+                    .size(config.shmem_size)
+                    .create()
+                {
+                    Ok(m) => m,
+                    Err(e) => {
+                        return Err(From::from(format!(
+                            "Failed to create shared memory mapping of size {} with error : {:?}",
+                            config.shmem_size, e
+                        )))
+                    }
+                }
             }
         };
 

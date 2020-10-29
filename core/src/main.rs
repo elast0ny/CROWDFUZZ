@@ -1,25 +1,32 @@
 use std::boxed::Box;
+use std::cmp::Ordering;
 use std::process::exit;
 
 use ::clap::{App, Arg};
-pub use ::log::*;
+use ::log::*;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-pub mod log;
-pub mod util;
-
 pub mod config;
 pub mod core;
+pub mod log;
 pub mod plugin;
 pub mod stats;
 pub mod store;
+pub mod util;
 
+pub const ARG_VERBOSE_SHORT: &str = "-v";
+pub const ARG_VERBOSE_LONG: &str = "--verbose";
+pub const ARG_INSTANCES_SHORT: &str = "-n";
+pub const ARG_INSTANCES_LONG: &str = "--num_instances";
+
+use crate::config::Config;
 use crate::core::CfCore;
 
 fn main() -> Result<()> {
     let mut name = String::from(env!("CARGO_PKG_NAME"));
     name.make_ascii_uppercase();
+    let total_cores = ::affinity::get_core_num();
     let args = App::new(&name)
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -42,10 +49,13 @@ fn main() -> Result<()> {
         )
         .arg(
             Arg::with_name("num_instances")
-                .short("-n")
+                .long(ARG_INSTANCES_LONG)
+                .short(ARG_INSTANCES_SHORT)
                 .allow_hyphen_values(true)
-                .long("instances")
-                .help("How many fuzzers to spawn (1 == 1, 0 == #cores, -1 == (#cores - 1))")
+                .help(&format!(
+                    "How many fuzzers to spawn [1 == 1|0 == #cores ({})|-1 == ({} - 1)]",
+                    total_cores, total_cores
+                ))
                 .default_value("1")
                 .takes_value(true),
         )
@@ -59,11 +69,15 @@ fn main() -> Result<()> {
             Arg::with_name("bind_cpu")
                 .long("bind_cpu")
                 .takes_value(true)
-                .help("Bind to a specific cpu core (-1 to disable)"),
+                .help(&format!(
+                    "Bind to a specific cpu core (-1 to disable, max {})",
+                    total_cores - 1
+                )),
         )
         .arg(
             Arg::with_name("verbose")
-                .short("v")
+                .long(ARG_VERBOSE_LONG)
+                .short(ARG_VERBOSE_SHORT)
                 .long("verbose")
                 .multiple(true)
                 .help("Sets the level of verbosity"),
@@ -78,47 +92,101 @@ fn main() -> Result<()> {
 
     info!("==== {}-{} ====", &name, env!("CARGO_PKG_VERSION"));
 
-    let num_instances: isize = match args.value_of("num_instances").unwrap().parse() {
-        Ok(n) => n,
+    // Parse the config
+    info!("Loading project config");
+    let config = Config::new(
+        args.value_of("prefix").unwrap(),
+        args.value_of("config").unwrap(),
+    )?;
+
+    // Validate --bind_cpu
+    let bind_cpu_id: Option<usize> = match args.value_of("bind_cpu") {
+        None => {
+            // Attempt to use the instance_id
+            let target_core = config.instance_id - 1;
+            if target_core >= total_cores {
+                warn!("There are more fuzzers running than cores available !");
+                warn!("Will not bind to any core...");
+                None
+            } else {
+                Some(target_core)
+            }
+        }
+        Some(v) => {
+            let v = v
+                .parse::<isize>()
+                .expect("Invalid number provided for --bind_cpu");
+            if v == -1 {
+                None
+            } else if v >= 0 {
+                let target_core = v as usize;
+                if target_core < total_cores {
+                    Some(target_core)
+                } else {
+                    return Err(From::from(format!(
+                        "Tried to bind to core[{}] but only {} cores are available...",
+                        target_core, total_cores
+                    )));
+                }
+            } else {
+                return Err(From::from(
+                    "Invalid number provided for --bind_cpu".to_string(),
+                ));
+            }
+        }
+    };
+
+    // Basic checks for cpu binding and such
+    let cur_running_instances = util::get_num_instances()?;
+    if config.instance_id < cur_running_instances {
+        warn!("Detected {} fuzzers running on the machine but only {} in the current project folder...", cur_running_instances, config.instance_id);
+        warn!("This could lead to multiple fuzzer binding to the same cpu core.")
+    }
+
+    // Validate -n
+    let num_instances: usize = match args.value_of("num_instances").unwrap().parse::<isize>() {
+        Ok(n) => match n.cmp(&0) {
+            Ordering::Greater => n as usize,
+            Ordering::Equal => total_cores,
+            Ordering::Less => {
+                if n.abs() as usize >= total_cores {
+                    return Err(From::from(format!("Tried to spawn invalid number of instances '{}' but host only has {} cores...", n, total_cores)));
+                } else {
+                    total_cores - (n.abs() as usize)
+                }
+            }
+        },
         Err(e) => {
             return Err(From::from(format!(
-                "Invalid number provided for --num_instances {} : {}",
+                "Invalid number provided for number of instances {} : {}",
                 args.value_of("num_instances").unwrap(),
                 e
             )))
         }
     };
-    let bind_cpu_id: Option<isize> = match args.value_of("bind_cpu") {
-        None => {
-            info!("Automatically selecting cpu core");
-            Some(-(util::get_num_instances()? as isize))
-        }
-        Some(v) => {
-            let v = v
-                .parse::<isize>()
-                .expect("Invalid number provided for --bind-cpu");
-            if v < 0 {
-                None
-            } else {
-                Some(v)
+
+    // Initialize the fuzzer core
+    let mut core = CfCore::init(config)?;
+
+    // Duplicate ourselves if we arent at num_instances yet
+    if num_instances > core.config.instance_id {
+        info!(
+            "Spawning {} instances ! ({}/{} already running)",
+            num_instances - core.config.instance_id,
+            core.config.instance_id, num_instances,
+        );
+        
+        for _ in core.config.instance_id..num_instances {
+            let child = util::spawn_self(&core.config.invoke_dir, args.is_present("single_run"))?;
+            if let Some(mut p) = child {
+                if args.is_present("single_run") {
+                    info!("Waiting for other instances to exit because of --single-run");
+                    let _ = p.wait();
+                }
             }
         }
-    };
-
-    // Initialize the fuzzer core based on the yaml config
-    let mut core = CfCore::init(
-        args.value_of("prefix").unwrap(),
-        args.value_of("config").unwrap(),
-    )?;
-
-    // Spawn the next instance if needed
-    let child = util::spawn_next_instance(num_instances, &core.config.prev_wd)?;
-    if let Some(mut p) = child {
-        if args.is_present("single_run") {
-            info!("Waiting for other instances to exit because of --single-run");
-            let _ = p.wait();
-        }
     }
+
     // Bind now that we arent spawning anything else
     if let Some(core_id) = bind_cpu_id {
         info!("Bound to core #{}", util::bind_to_core(core_id)?);
