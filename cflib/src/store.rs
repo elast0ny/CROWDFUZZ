@@ -86,6 +86,8 @@ pub const STORE_INPUT_IDX: &str = "input_idx";
 pub const STORE_INPUT_BYTES: &str = "input_bytes";
 /// (*mut bool) Whether someone wants us to re-select the same input
 pub const STORE_RESTORE_INPUT: &str = "restore_input";
+/// (*mut BinaryHeap<InputPriority>) Holds a priority queue of input indexes
+pub const STORE_INPUT_PRIORITY: &str = "input_priority";
 
 /* Target exec */
 /// (*mut TargetExitStatus) The exit status for the last run
@@ -111,6 +113,14 @@ pub struct CfInputInfo {
     pub path: Option<PathBuf>,
     /// Size of the contents of the input
     pub len: usize,
+}
+
+#[derive(PartialEq, PartialOrd, Eq, Ord)]
+pub struct InputPriority {
+    /// The arbitrary priority for this input
+    pub weight: usize,
+    /// The index of the input
+    pub idx: usize,
 }
 
 /// Represents the contents of an input
@@ -169,7 +179,7 @@ impl CfStoreUtil for CfStore {
     ) -> Result<&'static T> {
         match get_valid_ptr(self, key) {
             Err(e) => {
-                if let Some(ref core) = core {
+                if let Some(core) = &core {
                     core.error(&format!("Failed to get mandatory store value {} !", key));
                 }
                 Err(e)

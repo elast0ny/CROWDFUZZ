@@ -1,4 +1,5 @@
-use std::collections::VecDeque;
+use std::collections::BinaryHeap;
+
 use std::fs::File;
 use std::io::prelude::*;
 use std::mem::MaybeUninit;
@@ -20,7 +21,7 @@ struct State {
     fuzz_buf: Vec<u8>,
     input_list: &'static Vec<CfInputInfo>,
     no_select: &'static bool,
-    priority_list: VecDeque<usize>,
+    priority_list: BinaryHeap<InputPriority>,
     num_priority_inputs: StatNum,
 }
 
@@ -34,7 +35,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             orig_buf: Vec::new(),
             fuzz_buf: Vec::new(),
             cur_input: CfInput::default(),
-            priority_list: VecDeque::new(),
+            priority_list: BinaryHeap::new(),
             restore_input: false,
             // Stats
             num_priority_inputs: core
@@ -50,7 +51,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     store.insert_exclusive(STORE_INPUT_IDX, &state.cur_input_idx, Some(core))?;
     store.insert_exclusive(STORE_INPUT_BYTES, &state.cur_input, Some(core))?;
     store.insert_exclusive(STORE_RESTORE_INPUT, &state.restore_input, Some(core))?;
-    store.insert_exclusive("select_priority_list", &state.priority_list, Some(core))?;
+    store.insert_exclusive(STORE_INPUT_PRIORITY, &state.priority_list, Some(core))?;
 
     Ok(Box::into_raw(state) as _)
 }
@@ -92,9 +93,11 @@ fn select_input(
 
     // We will select a new input
     if !state.restore_input {
-        // Pick the next input index
-        match state.priority_list.pop_front() {
-            Some(idx) => state.cur_input_idx = idx,
+        match state.priority_list.pop() {
+            Some(v) => {
+                // This is the highest weighted input in the priority list
+                state.cur_input_idx = v.idx;
+            },
             None => {
                 // Just get the next input
                 state.seq_input_idx += 1;
