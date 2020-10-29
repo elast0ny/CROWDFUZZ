@@ -247,14 +247,14 @@ impl Plugin {
     ) -> Result<()> {
         if !self.is_init {
             return Err(From::from(format!(
-                "Tried to call '{}'.pre_fuzz_fn() before init()",
+                "Tried to call {}.pre_fuzz() before load()",
                 self.name
             )));
         }
 
         if let Err(e) = (self.pre_fuzz_fn)(interface, store, self.ctx) {
             return Err(From::from(format!(
-                "'{}'.pre_fuzz_fn() failed with error : {}",
+                "{}.pre_fuzz() : {}",
                 self.name, e
             )));
         }
@@ -271,7 +271,7 @@ impl Plugin {
 
         if let Err(e) = (self.fuzz_fn)(interface, store, self.ctx) {
             return Err(From::from(format!(
-                "'{}'.fuzz() failed with error : {}",
+                "{}.fuzz() : {}",
                 self.name, e
             )));
         }
@@ -287,14 +287,14 @@ impl Plugin {
         //Call init at most once
         if !self.is_init {
             return Err(From::from(format!(
-                "Tried to call '{}'.unload() before init()",
+                "Tried to call {}.unload() before load()",
                 self.name
             )));
         }
 
         if let Err(e) = (self.unload_fn)(interface, store, self.ctx) {
             return Err(From::from(format!(
-                "'{}'.unload() failed with error : {}",
+                "{}.unload() : {}",
                 self.name, e
             )));
         }

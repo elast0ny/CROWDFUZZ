@@ -168,7 +168,6 @@ impl<'a> CfCore<'a> {
 
             debug!("\t\"{}\"->validate()", plugin.name());
             if let Err(e) = plugin.validate(&mut self.ctx, &mut self.store.content) {
-                warn!("Error in plugin \"{}\"'s validate()", plugin.name());
                 return Err(e);
             }
         }
