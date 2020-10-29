@@ -164,10 +164,10 @@ fn destroy(
     let _ctx = box_take!(plugin_ctx, State);
 
     // Remove our store entries
-    let _ = store.remove(STORE_INPUT_IDX);
-    let _ = store.remove(STORE_INPUT_BYTES);
-    let _ = store.remove(STORE_RESTORE_INPUT);
-    let _ = store.remove("select_priority_list");
+    store.remove(STORE_INPUT_IDX).unwrap();
+    store.remove(STORE_INPUT_BYTES).unwrap();
+    store.remove(STORE_RESTORE_INPUT).unwrap();
+    store.remove(STORE_INPUT_PRIORITY).unwrap();
 
     Ok(())
 }
