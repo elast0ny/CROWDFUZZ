@@ -173,9 +173,10 @@ fn main() -> Result<()> {
         info!(
             "Spawning {} instances ! ({}/{} already running)",
             num_instances - core.config.instance_id,
-            core.config.instance_id, num_instances,
+            core.config.instance_id,
+            num_instances,
         );
-        
+
         for _ in core.config.instance_id..num_instances {
             let child = util::spawn_self(&core.config.invoke_dir, args.is_present("single_run"))?;
             if let Some(mut p) = child {
@@ -236,7 +237,7 @@ fn main() -> Result<()> {
     }
 
     core.ctx.stats.set_state(cflib::CoreState::Exiting);
-    
+
     //Planned stop ?
     if core.exiting() {
         info!("Tearing down");

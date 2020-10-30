@@ -97,7 +97,7 @@ fn select_input(
             Some(v) => {
                 // This is the highest weighted input in the priority list
                 state.cur_input_idx = v.idx;
-            },
+            }
             None => {
                 // Just get the next input
                 state.seq_input_idx += 1;

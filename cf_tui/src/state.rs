@@ -93,14 +93,12 @@ impl State {
             let cur = shmem.as_ptr();
 
             let fuzzer_pid;
-            match unsafe{cflib::get_fuzzer_pid(cur)} {
+            match unsafe { cflib::get_fuzzer_pid(cur) } {
                 Ok(Some(p)) => fuzzer_pid = p,
                 Err(_) | Ok(None) => continue,
             };
 
-            let compare_pid_fn = |f: &Fuzzer| {
-                f.stats.pid == fuzzer_pid
-            };
+            let compare_pid_fn = |f: &Fuzzer| f.stats.pid == fuzzer_pid;
 
             // If we are already tracking this pid
             if self.fuzzers.iter().any(compare_pid_fn) {

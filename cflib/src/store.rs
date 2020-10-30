@@ -128,9 +128,7 @@ pub struct InputPriority {
 }
 impl InputPriority {
     pub fn from(weight: usize, idx: usize) -> Self {
-        Self {
-            weight, idx,
-        }
+        Self { weight, idx }
     }
 }
 

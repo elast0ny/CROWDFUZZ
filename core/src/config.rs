@@ -7,8 +7,8 @@ use std::{
 use ::cflib::*;
 
 use ::log::*;
-use ::serde_derive::{Deserialize};
-use ::shared_memory::{ShmemConf, Shmem};
+use ::serde_derive::Deserialize;
+use ::shared_memory::{Shmem, ShmemConf};
 use ::sysinfo::{ProcessExt, RefreshKind, System, SystemExt};
 
 use crate::Result;
@@ -50,7 +50,7 @@ pub struct Config {
     pub prefix: String,
     #[serde(skip_deserializing)]
     pub instance_id: usize,
-    
+
     #[serde(skip_deserializing)]
     pub shmem: Option<Shmem>,
 
@@ -72,7 +72,10 @@ fn is_fuzzer_alive(stats_file: &Path) -> bool {
     let shmem = match ShmemConf::new().flink(stats_file).open() {
         Ok(m) => m,
         Err(_e) => {
-            warn!("Stat memory is invalid for '{}'", stats_file.to_string_lossy());
+            warn!(
+                "Stat memory is invalid for '{}'",
+                stats_file.to_string_lossy()
+            );
             warn!("Deleting stats file...");
             return std::fs::remove_file(stats_file).is_err();
         }
@@ -81,23 +84,29 @@ fn is_fuzzer_alive(stats_file: &Path) -> bool {
     let mut num_attempts = 5;
     let mut pid = 0;
     while num_attempts != 0 {
-        match unsafe{cflib::get_fuzzer_pid(shmem.as_ptr())} {
+        match unsafe { cflib::get_fuzzer_pid(shmem.as_ptr()) } {
             Err(_) => {
-                warn!("Stat memory is invalid for '{}'", stats_file.to_string_lossy());
+                warn!(
+                    "Stat memory is invalid for '{}'",
+                    stats_file.to_string_lossy()
+                );
                 warn!("Deleting stats file...");
-                return std::fs::remove_file(stats_file).is_err()
-            },
+                return std::fs::remove_file(stats_file).is_err();
+            }
             Ok(Some(p)) => pid = p,
-            Ok(None) => {},
+            Ok(None) => {}
         }
         num_attempts -= 1;
     }
     if pid == 0 {
-        warn!("Fuzzer never initialized its pid after >5s in '{}'", stats_file.to_string_lossy());
+        warn!(
+            "Fuzzer never initialized its pid after >5s in '{}'",
+            stats_file.to_string_lossy()
+        );
         warn!("Deleting stats file...");
         return std::fs::remove_file(stats_file).is_err();
     }
-    
+
     debug!("Checking if pid {} is {}", pid, FUZZER_PROCESS_NAME);
     let mut sys_info = System::new_with_specifics(RefreshKind::new().with_processes());
     sys_info.refresh_processes();
@@ -171,7 +180,7 @@ impl Config {
         let mut tmp_path = PathBuf::from(&self.state);
         let mut tmp_name = String::with_capacity(self.prefix.len() + 4);
         let mut tmp_stat_name = String::new();
-        
+
         let mut shmem_attempts = 0;
         self.instance_id = 0;
         loop {
@@ -180,28 +189,35 @@ impl Config {
             tmp_stat_name.clear();
             let _ = write!(&mut tmp_name, "{}{}", self.prefix, self.instance_id);
             let _ = write!(&mut tmp_stat_name, "{}_{}", self.stats_file, tmp_name);
-            
+
             tmp_path.push(&tmp_stat_name);
             // If the file exist and fuzzer is still alive
             if tmp_path.is_file() && is_fuzzer_alive(tmp_path.as_path()) {
                 debug!("Fuzzer '{}' is currently running!", tmp_name);
                 tmp_path.pop();
-                continue
+                continue;
             }
 
             // Lock in the stat file asap
-            self.shmem = match ShmemConf::new().flink(&tmp_path).size(self.shmem_size).create() {
+            self.shmem = match ShmemConf::new()
+                .flink(&tmp_path)
+                .size(self.shmem_size)
+                .create()
+            {
                 Ok(s) => {
-                    unsafe{
+                    unsafe {
                         *(s.as_ptr() as *mut u32) = STAT_MAGIC;
                     }
                     Some(s)
-                },
+                }
                 Err(_) => {
                     tmp_path.pop();
 
                     if shmem_attempts >= 5 {
-                        return Err(From::from(format!("Failed to create unused fuzzer stats {} times...", shmem_attempts)));
+                        return Err(From::from(format!(
+                            "Failed to create unused fuzzer stats {} times...",
+                            shmem_attempts
+                        )));
                     }
                     // Maybe another fuzzer snatched it before us !
                     // Try again just to make sure the fuzzer is alive

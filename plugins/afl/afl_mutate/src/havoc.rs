@@ -14,7 +14,7 @@ impl HavocState {
         // Calculate perf_score from entry.exec_us and bitmap_size
         let mut r = Self {
             num_iterations: 0,
-            rng : SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
+            rng: SmallRng::from_rng(&mut ::rand::thread_rng()).unwrap(),
         };
         r.reset(q, afl);
         r
@@ -45,19 +45,18 @@ impl HavocState {
     }
 
     pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
-        let bytes = unsafe {input.chunks.get_unchecked_mut(0)};
+        let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
         self.num_iterations -= 1;
-    
+
         if self.num_iterations == 0 {
             return StageResult::Done;
         }
-    
+
         bytes[0] = 0x00;
-    
+
         StageResult::CantRestoreInput
     }
 }
-
 
 pub fn calculate_score(q: &mut AflQueueEntry, afl: &AflGlobals) -> u32 {
     let avg_exec_us = (afl.total_cal_us / afl.total_cal_cycles) as usize;

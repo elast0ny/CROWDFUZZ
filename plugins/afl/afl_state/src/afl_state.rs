@@ -1,5 +1,5 @@
-use std::mem::MaybeUninit;
 use std::collections::{BinaryHeap, HashMap};
+use std::mem::MaybeUninit;
 
 use ::afl_lib::*;
 use ::cflib::*;
@@ -35,12 +35,9 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     store.insert_exclusive(STORE_AFL_QUEUE, &s.globals, Some(core))?;
 
     let plugin_conf: &HashMap<String, String>;
-    unsafe {
-        plugin_conf = store.as_ref(STORE_PLUGIN_CONF, Some(core))?
-    }
+    unsafe { plugin_conf = store.as_ref(STORE_PLUGIN_CONF, Some(core))? }
 
     s.load_conf(plugin_conf)?;
-
 
     Ok(Box::into_raw(s) as _)
 }
@@ -94,13 +91,8 @@ fn destroy(
     Ok(())
 }
 
-
-
 impl State {
-    pub fn load_conf(&mut self, plugin_conf: &HashMap<String,String>) -> Result<()> {
-
-
-
+    pub fn load_conf(&mut self, plugin_conf: &HashMap<String, String>) -> Result<()> {
         Ok(())
     }
 }

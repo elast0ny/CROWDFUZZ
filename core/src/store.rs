@@ -39,7 +39,6 @@ impl<'a> CfCore<'a> {
         let _ = store.insert_exclusive(STORE_NO_MUTATE, &self.store.no_mutate, None);
         let _ = store.insert_exclusive(STORE_NO_SELECT, &self.store.no_select, None);
         let _ = store.insert_exclusive(STORE_CORE_STATE, self.ctx.stats.get_state(), None);
-
     }
 
     pub fn clear_public_store(&mut self) {

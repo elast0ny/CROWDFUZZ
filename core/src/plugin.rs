@@ -253,10 +253,7 @@ impl Plugin {
         }
 
         if let Err(e) = (self.pre_fuzz_fn)(interface, store, self.ctx) {
-            return Err(From::from(format!(
-                "{}.pre_fuzz() : {}",
-                self.name, e
-            )));
+            return Err(From::from(format!("{}.pre_fuzz() : {}", self.name, e)));
         }
 
         Ok(())
@@ -270,10 +267,7 @@ impl Plugin {
         //No checks for is_init for performance...
 
         if let Err(e) = (self.fuzz_fn)(interface, store, self.ctx) {
-            return Err(From::from(format!(
-                "{}.fuzz() : {}",
-                self.name, e
-            )));
+            return Err(From::from(format!("{}.fuzz() : {}", self.name, e)));
         }
 
         Ok(())
@@ -293,10 +287,7 @@ impl Plugin {
         }
 
         if let Err(e) = (self.unload_fn)(interface, store, self.ctx) {
-            return Err(From::from(format!(
-                "{}.unload() : {}",
-                self.name, e
-            )));
+            return Err(From::from(format!("{}.unload() : {}", self.name, e)));
         }
 
         self.ctx = null_mut();

@@ -391,8 +391,6 @@ impl<'a> Stats<'a> {
     }
 
     pub fn get_state(&self) -> &CoreState {
-        unsafe {
-            &*(self.buf.as_ptr().add(size_of::<u32>()) as *mut CoreState)
-        }
+        unsafe { &*(self.buf.as_ptr().add(size_of::<u32>()) as *mut CoreState) }
     }
 }

@@ -113,7 +113,6 @@ impl State {
 
     /// Save any new file
     pub fn save_new_inputs(&mut self, _core: &dyn PluginInterface, write_to_queue: bool) -> bool {
-
         if self.new_inputs.is_empty() {
             return false;
         }

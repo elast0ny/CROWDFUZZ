@@ -152,8 +152,7 @@ fn destroy(
 impl State {
     /// Saves the current input if exit_status was interesting
     pub fn save_input(&mut self) -> Result<bool> {
-        
-        // Likely path first 
+        // Likely path first
         if let TargetExitStatus::Normal(_) = self.exit_status {
             return Ok(false);
         }

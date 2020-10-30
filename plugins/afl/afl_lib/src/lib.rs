@@ -6,7 +6,7 @@ pub const STORE_AFL_GLOBALS: &str = "afl_globals";
 /// (*mut Vec<AflQueueEntry>) Holds AFL specific information about the current inputs
 pub const STORE_AFL_QUEUE: &str = "afl_queue";
 
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 pub struct AflQueueEntry {
     pub cal_failed: bool,
     pub time_done: bool,

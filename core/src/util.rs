@@ -47,7 +47,6 @@ pub fn bind_to_core(target_core: usize) -> Result<usize> {
 
 /// Spawns another instance of the fuzzer
 pub fn spawn_self(cwd: &Path, allow_stdout: bool) -> Result<Option<Child>> {
-
     let mut args = std::env::args();
     let process_path = args.next().unwrap();
     let mut new_args: Vec<String> = Vec::new();
@@ -55,14 +54,16 @@ pub fn spawn_self(cwd: &Path, allow_stdout: bool) -> Result<Option<Child>> {
     let mut skip_next = false;
 
     for arg in args {
-
         if skip_next {
             skip_next = false;
             continue;
         }
 
         // strip verbose from child process
-        if !allow_stdout && (arg == ARG_VERBOSE_LONG || (arg.starts_with(ARG_VERBOSE_SHORT) && arg.chars().skip(1).all(|c| c == 'v'))) {
+        if !allow_stdout
+            && (arg == ARG_VERBOSE_LONG
+                || (arg.starts_with(ARG_VERBOSE_SHORT) && arg.chars().skip(1).all(|c| c == 'v')))
+        {
             continue;
         } else if arg == ARG_INSTANCES_LONG || arg == ARG_INSTANCES_SHORT {
             skip_next = true;
@@ -94,9 +95,7 @@ pub fn spawn_self(cwd: &Path, allow_stdout: bool) -> Result<Option<Child>> {
         })
         .spawn()
     {
-        Ok(child) => {
-            Some(child)
-        }
+        Ok(child) => Some(child),
         Err(e) => {
             error!(
                 "Failed to create process {}/{} {:?}",

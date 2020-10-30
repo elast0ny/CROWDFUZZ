@@ -81,7 +81,7 @@ pub struct ArithState {
 
 impl ArithState {
     pub fn new(input: &CfInput) -> Self {
-        let bytes = unsafe {input.chunks.get_unchecked(0)};
+        let bytes = unsafe { input.chunks.get_unchecked(0) };
         let tmp = ArithStage::default();
         Self {
             idx: tmp.max_idx(bytes.len()),
@@ -105,13 +105,15 @@ impl ArithState {
 
     /// Increment/decrement values
     pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
-        let bytes = unsafe {input.chunks.get_unchecked_mut(0)};
+        let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
 
         // Restore the orig input
         if let Some((idx, orig_val)) = self.prev_val.take() {
             unsafe {
                 match self.stage {
-                    ArithStage::AddSub8(_) => *(bytes.as_mut_ptr().add(idx) as *mut u8) = orig_val as _,
+                    ArithStage::AddSub8(_) => {
+                        *(bytes.as_mut_ptr().add(idx) as *mut u8) = orig_val as _
+                    }
                     ArithStage::AddSub16(_) => {
                         *(bytes.as_mut_ptr().add(idx) as *mut u16) = orig_val as _
                     }

@@ -61,7 +61,7 @@ pub struct InterestState {
 }
 impl InterestState {
     pub fn new(input: &CfInput) -> Self {
-        let bytes = unsafe {input.chunks.get_unchecked(0)};
+        let bytes = unsafe { input.chunks.get_unchecked(0) };
         Self {
             idx: bytes.len(),
             prev_val: None,
@@ -88,7 +88,7 @@ impl InterestState {
     }
 
     pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
-        let bytes = unsafe {input.chunks.get_unchecked_mut(0)};
+        let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
         // Restore the orig input
         if let Some((idx, orig_val)) = self.prev_val.take() {
             unsafe {
@@ -105,7 +105,7 @@ impl InterestState {
                 }
             }
         }
-    
+
         loop {
             if self.idx == 0 {
                 return if self.stage.next_stage() {
@@ -115,13 +115,13 @@ impl InterestState {
                     StageResult::Done
                 };
             }
-    
+
             self.idx -= 1;
-    
+
             unsafe {
                 let dst = bytes.as_mut_ptr().add(self.idx);
                 let orig: u32;
-    
+
                 match self.stage {
                     InterestStage::Width8(j, _) => {
                         orig = (*dst as u8) as u32;
@@ -157,10 +157,10 @@ impl InterestState {
                     }
                 };
             }
-    
+
             break;
         }
-    
+
         StageResult::WillRestoreInput
     }
 }

@@ -32,7 +32,7 @@ struct State {
     stat_cur_stage: StatStr,
     /// Stage iterations that lives in the fuzzer stats memory
     stat_num_iterations: StatNum,
-    
+
     restore_input: &'static mut bool,
     no_select: &'static mut bool,
     no_mutate: &'static bool,
@@ -41,7 +41,7 @@ struct State {
     cur_input_idx: &'static usize,
     cur_input: &'static mut CfInput,
     afl_vars: &'static mut AflGlobals,
-    afl_queue: &'static mut AflQueue,    
+    afl_queue: &'static mut AflQueue,
 }
 
 // Initialize our plugin
@@ -86,7 +86,7 @@ fn validate(
         state.inputs = store.as_mutref(STORE_INPUT_LIST, Some(core))?;
         state.cur_input_idx = store.as_ref(STORE_INPUT_IDX, Some(core))?;
         state.cur_input = store.as_mutref(STORE_INPUT_BYTES, Some(core))?;
-        
+
         match store.as_mutref(STORE_AFL_GLOBALS, None) {
             Ok(v) => state.afl_vars = v,
             Err(e) => {
@@ -94,7 +94,7 @@ fn validate(
                 return Err(e);
             }
         };
-        state.afl_queue = store.as_mutref(STORE_AFL_QUEUE, Some(core))?;        
+        state.afl_queue = store.as_mutref(STORE_AFL_QUEUE, Some(core))?;
     }
 
     Ok(())
@@ -116,24 +116,22 @@ fn mutate_input(
         }
         return Ok(());
     }
-    
+
     let stage = &mut s.cur_stage;
     let input = &mut s.cur_input;
     let afl = &mut s.afl_vars;
-    let q = unsafe {
-        s.afl_queue.get_unchecked_mut(*s.cur_input_idx)
-    };
+    let q = unsafe { s.afl_queue.get_unchecked_mut(*s.cur_input_idx) };
 
     // Update stage name if we switched input
     if s.force_update || s.prev_input_idx != *s.cur_input_idx {
-            // Reset stage 
-            stage.sync_to_input(q, afl, input);
-            // Update stage name
-            stage.update_info(&mut s.stage_name, s.stat_num_iterations.val);
-            s.stat_cur_stage.set(&s.stage_name);
-            
-            s.prev_input_idx = *s.cur_input_idx;
-            s.force_update = false;
+        // Reset stage
+        stage.sync_to_input(q, afl, input);
+        // Update stage name
+        stage.update_info(&mut s.stage_name, s.stat_num_iterations.val);
+        s.stat_cur_stage.set(&s.stage_name);
+
+        s.prev_input_idx = *s.cur_input_idx;
+        s.force_update = false;
     }
 
     // Mutate the input
@@ -155,7 +153,7 @@ fn mutate_input(
                 s.stat_cur_stage.set(&s.stage_name);
                 // Loop again to mutate at least once
                 continue;
-            },
+            }
             StageResult::Done => {
                 // Can we progress to the next stage ?
                 if stage.next(q, afl, input) {
