@@ -31,28 +31,33 @@ impl<'a> CfCore<'a> {
         let _ = store.insert_exclusive(STORE_TARGET_BIN, &self.config.target, None);
         let _ = store.insert_exclusive(STORE_TARGET_ARGS, &self.config.target_args, None);
         let _ = store.insert_exclusive(STORE_CWD, &self.config.cwd, None);
-        let _ = store.insert_exclusive(STORE_FUZZER_ID, &self.config.prefix, None);
+        let _ = store.insert_exclusive(STORE_FUZZER_NAME, &self.config.prefix, None);
+        let _ = store.insert_exclusive(STORE_FUZZER_ID, &self.config.instance_id, None);
         let _ = store.insert_exclusive(STORE_PLUGIN_CONF, &self.config.plugin_conf, None);
         let _ = store.insert_exclusive(STORE_AVG_DENOMINATOR, &self.store.avg_denominator, None);
         let _ = store.insert_exclusive(STORE_NUM_EXECS, self.stats.num_execs.val, None);
         let _ = store.insert_exclusive(STORE_NO_MUTATE, &self.store.no_mutate, None);
         let _ = store.insert_exclusive(STORE_NO_SELECT, &self.store.no_select, None);
+        let _ = store.insert_exclusive(STORE_CORE_STATE, self.ctx.stats.get_state(), None);
+
     }
 
     pub fn clear_public_store(&mut self) {
         let store = &mut self.store.content;
         trace!("Cleaning core store values");
-        let _ = store.remove(STORE_INPUT_DIR);
-        let _ = store.remove(STORE_STATE_DIR);
-        let _ = store.remove(STORE_RESULTS_DIR);
-        let _ = store.remove(STORE_TARGET_BIN);
-        let _ = store.remove(STORE_TARGET_ARGS);
-        let _ = store.remove(STORE_CWD);
-        let _ = store.remove(STORE_FUZZER_ID);
-        let _ = store.remove(STORE_PLUGIN_CONF);
-        let _ = store.remove(STORE_AVG_DENOMINATOR);
-        let _ = store.remove(STORE_NUM_EXECS);
-        let _ = store.remove(STORE_NO_MUTATE);
-        let _ = store.remove(STORE_NO_SELECT);
+        store.remove(STORE_INPUT_DIR).unwrap();
+        store.remove(STORE_STATE_DIR).unwrap();
+        store.remove(STORE_RESULTS_DIR).unwrap();
+        store.remove(STORE_TARGET_BIN).unwrap();
+        store.remove(STORE_TARGET_ARGS).unwrap();
+        store.remove(STORE_CWD).unwrap();
+        store.remove(STORE_FUZZER_NAME).unwrap();
+        store.remove(STORE_FUZZER_ID).unwrap();
+        store.remove(STORE_PLUGIN_CONF).unwrap();
+        store.remove(STORE_AVG_DENOMINATOR).unwrap();
+        store.remove(STORE_NUM_EXECS).unwrap();
+        store.remove(STORE_NO_MUTATE).unwrap();
+        store.remove(STORE_NO_SELECT).unwrap();
+        store.remove(STORE_CORE_STATE).unwrap();
     }
 }

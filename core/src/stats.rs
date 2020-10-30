@@ -390,9 +390,9 @@ impl<'a> Stats<'a> {
         };
     }
 
-    pub fn get_state(&self) -> CoreState {
+    pub fn get_state(&self) -> &CoreState {
         unsafe {
-            *(self.buf.as_ptr().add(size_of::<u32>()) as *mut CoreState)
+            &*(self.buf.as_ptr().add(size_of::<u32>()) as *mut CoreState)
         }
     }
 }

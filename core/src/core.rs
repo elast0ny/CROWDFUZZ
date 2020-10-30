@@ -285,6 +285,12 @@ impl<'a> CfCore<'a> {
 
             self.ctx.cur_plugin_id = self.fuzz_loop_start;
             for plugin in fuzz_loop_plugins.iter_mut() {
+                // Check if ctrl-c has been hit
+                if self.exiting.load(Ordering::Relaxed) {
+                    self.ctx.cur_plugin_id = num_plugins;
+                    return Err(From::from("CTRL-C while fuzzing".to_string()));
+                }
+
                 // run the plugin
                 plugin_start = Instant::now();
                 plugin.do_work(&mut self.ctx, &mut self.store.content)?;
@@ -298,12 +304,6 @@ impl<'a> CfCore<'a> {
                 // Keep track of time spent in plugins
                 total_plugin_time += time_elapsed;
                 self.ctx.cur_plugin_id += 1;
-            }
-
-            // Check if ctrl-c has been hit
-            if self.exiting.load(Ordering::Relaxed) {
-                self.ctx.cur_plugin_id = num_plugins;
-                return Err(From::from("CTRL-C while fuzzing".to_string()));
             }
 
             time_elapsed = core_start.elapsed().as_nanos() as u64;

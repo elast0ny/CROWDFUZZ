@@ -58,7 +58,9 @@ pub const STORE_TARGET_BIN: &str = "target_bin";
 pub const STORE_TARGET_ARGS: &str = "target_args";
 /// (*const String) Current working directory
 pub const STORE_CWD: &str = "cwd";
-/// (*const String) ID of the current fuzzer
+/// (*const String) Name of the current fuzzer
+pub const STORE_FUZZER_NAME: &str = "fuzzer_name";
+/// (*const usize) Instance number of the current fuzzer
 pub const STORE_FUZZER_ID: &str = "fuzzer_id";
 /// (*const HashMap<String, String>) Map of arbitrary plugin configs
 pub const STORE_PLUGIN_CONF: &str = "plugin_conf";
@@ -70,6 +72,8 @@ pub const STORE_NUM_EXECS: &str = "num_execs";
 pub const STORE_NO_MUTATE: &str = "no_mutate";
 /// (*mut bool) Whether select plugins should run or not
 pub const STORE_NO_SELECT: &str = "no_select";
+/// (*const CoreState) Whether select plugins should run or not
+pub const STORE_CORE_STATE: &str = "core_state";
 
 /* Other popular keys */
 

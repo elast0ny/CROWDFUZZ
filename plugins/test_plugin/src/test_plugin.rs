@@ -17,7 +17,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
         // Create number that lives in the stats memory
         num_iter: core.new_stat_num(&format!("{}num_iter", TAG_PREFIX_TOTAL), 0)?,
         // Get refence to store value owned by the core
-        fuzzer_name: unsafe { store.as_ref(STORE_FUZZER_ID, Some(core)) }?,
+        fuzzer_name: unsafe { store.as_ref(STORE_FUZZER_NAME, Some(core)) }?,
     });
 
     core.info(&format!("Hello {} !", state.fuzzer_name));

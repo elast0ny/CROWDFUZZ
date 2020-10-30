@@ -236,7 +236,7 @@ fn main() -> Result<()> {
     }
 
     core.ctx.stats.set_state(cflib::CoreState::Exiting);
-
+    
     //Planned stop ?
     if core.exiting() {
         info!("Tearing down");
