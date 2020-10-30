@@ -286,6 +286,8 @@ impl<'a> CfCore<'a> {
             self.ctx.cur_plugin_id = self.fuzz_loop_start;
             for plugin in fuzz_loop_plugins.iter_mut() {
                 // Check if ctrl-c has been hit
+                // Must be done on every plugin.fuzz() because on *nix, signals get forwarded to child processes.
+                // This means that the ctrl-c event might generate a fake target/subprocess "crash"
                 if self.exiting.load(Ordering::Relaxed) {
                     self.ctx.cur_plugin_id = num_plugins;
                     return Err(From::from("CTRL-C while fuzzing".to_string()));
