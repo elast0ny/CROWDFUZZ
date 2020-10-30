@@ -1,7 +1,7 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use ::cflib::{CfStats, CoreState};
+use ::cflib::CfStats;
 use ::shared_memory::{Shmem, ShmemConf};
 use ::simple_parse::SpRead;
 use ::sysinfo::{ProcessExt, RefreshKind, System, SystemExt};
