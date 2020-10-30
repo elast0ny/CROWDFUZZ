@@ -74,9 +74,14 @@ pub fn pretty_num(
     let mut generated_str = false;
 
     if let Some(postfix) = type_hints.1 {
+
         val = match postfix {
             TAG_POSTFIX_HEX => {
                 let _ = write!(dst, "0x{:X}", val);
+                return;
+            },
+            TAG_POSTFIX_RESULT => {
+                let _ = write!(dst, "{}", val);
                 return;
             }
             // Convert time number to ns

@@ -31,15 +31,15 @@ struct State {
 // Initialize our plugin
 fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     #[allow(invalid_value)]
-    let mut state = Box::new(unsafe {
+    let mut s = Box::new(unsafe {
         State {
             tmp_str: String::with_capacity(40),
             crash_dir: PathBuf::new(),
             timeout_dir: PathBuf::new(),
 
             // Stats
-            num_crashes: core.new_stat_num(&format!("{}crashes", TAG_PREFIX_TOTAL), 0)?,
-            num_timeouts: core.new_stat_num(&format!("{}timeouts", TAG_PREFIX_TOTAL), 0)?,
+            num_crashes: MaybeUninit::zeroed().assume_init(),
+            num_timeouts: MaybeUninit::zeroed().assume_init(),
             stat_crash_dir: MaybeUninit::zeroed().assume_init(),
             stat_timeout_dir: MaybeUninit::zeroed().assume_init(),
 
@@ -60,50 +60,53 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
 
     // Create crashes dir
-    state.crash_dir.push(state_dir);
+    s.crash_dir.push(state_dir);
     if let Some(p) = plugin_conf.get("crashes_dir") {
-        state.crash_dir.push(p);
+        s.crash_dir.push(p);
     } else {
-        state.crash_dir.push("crashes");
+        s.crash_dir.push("crashes");
     }
-    if !state.crash_dir.is_dir() {
-        if let Err(e) = fs::create_dir_all(&state.crash_dir) {
+    if !s.crash_dir.is_dir() {
+        if let Err(e) = fs::create_dir_all(&s.crash_dir) {
             core.error(&format!(
                 "Failed to create crashes directory {} : {}",
-                state.crash_dir.to_string_lossy(),
+                s.crash_dir.to_string_lossy(),
                 e
             ));
             return Err(From::from(e));
         };
     }
     // Add crash_dir to stats
-    let tmp: &str = state.crash_dir.to_str().unwrap();
-    state.stat_crash_dir =
+    let tmp: &str = s.crash_dir.to_str().unwrap();
+    s.stat_crash_dir =
         core.new_stat_str(&format!("crashes_dir{}", TAG_POSTFIX_PATH), tmp.len(), tmp)?;
 
     // Create timeouts dir
-    state.timeout_dir.push(state_dir);
+    s.timeout_dir.push(state_dir);
     if let Some(p) = plugin_conf.get("timeouts_dir") {
-        state.timeout_dir.push(p);
+        s.timeout_dir.push(p);
     } else {
-        state.timeout_dir.push("timeouts");
+        s.timeout_dir.push("timeouts");
     }
-    if !state.timeout_dir.is_dir() {
-        if let Err(e) = fs::create_dir_all(&state.timeout_dir) {
+    if !s.timeout_dir.is_dir() {
+        if let Err(e) = fs::create_dir_all(&s.timeout_dir) {
             core.error(&format!(
                 "Failed to create timeouts directory {} : {}",
-                state.timeout_dir.to_string_lossy(),
+                s.timeout_dir.to_string_lossy(),
                 e
             ));
             return Err(From::from(e));
         };
     }
     // Add timeout_dir to stats
-    let tmp: &str = state.timeout_dir.to_str().unwrap();
-    state.stat_timeout_dir =
+    let tmp: &str = s.timeout_dir.to_str().unwrap();
+    s.stat_timeout_dir =
         core.new_stat_str(&format!("timeouts_dir{}", TAG_POSTFIX_PATH), tmp.len(), tmp)?;
 
-    Ok(Box::into_raw(state) as _)
+    s.num_crashes = core.new_stat_num(STAT_NUM_CRASHES, 0)?;
+    s.num_timeouts = core.new_stat_num(STAT_NUM_TIMEOUTS, 0)?;
+
+    Ok(Box::into_raw(s) as _)
 }
 
 // Make sure we have everything to fuzz properly
@@ -112,14 +115,14 @@ fn validate(
     store: &mut CfStore,
     plugin_ctx: *mut u8,
 ) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
+    let s = box_ref!(plugin_ctx, State);
 
     // Get all the plugin store values we need
     unsafe {
-        state.exit_status = store.as_ref(STORE_EXIT_STATUS, Some(core))?;
-        state.cur_input = store.as_ref(STORE_INPUT_BYTES, Some(core))?;
-        state.cur_input_idx = store.as_ref(STORE_INPUT_IDX, Some(core))?;
-        state.input_list = store.as_ref(STORE_INPUT_LIST, Some(core))?;
+        s.exit_status = store.as_ref(STORE_EXIT_STATUS, Some(core))?;
+        s.cur_input = store.as_ref(STORE_INPUT_BYTES, Some(core))?;
+        s.cur_input_idx = store.as_ref(STORE_INPUT_IDX, Some(core))?;
+        s.input_list = store.as_ref(STORE_INPUT_LIST, Some(core))?;
     }
 
     Ok(())
@@ -131,10 +134,10 @@ fn save_result(
     _store: &mut CfStore,
     plugin_ctx: *mut u8,
 ) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
+    let s = box_ref!(plugin_ctx, State);
 
     // Save input if interesting exit_status
-    state.save_input()?;
+    s.save_input()?;
 
     Ok(())
 }

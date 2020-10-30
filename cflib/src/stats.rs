@@ -9,19 +9,27 @@ pub const TAG_PREFIX_TOTAL: &str = "total_";
 pub const TAG_PREFIX_AVG: &str = "avg_";
 pub(crate) const TAG_PREFIXES: &[&str] = &[TAG_PREFIX_TOTAL, TAG_PREFIX_AVG];
 
+/// Display numbers/bytes as hex
 pub const TAG_POSTFIX_HEX: &str = "_hex";
+/// Cleanup file path strings
 pub const TAG_POSTFIX_PATH: &str = "_dir";
+/// Show time since this timestamp
 pub const TAG_POSTFIX_EPOCHS: &str = "_epoch_s";
-///Nanoseconds
+/// Nanoseconds
 pub const TAG_POSTFIX_NS: &str = "_ns";
-///Microseconds
+/// Microseconds
 pub const TAG_POSTFIX_US: &str = "_us";
-///Milliseconds
+/// Milliseconds
 pub const TAG_POSTFIX_MS: &str = "_ms";
-///Seconds
+/// Seconds
 pub const TAG_POSTFIX_SEC: &str = "_s";
+/// Minutes
 pub const TAG_POSTFIX_MIN: &str = "_m";
+/// Hours
 pub const TAG_POSTFIX_HOUR: &str = "_h";
+/// Holds an intersting result
+pub const TAG_POSTFIX_RESULT: &str = "_res";
+
 pub(crate) const TAG_POSTFIXES: &[&str] = &[
     TAG_POSTFIX_HEX,
     TAG_POSTFIX_PATH,
@@ -32,10 +40,21 @@ pub(crate) const TAG_POSTFIXES: &[&str] = &[
     TAG_POSTFIX_SEC,
     TAG_POSTFIX_MIN,
     TAG_POSTFIX_HOUR,
+    TAG_POSTFIX_RESULT,
 ];
 
-/// Plugins that execute a target binary should use this name for consistency
+/**
+ * Stat tags bellow should be used when possible for consistency
+ * on important/common stats
+ */
+
+/// Average target exec time
 pub const STAT_TARGET_EXEC_TIME: &str = "avg_target_exec_time_ns";
+/// Number crashes
+pub const STAT_NUM_CRASHES: &str = "total_crashes_res";
+/// Number of timeouts
+pub const STAT_NUM_TIMEOUTS: &str = "total_timeouts_res";
+
 
 /// The states that the fuzzer core can have
 #[derive(SpRead, Debug, Clone, Copy)]

@@ -23,12 +23,14 @@ struct State {
     no_select: &'static bool,
     priority_list: BinaryHeap<InputPriority>,
     num_priority_inputs: StatNum,
+    num_old_inputs: usize,
+    num_new_inputs: StatNum,
 }
 
 // Initialize our plugin
 fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     #[allow(invalid_value)]
-    let state = Box::new(unsafe {
+    let s = Box::new(unsafe {
         State {
             cur_input_idx: 0,
             seq_input_idx: 0,
@@ -37,9 +39,12 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             cur_input: CfInput::default(),
             priority_list: BinaryHeap::new(),
             restore_input: false,
+            num_old_inputs: 0,
             // Stats
             num_priority_inputs: core
-                .new_stat_num(&format!("{}num_priority_inputs", TAG_PREFIX_TOTAL), 0)?,
+                .new_stat_num(&format!("{}priority_inputs", TAG_PREFIX_TOTAL), 0)?,
+            num_new_inputs: core
+            .new_stat_num(&format!("{}new_inputs", TAG_PREFIX_TOTAL), 0)?,
             // Core store values
             no_select: store.as_ref(STORE_NO_SELECT, Some(core))?,
             // Plugin store values
@@ -48,12 +53,12 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     });
 
     // Add our values to the store
-    store.insert_exclusive(STORE_INPUT_IDX, &state.cur_input_idx, Some(core))?;
-    store.insert_exclusive(STORE_INPUT_BYTES, &state.cur_input, Some(core))?;
-    store.insert_exclusive(STORE_RESTORE_INPUT, &state.restore_input, Some(core))?;
-    store.insert_exclusive(STORE_INPUT_PRIORITY, &state.priority_list, Some(core))?;
+    store.insert_exclusive(STORE_INPUT_IDX, &s.cur_input_idx, Some(core))?;
+    store.insert_exclusive(STORE_INPUT_BYTES, &s.cur_input, Some(core))?;
+    store.insert_exclusive(STORE_RESTORE_INPUT, &s.restore_input, Some(core))?;
+    store.insert_exclusive(STORE_INPUT_PRIORITY, &s.priority_list, Some(core))?;
 
-    Ok(Box::into_raw(state) as _)
+    Ok(Box::into_raw(s) as _)
 }
 
 // Make sure we have everything to fuzz properly
@@ -62,14 +67,16 @@ fn validate(
     store: &mut CfStore,
     plugin_ctx: *mut u8,
 ) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
+    let s = box_ref!(plugin_ctx, State);
 
     // Make sure someone created INPUT_LIST
-    state.input_list = unsafe { store.as_ref(STORE_INPUT_LIST, Some(core))? };
+    s.input_list = unsafe { store.as_ref(STORE_INPUT_LIST, Some(core))? };
 
-    if !state.input_list.is_empty() {
-        state.seq_input_idx = state.input_list.len() - 1;
+    if !s.input_list.is_empty() {
+        s.seq_input_idx = s.input_list.len() - 1;
     }
+
+    s.num_old_inputs = s.input_list.len();
 
     Ok(())
 }
@@ -80,42 +87,47 @@ fn select_input(
     _store: &mut CfStore,
     plugin_ctx: *mut u8,
 ) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
+    let s = box_ref!(plugin_ctx, State);
 
     // Update number of indexes in priority list
-    *state.num_priority_inputs.val = state.priority_list.len() as _;
+    *s.num_priority_inputs.val = s.priority_list.len() as u64;
+    *s.num_new_inputs.val = (s.num_old_inputs - s.input_list.len()) as u64;
 
     // Input selection currently disabled
-    if *state.no_select {
+    if *s.no_select {
         //core.trace("No select !");
         return Ok(());
     }
 
     // We will select a new input
-    if !state.restore_input {
-        match state.priority_list.pop() {
+    if !s.restore_input {
+        match s.priority_list.pop() {
             Some(v) => {
                 // This is the highest weighted input in the priority list
-                state.cur_input_idx = v.idx;
+                s.cur_input_idx = v.idx;
             }
             None => {
                 // Just get the next input
-                state.seq_input_idx += 1;
-                if state.seq_input_idx == state.input_list.len() {
-                    state.seq_input_idx = 0;
+                s.seq_input_idx += 1;
+                if s.seq_input_idx == s.input_list.len() {
+                    s.seq_input_idx = 0;
                 }
-                state.cur_input_idx = state.seq_input_idx;
+
+                if s.seq_input_idx >= s.num_old_inputs {
+                    s.num_old_inputs = s.seq_input_idx + 1;
+                }
+                s.cur_input_idx = s.seq_input_idx;
             }
         };
 
         // Get current input info
-        let input_info = unsafe { state.input_list.get_unchecked(state.cur_input_idx) };
+        let input_info = unsafe { s.input_list.get_unchecked(s.cur_input_idx) };
 
-        state.orig_buf.clear();
+        s.orig_buf.clear();
         // If content is inlined in the input info
         if let Some(contents) = &input_info.contents {
             for chunk in &contents.chunks {
-                state.orig_buf.extend_from_slice(chunk);
+                s.orig_buf.extend_from_slice(chunk);
             }
         } else {
             // Lets read contents from disk
@@ -124,7 +136,7 @@ fn select_input(
                 None => {
                     core.error(&format!(
                         "input[{}] has no content or path info !",
-                        state.cur_input_idx
+                        s.cur_input_idx
                     ));
                     return Err(From::from("No input contents".to_string()));
                 }
@@ -135,7 +147,7 @@ fn select_input(
                 _ => return Err(From::from("No input contents".to_string())),
             };
             // Read contents
-            if fin.read_to_end(&mut state.orig_buf).is_err() {
+            if fin.read_to_end(&mut s.orig_buf).is_err() {
                 return Err(From::from("No input contents".to_string()));
             }
         }
@@ -145,12 +157,12 @@ fn select_input(
     }
 
     // Copy orig into fuzz_buf
-    state.fuzz_buf.clear();
-    state.fuzz_buf.extend_from_slice(&state.orig_buf);
+    s.fuzz_buf.clear();
+    s.fuzz_buf.extend_from_slice(&s.orig_buf);
 
     // Make fuzz_buf new input
-    state.cur_input.chunks.clear();
-    state.cur_input.chunks.push(state.fuzz_buf.as_mut_slice());
+    s.cur_input.chunks.clear();
+    s.cur_input.chunks.push(s.fuzz_buf.as_mut_slice());
 
     Ok(())
 }

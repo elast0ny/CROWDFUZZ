@@ -39,7 +39,9 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 |[basic_mutate](plugins/basic_mutate/)|✔|Randomly changes bytes in an existing file|
 |[run_target](plugins/run_target/)|✔|Runs a target with the fuzzed input|
 |[save_result](plugins/save_result/)|✔|Saves crashes and timeouts|
-|afl_state| TODO | Parses afl arguments and maintains the AFL state |
-|afl_mutate| TODO | Implement AFL's file mutators|
+|local_sync| TODO | Syncs local fuzzers working on the same project |
+|remote_sync| TODO | Syncs remote fuzzers working on the same project |
+|afl_queue| In-Progress | Parses afl arguments and maintains the AFL state&queue |
+|afl_mutate| In-Progress | Implement AFL's file mutators|
 |afl_fork_server| TODO | Support linux forking & DynamoRio for performant process creation|
 |afl_cov_analysis| TODO | Analyses the AFL bitmap to detect new coverage|
