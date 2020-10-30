@@ -213,7 +213,9 @@ fn main() -> Result<()> {
         }
 
         info!("Core & plugins initialized succesfully");
-
+        
+        info!("Fuzzing...");
+        
         //Run through once
         if let Err(e) = core.single_run() {
             warn!("{}", e);

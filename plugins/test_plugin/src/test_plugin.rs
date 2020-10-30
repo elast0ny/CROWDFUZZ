@@ -7,7 +7,7 @@ cflib::register!(fuzz, fuzz);
 cflib::register!(unload, destroy);
 
 struct State {
-    num_iter: StatNum,
+    num_execs: StatNum,
     fuzzer_name: &'static String,
 }
 
@@ -15,7 +15,7 @@ struct State {
 fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> {
     let state = Box::new(State {
         // Create number that lives in the stats memory
-        num_iter: core.new_stat_num(&format!("{}num_iter", TAG_PREFIX_TOTAL), 0)?,
+        num_execs: core.new_stat_num(&format!("{}num_execs", TAG_PREFIX_TOTAL), 0)?,
         // Get refence to store value owned by the core
         fuzzer_name: unsafe { store.as_ref(STORE_FUZZER_NAME, Some(core)) }?,
     });
@@ -42,7 +42,7 @@ fn validate(
 fn fuzz(_core: &mut dyn PluginInterface, _store: &mut CfStore, plugin_ctx: *mut u8) -> Result<()> {
     let ctx = box_ref!(plugin_ctx, State);
 
-    *ctx.num_iter.val += 1;
+    *ctx.num_execs.val += 1;
 
     std::thread::sleep(std::time::Duration::from_secs(1));
 

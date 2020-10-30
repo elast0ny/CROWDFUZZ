@@ -18,7 +18,7 @@ pub trait CfStoreUtil {
     /// This function cannot validate any information about the store's values.
     /// Casting to the wrong T and bad assumptions about the lifetime of this reference will result in issues.
     unsafe fn as_ref<T>(
-        &mut self,
+        &self,
         key: &str,
         core: Option<&mut dyn PluginInterface>,
     ) -> Result<&'static T>;
@@ -151,7 +151,7 @@ pub struct CfNewInput {
     pub path: Option<PathBuf>,
 }
 
-fn get_valid_ptr(store: &mut CfStore, key: &str) -> Result<*mut u8> {
+fn get_valid_ptr(store: &CfStore, key: &str) -> Result<*mut u8> {
     if let Some(v) = store.get(key) {
         if v.is_null() {
             Err(From::from("Store pointer is null".to_string()))
@@ -182,7 +182,7 @@ impl CfStoreUtil for CfStore {
         Ok(())
     }
     unsafe fn as_ref<T>(
-        &mut self,
+        &self,
         key: &str,
         core: Option<&mut dyn PluginInterface>,
     ) -> Result<&'static T> {

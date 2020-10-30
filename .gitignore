@@ -1,5 +1,5 @@
 .vscode/
-/target/
+target/
 **/*.rs.bk
 fuzzer_stats_*
 example/results/*

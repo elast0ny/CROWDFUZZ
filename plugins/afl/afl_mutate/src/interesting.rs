@@ -15,8 +15,20 @@ impl InterestStage {
     pub fn max_idx(&self, input_len: usize) -> usize {
         match self {
             Self::Width8(_, _) => input_len,
-            Self::Width16(_, _) => input_len - 1,
-            Self::Width32(_, _) => input_len - 3,
+            Self::Width16(_, _) => {
+                if input_len != 0 {
+                    input_len - 1
+                } else {
+                    0
+                }
+            }
+            Self::Width32(_, _) => {
+                if input_len > 4 {
+                    input_len - 3
+                } else {
+                    0
+                }
+            }
         }
     }
 

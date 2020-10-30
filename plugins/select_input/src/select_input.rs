@@ -151,9 +151,9 @@ fn select_input(
                 return Err(From::from("No input contents".to_string()));
             }
         }
-    //core.debug("New input !");
+        //core.trace("Select new input");
     } else {
-        //core.debug("Restored input !");
+        //core.trace("Restored previous input");
     }
 
     // Copy orig into fuzz_buf

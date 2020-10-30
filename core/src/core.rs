@@ -214,7 +214,7 @@ impl<'a> CfCore<'a> {
         *self.stats.num_execs.val += 1;
         self.store.avg_denominator += 1;
 
-        info!("Running through all plugins once");
+        debug!("Running through all plugins once");
         for (plugin_id, plugin) in self.plugin_chain.iter_mut().enumerate() {
             self.ctx.cur_plugin_id = plugin_id;
 
@@ -261,11 +261,10 @@ impl<'a> CfCore<'a> {
         );
         debug!("\tCore time : {} us", *self.stats.exec_time.val);
 
-        info!("Ready to go !");
+        debug!("Ready to go !");
         Ok(())
     }
     pub fn fuzz_loop(&mut self) -> Result<()> {
-        info!("Fuzzing...");
         let num_plugins = self.plugin_chain.len();
         let (_, fuzz_loop_plugins) = self.plugin_chain.split_at_mut(self.fuzz_loop_start);
         let mut core_start: Instant;

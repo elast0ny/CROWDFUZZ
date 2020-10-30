@@ -33,15 +33,11 @@ impl HavocState {
         let perf_score = calculate_score(q, afl);
 
         // Recalculate number of iterations based on weight
-        self.num_iterations = perf_score as usize
-            * self.rng.gen_range(
-                1,
-                if self.num_iterations == 0 {
-                    HAVOC_CYCLES_INIT
-                } else {
-                    HAVOC_CYCLES
-                } as usize,
-            );
+        self.num_iterations = if afl.skip_deterministic {
+            HAVOC_CYCLES
+        } else {
+            HAVOC_CYCLES_INIT
+        } as usize * (perf_score as usize) / 1 / 100;
     }
 
     pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
@@ -60,8 +56,6 @@ impl HavocState {
 
 pub fn calculate_score(q: &mut AflQueueEntry, afl: &AflGlobals) -> u32 {
     let avg_exec_us = (afl.total_cal_us / afl.total_cal_cycles) as usize;
-    let avg_bitmap_size = (afl.total_bitmap_size / afl.total_bitmap_entries) as usize;
-
     let mut perf_score = 100;
     /* Adjust score based on execution speed of this path, compared to the
     global average. Multiplier ranges from 0.1x to 3x. Fast inputs are
@@ -85,19 +79,23 @@ pub fn calculate_score(q: &mut AflQueueEntry, afl: &AflGlobals) -> u32 {
     /* Adjust score based on bitmap size. The working theory is that better
     coverage translates to better targets. Multiplier from 0.25x to 3x. */
 
-    if q.bitmap_size as f32 * 0.3 > avg_bitmap_size as _ {
-        perf_score *= 3;
-    } else if q.bitmap_size as f32 * 0.5 > avg_bitmap_size as _ {
-        perf_score *= 2;
-    } else if q.bitmap_size as f32 * 0.75 > avg_bitmap_size as _ {
-        perf_score = (1.5 * perf_score as f32) as _;
-    } else if q.bitmap_size * 3 < avg_bitmap_size as _ {
-        perf_score = (0.25 * perf_score as f32) as _;
-    } else if q.bitmap_size * 2 < avg_bitmap_size as _ {
-        perf_score = (0.5 * perf_score as f32) as _;
-    } else if q.bitmap_size as f32 * 1.5 < avg_bitmap_size as _ {
-        perf_score = (0.75 * perf_score as f32) as _;
+    if afl.total_bitmap_entries != 0 {
+        let avg_bitmap_size = (afl.total_bitmap_size / afl.total_bitmap_entries) as usize;
+        if q.bitmap_size as f32 * 0.3 > avg_bitmap_size as _ {
+            perf_score *= 3;
+        } else if q.bitmap_size as f32 * 0.5 > avg_bitmap_size as _ {
+            perf_score *= 2;
+        } else if q.bitmap_size as f32 * 0.75 > avg_bitmap_size as _ {
+            perf_score = (1.5 * perf_score as f32) as _;
+        } else if q.bitmap_size * 3 < avg_bitmap_size as _ {
+            perf_score = (0.25 * perf_score as f32) as _;
+        } else if q.bitmap_size * 2 < avg_bitmap_size as _ {
+            perf_score = (0.5 * perf_score as f32) as _;
+        } else if q.bitmap_size as f32 * 1.5 < avg_bitmap_size as _ {
+            perf_score = (0.75 * perf_score as f32) as _;
+        }
     }
+    
     /* Adjust score based on handicap. Handicap is proportional to how late
     in the game we learned about this path. Latecomers are allowed to run
     for a bit longer until they catch up with the rest. */
@@ -124,5 +122,6 @@ pub fn calculate_score(q: &mut AflQueueEntry, afl: &AflGlobals) -> u32 {
         perf_score = HAVOC_MAX_MULT * 100;
     }
 
+    //println!("Score {}", perf_score);
     perf_score
 }

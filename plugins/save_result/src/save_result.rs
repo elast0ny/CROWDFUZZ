@@ -5,6 +5,7 @@ use std::mem::MaybeUninit;
 use std::path::PathBuf;
 
 use ::cflib::*;
+use ::crypto::{digest::Digest, sha1::Sha1};
 
 cflib::register!(name, env!("CARGO_PKG_NAME"));
 cflib::register!(load, init);
@@ -13,6 +14,9 @@ cflib::register!(fuzz, save_result);
 cflib::register!(unload, destroy);
 
 struct State {
+    hasher: Sha1,
+    tmp_uid: [u8; 20],
+
     /// Reference to the currently selected input
     exit_status: &'static TargetExitStatus,
     cur_input: &'static CfInput,
@@ -33,6 +37,8 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     #[allow(invalid_value)]
     let mut s = Box::new(unsafe {
         State {
+            hasher: Sha1::new(),
+            tmp_uid: [0; 20],
             tmp_str: String::with_capacity(40),
             crash_dir: PathBuf::new(),
             timeout_dir: PathBuf::new(),
@@ -172,11 +178,16 @@ impl State {
             TargetExitStatus::Normal(_) => unreachable!(),
         };
 
-        let input_info = unsafe { self.input_list.get_unchecked(*self.cur_input_idx) };
+        // calculate sha1 of input
+        self.hasher.reset();
+        for chunk in &self.cur_input.chunks {
+            self.hasher.input(chunk);
+        }
+        self.hasher.result(&mut self.tmp_uid);
 
         // Build hexstr from file uid
         self.tmp_str.clear();
-        for b in &input_info.uid {
+        for b in &self.tmp_uid {
             use std::fmt::Write;
             let _ = write!(&mut self.tmp_str, "{:02X}", *b);
         }

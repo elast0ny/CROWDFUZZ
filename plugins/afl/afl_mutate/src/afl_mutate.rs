@@ -30,8 +30,10 @@ struct State {
     cur_stage: MutatorStage,
     /// Stage name that lives in the fuzzer stats memory
     stat_cur_stage: StatStr,
-    /// Stage iterations that lives in the fuzzer stats memory
-    stat_num_iterations: StatNum,
+    /// Stage total terations that lives in the fuzzer stats memory
+    stat_total_iterations: StatNum,
+    /// Current progress into the stage
+    stat_stage_progress: StatNum,
 
     restore_input: &'static mut bool,
     no_select: &'static mut bool,
@@ -40,7 +42,7 @@ struct State {
     inputs: &'static Vec<CfInputInfo>,
     cur_input_idx: &'static usize,
     cur_input: &'static mut CfInput,
-    afl_vars: &'static mut AflGlobals,
+    afl: &'static mut AflGlobals,
     afl_queue: &'static mut AflQueue,
 }
 
@@ -55,7 +57,8 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             cur_stage: MutatorStage::default(),
             // Stats
             stat_cur_stage: core.new_stat_str("stage", 128, "[init]")?,
-            stat_num_iterations: core.new_stat_num("iterations", 0)?,
+            stat_stage_progress: core.new_stat_num("progress", 0)?,
+            stat_total_iterations: core.new_stat_num("iterations", 0)?,
             // Core store values
             restore_input: store.as_mutref(STORE_RESTORE_INPUT, Some(core))?,
             no_select: store.as_mutref(STORE_NO_SELECT, Some(core))?,
@@ -65,7 +68,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             inputs: MaybeUninit::zeroed().assume_init(),
             cur_input_idx: MaybeUninit::zeroed().assume_init(),
             cur_input: MaybeUninit::zeroed().assume_init(),
-            afl_vars: MaybeUninit::zeroed().assume_init(),
+            afl: MaybeUninit::zeroed().assume_init(),
             afl_queue: MaybeUninit::zeroed().assume_init(),
         }
     });
@@ -88,7 +91,7 @@ fn validate(
         state.cur_input = store.as_mutref(STORE_INPUT_BYTES, Some(core))?;
 
         match store.as_mutref(STORE_AFL_GLOBALS, None) {
-            Ok(v) => state.afl_vars = v,
+            Ok(v) => state.afl = v,
             Err(e) => {
                 core.warn("Missing AFL globals ! Is the `afl_state` plugin running ?");
                 return Err(e);
@@ -111,7 +114,8 @@ fn mutate_input(
     if *s.no_mutate {
         if !s.force_update {
             s.stat_cur_stage.set("None");
-            *s.stat_num_iterations.val = 0;
+            *s.stat_stage_progress.val = 0;
+            *s.stat_total_iterations.val = 0;
             s.force_update = true;
         }
         return Ok(());
@@ -119,7 +123,7 @@ fn mutate_input(
 
     let stage = &mut s.cur_stage;
     let input = &mut s.cur_input;
-    let afl = &mut s.afl_vars;
+    let afl = &mut s.afl;
     let q = unsafe { s.afl_queue.get_unchecked_mut(*s.cur_input_idx) };
 
     // Update stage name if we switched input
@@ -127,8 +131,9 @@ fn mutate_input(
         // Reset stage
         stage.sync_to_input(q, afl, input);
         // Update stage name
-        stage.update_info(&mut s.stage_name, s.stat_num_iterations.val);
+        stage.update_info(&mut s.stage_name, s.stat_total_iterations.val);
         s.stat_cur_stage.set(&s.stage_name);
+        *s.stat_stage_progress.val = 0;
 
         s.prev_input_idx = *s.cur_input_idx;
         s.force_update = false;
@@ -149,17 +154,24 @@ fn mutate_input(
             }
             StageResult::Update => {
                 // Update cur_stage stat
-                stage.update_info(&mut s.stage_name, s.stat_num_iterations.val);
+                stage.update_info(&mut s.stage_name, s.stat_total_iterations.val);
                 s.stat_cur_stage.set(&s.stage_name);
+                *s.stat_stage_progress.val = 0;
                 // Loop again to mutate at least once
                 continue;
             }
             StageResult::Done => {
                 // Can we progress to the next stage ?
                 if stage.next(q, afl, input) {
+                    // Update cur_stage stat
+                    stage.update_info(&mut s.stage_name, s.stat_total_iterations.val);
+                    s.stat_cur_stage.set(&s.stage_name);
+                    *s.stat_stage_progress.val = 0;
                     continue;
                 }
+                
                 // Pick a new testcase
+                q.passed_det = true;
                 *s.restore_input = false;
                 *s.no_select = false;
             }
@@ -168,6 +180,7 @@ fn mutate_input(
         //core.trace(&format!("{:?}", state.cur_input.chunks[0]));
         break;
     }
+    *s.stat_stage_progress.val += 1;
 
     Ok(())
 }
