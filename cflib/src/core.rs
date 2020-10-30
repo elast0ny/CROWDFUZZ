@@ -55,3 +55,8 @@ pub const ONLOAD_SYM: &[u8] = b"__PluginLoadCb\0";
 pub const PRE_FUZZ_SYM: &[u8] = b"__PluginPreFuzzCb\0";
 pub const FUZZ_SYM: &[u8] = b"__PluginFuzzCb\0";
 pub const UNLOAD_SYM: &[u8] = b"__PluginUnloadCb\0";
+
+#[cfg(target_os = "windows")]
+pub const FUZZER_PROCESS_NAME: &str = "crowdfuzz.exe";
+#[cfg(not(target_os = "windows"))]
+pub const FUZZER_PROCESS_NAME: &str = "crowdfuzz";

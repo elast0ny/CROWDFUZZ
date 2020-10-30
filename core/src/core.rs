@@ -47,7 +47,12 @@ impl<'a> CfCore<'a> {
                     .size(config.shmem_size)
                     .create()
                 {
-                    Ok(m) => m,
+                    Ok(s) => {
+                        unsafe{
+                            *(s.as_ptr() as *mut u32) = STAT_MAGIC;
+                        }
+                        s
+                    },
                     Err(e) => {
                         return Err(From::from(format!(
                             "Failed to create shared memory mapping of size {} with error : {:?}",

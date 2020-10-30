@@ -91,17 +91,19 @@ impl State {
             };
 
             let cur = shmem.as_ptr();
-            // Skip if not initialized yet
-            if let CoreState::Initializing = unsafe { *(cur as *mut CoreState) } {
-                continue;
-            }
 
-            let existing_pid = |f: &Fuzzer| {
-                f.stats.pid == unsafe { *(cur.add(std::mem::size_of::<CoreState>()) as *mut u32) }
+            let fuzzer_pid;
+            match unsafe{cflib::get_fuzzer_pid(cur)} {
+                Ok(Some(p)) => fuzzer_pid = p,
+                Err(_) | Ok(None) => continue,
+            };
+
+            let compare_pid_fn = |f: &Fuzzer| {
+                f.stats.pid == fuzzer_pid
             };
 
             // If we are already tracking this pid
-            if self.fuzzers.iter().any(existing_pid) {
+            if self.fuzzers.iter().any(compare_pid_fn) {
                 continue;
             }
 

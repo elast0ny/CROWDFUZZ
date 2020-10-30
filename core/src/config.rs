@@ -4,6 +4,8 @@ use std::{
     fs::{create_dir_all, File},
 };
 
+use ::cflib::*;
+
 use ::log::*;
 use ::serde_derive::{Deserialize};
 use ::shared_memory::{ShmemConf, Shmem};
@@ -70,22 +72,42 @@ fn is_fuzzer_alive(stats_file: &Path) -> bool {
     let shmem = match ShmemConf::new().flink(stats_file).open() {
         Ok(m) => m,
         Err(_e) => {
-            return std::fs::remove_file(stats_file).is_ok();
+            warn!("Stat memory is invalid for '{}'", stats_file.to_string_lossy());
+            warn!("Deleting stats file...");
+            return std::fs::remove_file(stats_file).is_err();
         }
     };
 
-    let cur = shmem.as_ptr();
-    let fuzzer_pid = unsafe { *(cur.add(std::mem::size_of::<cflib::CoreState>()) as *mut u32) };
-    debug!("Checking if pid {} is a crowdfuzz process", fuzzer_pid);
+    let mut num_attempts = 5;
+    let mut pid = 0;
+    while num_attempts != 0 {
+        match unsafe{cflib::get_fuzzer_pid(shmem.as_ptr())} {
+            Err(_) => {
+                warn!("Stat memory is invalid for '{}'", stats_file.to_string_lossy());
+                warn!("Deleting stats file...");
+                return std::fs::remove_file(stats_file).is_err()
+            },
+            Ok(Some(p)) => pid = p,
+            Ok(None) => {},
+        }
+        num_attempts -= 1;
+    }
+    if pid == 0 {
+        warn!("Fuzzer never initialized its pid after >5s in '{}'", stats_file.to_string_lossy());
+        warn!("Deleting stats file...");
+        return std::fs::remove_file(stats_file).is_err();
+    }
+    
+    debug!("Checking if pid {} is {}", pid, FUZZER_PROCESS_NAME);
     let mut sys_info = System::new_with_specifics(RefreshKind::new().with_processes());
     sys_info.refresh_processes();
-    let fuzzer_alive = match sys_info.get_process(fuzzer_pid as _) {
+    let fuzzer_alive = match sys_info.get_process(pid as _) {
         None => false,
-        Some(p) => p.name().starts_with("crowdfuzz"),
+        Some(p) => p.name().starts_with(FUZZER_PROCESS_NAME),
     };
 
     if !fuzzer_alive {
-        debug!("Deleting shmem link");
+        debug!("Deleting stats file...");
         return std::fs::remove_file(stats_file).is_err();
     }
 
@@ -169,7 +191,12 @@ impl Config {
 
             // Lock in the stat file asap
             self.shmem = match ShmemConf::new().flink(&tmp_path).size(self.shmem_size).create() {
-                Ok(s) => Some(s),
+                Ok(s) => {
+                    unsafe{
+                        *(s.as_ptr() as *mut u32) = STAT_MAGIC;
+                    }
+                    Some(s)
+                },
                 Err(_) => {
                     tmp_path.pop();
 

@@ -52,10 +52,13 @@ pub enum CoreState {
     Exiting,
 }
 
+pub const STAT_MAGIC:u32 = 0xBADC0FFE;
+
 /// Describes the statistic layout of a CROWDFUZZ instance
 /// Use simple_parse::SpRead to instanciate : CfStats::from_bytes(...)
 #[derive(SpRead, Debug)]
 pub struct CfStats {
+    pub magic: u32,
     pub state: CoreState,
     pub pid: u32,
     num_plugins: u16,
@@ -148,4 +151,30 @@ impl StatBytes {
         acquire(self.lock);
         LockGuard::new(self.lock, self.val.get())
     }
+}
+
+/// Attemps to get a PID from the shared memory. If the fuzzer 
+/// hasn't initialized the shared memory after 1s, Ok(None) is returned.
+pub unsafe fn get_fuzzer_pid(shmem_start: *mut u8) -> Result<Option<u32>> {
+    
+    let magic_ptr = shmem_start as *mut u32;
+    if *magic_ptr != STAT_MAGIC {
+        return Err(From::from("Fuzzer stats invalid".to_string()));
+    }
+    
+    let mut num_checks = 0;
+    let state_ptr = magic_ptr.add(1) as *mut CoreState;
+
+    // Wait until shmem is initialized
+    while let CoreState::Initializing = *state_ptr {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        num_checks += 1;
+        if num_checks == 5 {
+            // Fuzzer didnt init in time
+            return Ok(None);
+        }
+    }
+    
+    let pid_ptr = state_ptr.add(1) as *mut u32;
+    Ok(Some(*pid_ptr))
 }

@@ -223,23 +223,25 @@ impl<'a> Stats<'a> {
         // Init the cflib::CfStats
         unsafe {
             //CfStats.state
-            res.set_state(cflib::CoreState::Initializing);
-            res.end_idx += size_of::<cflib::CoreState>();
-            //CfStats.pid
-            *(cur.add(res.end_idx) as *mut u32) = std::process::id();
-            res.end_idx += size_of::<u32>();
-            //CfStats.num_plugins
-            res.num_plugin_idx = res.end_idx;
-            *(cur.add(res.num_plugin_idx) as *mut u16) = 0;
-            res.end_idx += size_of::<u16>();
+            let magic: *mut u32 = cur as _;
+            let state: *mut CoreState = magic.add(1) as _;
+            let pid: *mut u32 = state.add(1) as _;
+            let num_plugins: *mut u16 = pid.add(1) as _;
+
+            *magic = STAT_MAGIC;
+            *state = ::cflib::CoreState::Initializing;
+            *pid = std::process::id();
+            *num_plugins = 0;
+
+            res.num_plugin_idx = num_plugins as usize - cur as usize;
+            res.end_idx = num_plugins.add(1) as usize - cur as usize;
         }
 
         Ok(res)
     }
 
     pub fn new_plugin(&mut self, name: &str) -> Result<()> {
-        let state = unsafe { &mut *(self.buf.as_mut_ptr() as *mut CoreState) };
-        match state {
+        match self.get_state() {
             CoreState::Initializing => {}
             _ => {
                 warn!("new_plugin called outside of initialization...");
@@ -282,8 +284,7 @@ impl<'a> Stats<'a> {
     }
 
     pub fn new_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal> {
-        let state = unsafe { &mut *(self.buf.as_mut_ptr() as *mut CoreState) };
-        match state {
+        match self.get_state() {
             CoreState::Initializing => {}
             _ => {
                 warn!("new_stat called outside of initialization...");
@@ -385,7 +386,13 @@ impl<'a> Stats<'a> {
 
     pub fn set_state(&mut self, new_state: CoreState) {
         unsafe {
-            *(self.buf.as_mut_ptr() as *mut CoreState) = new_state;
+            *(self.buf.as_mut_ptr().add(size_of::<u32>()) as *mut CoreState) = new_state;
         };
+    }
+
+    pub fn get_state(&self) -> CoreState {
+        unsafe {
+            *(self.buf.as_ptr().add(size_of::<u32>()) as *mut CoreState)
+        }
     }
 }
