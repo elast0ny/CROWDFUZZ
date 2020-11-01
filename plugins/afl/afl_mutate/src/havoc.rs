@@ -37,19 +37,48 @@ impl HavocState {
             HAVOC_CYCLES
         } else {
             HAVOC_CYCLES_INIT
-        } as usize * (perf_score as usize) / 1 / 100;
+        } as usize * (perf_score as usize) / afl.havoc_div as usize / 100;
+
+        if self.num_iterations < HAVOC_MIN {
+            self.num_iterations = HAVOC_MIN;
+        }
     }
 
     pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
         let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
+        let raw_ptr = bytes.as_mut_ptr();
         self.num_iterations -= 1;
 
         if self.num_iterations == 0 {
             return StageResult::Done;
         }
 
-        bytes[0] = 0x00;
+        let num_stacks = 1 << self.rng.gen_range(1, HAVOC_STACK_POW2);
+        for _ in 0..num_stacks {
+            unsafe {
+            match self.rng.gen_range(0, 15) {
+                // Flip a single bit somewhere
+                0 => flip_bit(bytes, self.rng.gen_range(0, bytes.len() << 3)),
+                // Set byte to interesting value
+                1 => *raw_ptr.add(self.rng.gen_range(0, bytes.len())) = *(INTERESTING_8.as_ptr().add(self.rng.gen_range(0, INTERESTING_8.len())) as *mut u8),
+                2 => *(raw_ptr.add(self.rng.gen_range(0, bytes.len())) as *mut u16) = *(INTERESTING_16.as_ptr().add(self.rng.gen_range(0, INTERESTING_16.len())) as *mut u16),
+                3 => *(raw_ptr.add(self.rng.gen_range(0, bytes.len())) as *mut u32) = *(INTERESTING_32.as_ptr().add(self.rng.gen_range(0, INTERESTING_32.len())) as *mut u32),
+                4 => *(raw_ptr.add(self.rng.gen_range(0, bytes.len())) as *mut u8) -= self.rng.gen_range(1, (ARITH_MAX + 1) as u8),
+                5 => *(raw_ptr.add(self.rng.gen_range(0, bytes.len())) as *mut u8) += self.rng.gen_range(1, (ARITH_MAX + 1) as u8),
+                6 => *(raw_ptr.add(self.rng.gen_range(0, bytes.len())) as *mut u16) -= self.rng.gen_range(1, (ARITH_MAX + 1) as u16),
+                7 => *(raw_ptr.add(self.rng.gen_range(0, bytes.len())) as *mut u16) += self.rng.gen_range(1, (ARITH_MAX + 1) as u16),
+                8 => *(raw_ptr.add(self.rng.gen_range(0, bytes.len())) as *mut u32) -= self.rng.gen_range(1, (ARITH_MAX + 1) as u32),
+                9 => *(raw_ptr.add(self.rng.gen_range(0, bytes.len())) as *mut u32) += self.rng.gen_range(1, (ARITH_MAX + 1) as u32),
+                10 => *(raw_ptr.add(self.rng.gen_range(0, bytes.len())) as *mut u8) ^= 1 + self.rng.gen_range(0, 255),
+                11 | 12 => {},
+                13 => {},
+                14 => {},
+                _ => unreachable!(),
+            }
+        }
+        }
 
+        // Reverting our changes will be too much
         StageResult::CantRestoreInput
     }
 }

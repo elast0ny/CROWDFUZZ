@@ -264,6 +264,7 @@ impl State {
         let mut max_bm: usize = 0;
         let mut min_exec: usize = usize::MAX;
         let mut max_exec: usize = 0;
+
         for (idx, q) in self.queue.iter().enumerate() {
             if q.cal_left != 0 {
                 continue;

@@ -8,8 +8,9 @@
 "fuzz_loop" : 
   - '../target/release/libfs_store.so'
   - '../target/release/libselect_input.so'
-  - '../target/release/libbasic_mutate.so'
-  #- '../target/release/libafl_mutate.so'
+  #- '../target/release/libbasic_mutate.so'
+  - '../target/release/libafl_state.so'
+  - '../target/release/libafl_mutate.so'
   - '../target/release/librun_target.so'
   - '../target/release/libsave_result.so'
 
