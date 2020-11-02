@@ -52,7 +52,7 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
 
     #[allow(invalid_value)]
-    let mut state = Box::new(unsafe {
+    let mut s = Box::new(unsafe {
         State {
             exit_status: TargetExitStatus::Normal(0),
             input_file: None,
@@ -71,17 +71,17 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     });
 
     //close stdout and stderr
-    state.cmd.stdout(Stdio::null()).stderr(Stdio::null());
+    s.cmd.stdout(Stdio::null()).stderr(Stdio::null());
 
     // Insert our store values
     // EXIT_STATUS
-    store.insert_exclusive(STORE_EXIT_STATUS, &state.exit_status, Some(core))?;
+    store.insert_exclusive(STORE_EXIT_STATUS, &s.exit_status, Some(core))?;
     // TARGET_EXEC_TIME
-    store.insert_exclusive(STORE_TARGET_EXEC_TIME, &state.exec_time, Some(core))?;
+    store.insert_exclusive(STORE_TARGET_EXEC_TIME, &s.exec_time, Some(core))?;
     // AVG_TARGET_EXEC_TIME
     store.insert_exclusive(
         STORE_AVG_TARGET_EXEC_TIME,
-        state.avg_exec_time.val,
+        s.avg_exec_time.val,
         Some(core),
     )?;
 
@@ -96,12 +96,12 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     }
 
     // Parse our config values
-    state.load_config(core, plugin_conf)?;
+    s.load_config(core, plugin_conf)?;
 
     // Create potential input file name
     let mut input_path = PathBuf::new();
     input_path.push(state_dir);
-    if let Some(ref custom_fname) = state.target_input_path {
+    if let Some(ref custom_fname) = s.target_input_path {
         input_path.push(custom_fname);
     } else {
         input_path.push("cur_input");
@@ -111,11 +111,11 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
     // Build arg list swapping @@ for file path
     for arg in orig_target_args {
         if "@@" == arg {
-            match state.input_file {
+            match s.input_file {
                 Some(_) => target_args.push(&input_path),
                 None => {
                     target_args.push(&input_path);
-                    state.input_file = Some(match File::create(&input_path) {
+                    s.input_file = Some(match File::create(&input_path) {
                         Ok(f) => f,
                         Err(e) => {
                             core.error(&format!(
@@ -136,24 +136,24 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
 
     // set command args
     if !target_args.is_empty() {
-        state.cmd.args(&target_args);
+        s.cmd.args(&target_args);
     }
 
     // set command working directory
-    if let Some(ref target_wd) = state.target_working_dir {
-        state.cmd.current_dir(target_wd);
+    if let Some(ref target_wd) = s.target_working_dir {
+        s.cmd.current_dir(target_wd);
     }
 
     // Set input method
-    if state.input_file.is_some() {
-        state.cmd.stdin(Stdio::null());
+    if s.input_file.is_some() {
+        s.cmd.stdin(Stdio::null());
     } else {
-        state.cmd.stdin(Stdio::piped());
+        s.cmd.stdin(Stdio::piped());
     }
 
     core.info(&format!("Running '{}' {:?}", target_bin_path, target_args));
 
-    Ok(Box::into_raw(state) as _)
+    Ok(Box::into_raw(s) as _)
 }
 
 // Make sure we have everything to fuzz properly
@@ -162,10 +162,10 @@ fn validate(
     store: &mut CfStore,
     plugin_ctx: *mut u8,
 ) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
+    let s = box_ref!(plugin_ctx, State);
 
     // Make sure someone is providing us input bytes
-    state.cur_input = unsafe { store.as_ref(STORE_INPUT_BYTES, Some(core))? };
+    s.cur_input = unsafe { store.as_ref(STORE_INPUT_BYTES, Some(core))? };
 
     Ok(())
 }
@@ -176,22 +176,20 @@ fn run_target(
     _store: &mut CfStore,
     plugin_ctx: *mut u8,
 ) -> Result<()> {
-    let state = box_ref!(plugin_ctx, State);
+    let s = box_ref!(plugin_ctx, State);
 
     // Update file on disk
-    if let Some(ref mut f) = state.input_file {
-        for chunk in &state.cur_input.chunks {
-            let _ = (f.set_len(0), f.seek(std::io::SeekFrom::Start(0)));
-            if let Err(e) = f.write_all(chunk) {
-                core.error(&format!("Failed to write target input : {}", e));
-                return Err(From::from("Failed to write target input".to_string()));
-            }
+    if let Some(ref mut f) = s.input_file {
+        let _ = (f.set_len(0), f.seek(std::io::SeekFrom::Start(0)));
+        if let Err(e) = f.write_all(&s.cur_input) {
+            core.error(&format!("Failed to write target input : {}", e));
+            return Err(From::from("Failed to write target input".to_string()));
         }
         let _ = f.flush();
     }
 
     let child_start: Instant = Instant::now();
-    let mut child = match state.cmd.spawn() {
+    let mut child = match s.cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
             core.error(&format!("Failed to spawn child process : {}", e));
@@ -200,43 +198,41 @@ fn run_target(
     };
 
     // Feed input in stdin if required
-    if state.input_file.is_none() {
+    if s.input_file.is_none() {
         let stdin = child.stdin.as_mut().unwrap();
-        for chunk in &state.cur_input.chunks {
-            if let Err(e) = stdin.write_all(chunk) {
-                core.error(&format!("Failed to write target stdin : {}", e));
-                return Err(From::from("Failed to write target stdin".to_string()));
-            }
+        if let Err(e) = stdin.write_all(&s.cur_input) {
+            core.error(&format!("Failed to write target stdin : {}", e));
+            return Err(From::from("Failed to write target stdin".to_string()));
         }
     }
 
     // Wait for child
-    let result = if let Some(timeout) = state.target_timeout_ms {
+    let result = if let Some(timeout) = s.target_timeout_ms {
         child.wait_timeout(timeout).unwrap()
     } else {
         Some(child.wait().unwrap())
     };
 
-    state.exec_time = child_start.elapsed().as_nanos() as u64;
+    s.exec_time = child_start.elapsed().as_nanos() as u64;
 
     update_average(
-        state.avg_exec_time.val,
-        state.exec_time,
-        *state.avg_denominator,
+        s.avg_exec_time.val,
+        s.exec_time,
+        *s.avg_denominator,
     );
 
     match result {
         None => {
             let _ = child.kill();
-            state.exit_status = TargetExitStatus::Timeout
+            s.exit_status = TargetExitStatus::Timeout
         }
         Some(ref r) => {
             match os::get_exception(&r) {
                 Some(exception) => {
-                    state.exit_status = TargetExitStatus::Crash(exception);
+                    s.exit_status = TargetExitStatus::Crash(exception);
                 }
                 None => {
-                    state.exit_status = TargetExitStatus::Normal(r.code().unwrap() as _);
+                    s.exit_status = TargetExitStatus::Normal(r.code().unwrap() as _);
                 }
             };
         }

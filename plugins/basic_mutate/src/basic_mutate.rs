@@ -59,17 +59,16 @@ fn mutate_input(
 ) -> Result<()> {
     let s = box_ref!(plugin_ctx, State);
 
-    if *s.no_mutate || s.cur_input.chunks.is_empty() {
+    if *s.no_mutate || s.cur_input.is_empty() {
         // Input is empty ??
         return Ok(());
     }
 
-    let first_chunk = unsafe { s.cur_input.chunks.get_unchecked_mut(0) };
-
+    let input_len = s.cur_input.len();
     // Randomly mutate some bytes in the first chunk
-    let num_of_bytes_mutated = s.rng.gen_range(0, first_chunk.len());
+    let num_of_bytes_mutated = s.rng.gen_range(0, input_len);
     for _ in 0..num_of_bytes_mutated {
-        first_chunk[s.rng.gen_range(0, first_chunk.len())] = s.rng.gen::<u8>();
+        s.cur_input[s.rng.gen_range(0, input_len)] = s.rng.gen::<u8>();
     }
 
     Ok(())

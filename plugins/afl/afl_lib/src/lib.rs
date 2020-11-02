@@ -53,7 +53,7 @@ pub struct AflGlobals {
     pub virgin_crash: [u8; MAP_SIZE],
     pub var_bytes: [u8; MAP_SIZE],
     pub havoc_div: u32,
-
+    pub queue_cycles: u64,
     pub fast_cal: bool,
     pub dumb_mode: bool,
     pub skip_deterministic: bool,
@@ -72,7 +72,7 @@ impl Default for AflGlobals {
             var_bytes: [0; MAP_SIZE],
             fast_cal: false,
             dumb_mode: false,
-            
+            queue_cycles: 1,
             skip_deterministic: false,
             total_cal_us: 0,
             total_cal_cycles: 0,

@@ -253,7 +253,12 @@ fn destroy(
 
 impl State {
     /// Parse config values and sets their equivalent in AflState
-    pub fn load_conf(&mut self, _plugin_conf: &HashMap<String, String>) -> Result<()> {
+    pub fn load_conf(&mut self, plugin_conf: &HashMap<String, String>) -> Result<()> {
+
+        if plugin_conf.get("afl_skip_deterministic").is_some() {
+            self.afl.skip_deterministic = true;
+        }
+        
         Ok(())
     }
 

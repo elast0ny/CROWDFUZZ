@@ -9,11 +9,9 @@ use crate::*;
 
 // We currently use Sha1. It might be worth exploring speed differences
 // with doing a pre crc32 check first ?
-fn compute_uid(hasher: &mut Sha1, chunks: &[&[u8]], dst: &mut [u8; 20]) {
+fn compute_uid(hasher: &mut Sha1, buf: &[u8], dst: &mut [u8; 20]) {
     hasher.reset();
-    for chunk in chunks {
-        hasher.input(chunk);
-    }
+    hasher.input(buf);
     hasher.result(dst);
 }
 
@@ -31,17 +29,15 @@ fn read_file(src: &Path, dst: &mut Vec<u8>) -> bool {
     true
 }
 
-fn write_file(dst: &Path, chunks: &[&[u8]]) -> bool {
+fn write_file(dst: &Path, buf: &[u8]) -> bool {
     let mut file = match File::create(dst) {
         Ok(f) => f,
         _ => return false,
     };
     // Write file contents
-    for chunk in chunks {
-        if file.write_all(chunk).is_err() {
-            let _ = std::fs::remove_file(&dst);
-            return false;
-        }
+    if file.write_all(buf).is_err() {
+        let _ = std::fs::remove_file(&dst);
+        return false;
     }
     true
 }
@@ -93,7 +89,7 @@ impl State {
                 }
 
                 // Compute the hash of input into tmp_uid
-                compute_uid(&mut self.hasher, &[&mut self.tmp_buf], &mut self.tmp_uid);
+                compute_uid(&mut self.hasher, &self.tmp_buf, &mut self.tmp_uid);
                 if !self.unique_files.insert(self.tmp_uid) {
                     //_core.log(::log::Level::Info, "existing file");
                     //true is returned if new entry
@@ -118,35 +114,22 @@ impl State {
         }
 
         let mut saved_one = false;
-        let mut cur_input: Vec<&[u8]> = Vec::with_capacity(1);
+        let mut cur_input: &Vec<u8>;
         let mut cur_fpath: Option<PathBuf>;
-        let mut cur_input_len: usize;
 
         for new_input in self.new_inputs.drain(..) {
-            cur_input.clear();
-            cur_input_len = 0;
 
             // Either content was passed or we must read a file
-            match new_input.contents {
+            cur_input = match new_input.contents {
                 Some(v) => {
                     cur_fpath = None;
-                    for chunk in v.chunks.iter() {
-                        cur_input.push(chunk);
-                        cur_input_len += chunk.len();
-                    }
+                    v
                 }
                 None => {
                     match new_input.path {
                         Some(p) if read_file(p.as_path(), &mut self.tmp_buf) => {
                             cur_fpath = Some(p);
-                            cur_input_len = self.tmp_buf.len();
-                            // Borrow checker doesnt realise that vec.clear() drops the immutable ref...
-                            cur_input.push(unsafe {
-                                std::slice::from_raw_parts(
-                                    self.tmp_buf.as_ptr(),
-                                    self.tmp_buf.len(),
-                                )
-                            });
+                            &self.tmp_buf
                         }
                         _ => continue,
                     }
@@ -154,7 +137,7 @@ impl State {
             };
 
             // Compute the hash of input into tmp_uid
-            compute_uid(&mut self.hasher, &cur_input, &mut self.tmp_uid);
+            compute_uid(&mut self.hasher, cur_input, &mut self.tmp_uid);
             if !self.unique_files.insert(self.tmp_uid) {
                 //_core.log(::log::Level::Info, "existing file");
                 //true is returned if new entry
@@ -176,7 +159,7 @@ impl State {
 
             //_core.log(::log::Level::Info, &format!("sha1 {:?}", &mut self.tmp_uid));
 
-            if write_to_queue && !write_file(cur_fpath.as_ref().unwrap().as_path(), &cur_input) {
+            if write_to_queue && !write_file(cur_fpath.as_ref().unwrap().as_path(), cur_input) {
                 let _ = self.unique_files.remove(&self.tmp_uid);
                 continue;
             }
@@ -186,7 +169,7 @@ impl State {
                 uid: self.tmp_uid.to_vec(),
                 path: cur_fpath,
                 contents: None,
-                len: cur_input_len,
+                len: cur_input.len(),
             });
 
             *self.num_inputs.val += 1;

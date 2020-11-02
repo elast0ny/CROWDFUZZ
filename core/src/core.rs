@@ -214,6 +214,9 @@ impl<'a> CfCore<'a> {
         *self.stats.num_execs.val += 1;
         self.store.avg_denominator += 1;
 
+        //#[cfg(debug_assertions)]
+        //std::thread::sleep(std::time::Duration::from_secs(5));
+
         debug!("Running through all plugins once");
         for (plugin_id, plugin) in self.plugin_chain.iter_mut().enumerate() {
             self.ctx.cur_plugin_id = plugin_id;

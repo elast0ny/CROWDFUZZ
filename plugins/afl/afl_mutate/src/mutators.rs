@@ -59,32 +59,9 @@ impl MutatorStage {
         }
         self
     }
-
-    /// Updates the stage name and current progress
-    pub fn update_info(&self, stage_desc: &mut String, progress: &mut u64) {
-        stage_desc.clear();
-        match self {
-            Self::Havoc(s) => {
-                let _ = s.desc(stage_desc);
-                *progress = s.iterations() as u64;
-            }
-            Self::BitFlip(s) => {
-                let _ = s.desc(stage_desc);
-                *progress = s.iterations() as u64;
-            }
-            Self::Arithmetic(s) => {
-                let _ = s.desc(stage_desc);
-                *progress = s.iterations() as u64;
-            }
-            Self::Interesting(s) => {
-                let _ = s.desc(stage_desc);
-                *progress = s.iterations() as u64;
-            }
-        }
-    }
-
+    
     /// Progress to the next mutator
-    pub fn next(&mut self, q: &mut AflQueueEntry, afl: &AflGlobals, input: &CfInput) -> bool {
+    pub fn next(&mut self, q: &mut AflQueueEntry, afl: &AflGlobals, input: &[u8]) -> bool {
         match self {
             Self::Havoc(_) => false,
             Self::BitFlip(_) => {
@@ -110,6 +87,43 @@ impl MutatorStage {
             Self::Interesting(s) => s.mutate(input),
         }
     }
+
+    pub fn update_state(&self, input: &[u8], name: Option<&mut String>, total_cycles: Option<&mut u64>) {
+        match self {
+            Self::Havoc(s) => {
+                if let Some(n) = name {
+                    s.desc(n);
+                }
+                if let Some(c) = total_cycles {
+                    *c = s.total_cycles() as _;
+                }
+            },
+            Self::BitFlip(s) => {
+                if let Some(n) = name {
+                    s.desc(n);
+                }
+                if let Some(c) = total_cycles {
+                    *c = s.total_cycles(input) as _;
+                }
+            },
+            Self::Arithmetic(s) => {
+                if let Some(n) = name {
+                    s.desc(n);
+                }
+                if let Some(c) = total_cycles {
+                    *c = s.total_cycles(input) as _;
+                }
+            },
+            Self::Interesting(s) => {
+                if let Some(n) = name {
+                    s.desc(n);
+                }
+                if let Some(c) = total_cycles {
+                    *c = s.total_cycles(input) as _;
+                }
+            },
+        }
+    }
 }
 
 /* Common helper functions for mutators */
@@ -120,10 +134,4 @@ pub fn swap_16(v: u16) -> u16 {
 
 pub fn swap_32(v: u32) -> u32 {
     (v << 24) | (v >> 24) | ((v << 8) & 0x00FF0000) | ((v >> 8) & 0x0000FF00)
-}
-
-/// Unsafe : Do no validity checking on bit_idx for performance
-pub fn flip_bit(bytes: &mut [u8], bit_idx: usize) {
-    let val = unsafe { bytes.get_unchecked_mut(bit_idx >> 3) };
-    *val ^= 128 >> (bit_idx & 7);
 }

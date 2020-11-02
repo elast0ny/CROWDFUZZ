@@ -23,5 +23,6 @@
   #"target_wd" : "some_dir"
   "target_timeout_ms": "1000"
   "target_input_path" : "cur_input"
+  "afl_skip_deterministic": "1"
 
 

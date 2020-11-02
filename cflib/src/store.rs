@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use crate::*;
 
@@ -105,50 +104,6 @@ pub enum TargetExitStatus {
     Normal(i32),
     Timeout,
     Crash(i32),
-}
-
-/// Represents generic info for a specific input
-pub struct CfInputInfo {
-    /// A unique identifier for this file
-    pub uid: Vec<u8>,
-    /// Contents of the input
-    pub contents: Option<CfInput>,
-    /// Path to the input if it is on disk
-    pub path: Option<PathBuf>,
-    /// Size of the contents of the input
-    pub len: usize,
-}
-
-#[derive(PartialEq, PartialOrd, Eq, Ord)]
-pub struct InputPriority {
-    /// The arbitrary priority for this input
-    pub weight: usize,
-    /// The index of the input
-    pub idx: usize,
-}
-impl InputPriority {
-    pub fn from(weight: usize, idx: usize) -> Self {
-        Self { weight, idx }
-    }
-}
-
-/// Represents the contents of an input
-pub struct CfInput {
-    /// List of chunks representing the input
-    pub chunks: Vec<&'static mut [u8]>,
-}
-impl Default for CfInput {
-    fn default() -> Self {
-        Self { chunks: Vec::new() }
-    }
-}
-
-/// Represents generic info for a specific input
-pub struct CfNewInput {
-    /// Contents of the input
-    pub contents: Option<&'static CfInput>,
-    /// Path to the input
-    pub path: Option<PathBuf>,
 }
 
 fn get_valid_ptr(store: &CfStore, key: &str) -> Result<*mut u8> {

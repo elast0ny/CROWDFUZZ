@@ -1,186 +1,128 @@
 use crate::*;
 
 #[derive(Copy, Clone, Debug)]
-enum ArithStage {
-    AddSub8(i8),
-    AddSub16(i16),
-    AddSub32(i32),
-}
-impl Default for ArithStage {
-    fn default() -> Self {
-        Self::AddSub8(-(ARITH_MAX as i8))
-    }
-}
-impl ArithStage {
-    pub fn max_idx(&self, input_len: usize) -> usize {
-        match self {
-            Self::AddSub8(_) => input_len,
-            Self::AddSub16(_) => {
-                if input_len == 1 {
-                    0
-                } else {
-                    input_len - 1
-                }
-            }
-            Self::AddSub32(_) => {
-                if input_len <= 3 {
-                    0
-                } else {
-                    input_len - 3
-                }
-            }
-        }
-    }
-
-    pub fn next_stage(&mut self) -> bool {
-        match self {
-            Self::AddSub8(j) => {
-                if *j == ARITH_MAX as _ {
-                    *self = Self::AddSub16(-(ARITH_MAX as i16));
-                } else {
-                    *j += 1;
-                    // Skip 0
-                    if *j == 0 {
-                        *j += 1;
-                    }
-                }
-            }
-            Self::AddSub16(j) => {
-                if *j == ARITH_MAX as _ {
-                    *self = Self::AddSub32(-(ARITH_MAX as i32))
-                } else {
-                    *j += 1;
-                    // Skip 0
-                    if *j == 0 {
-                        *j += 1;
-                    }
-                }
-            }
-            Self::AddSub32(j) => {
-                if *j == ARITH_MAX as _ {
-                    return false;
-                } else {
-                    *j += 1;
-                    // Skip 0
-                    if *j == 0 {
-                        *j += 1;
-                    }
-                }
-            }
-        };
-        true
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
 pub struct ArithState {
     idx: usize,
+    // Index of last changed value with its original contents
     prev_val: Option<(usize, u32)>,
-    stage: ArithStage,
+    /// Current width of the operation (1,2,4,-1,-2,-4)
+    width: i8,
+    /// Value use for the arithmetic operation (1 -> ARITH_MAX)
+    cur_val: u8,
 }
 
 impl ArithState {
-    pub fn new(input: &CfInput) -> Self {
-        let bytes = unsafe { input.chunks.get_unchecked(0) };
-        let tmp = ArithStage::default();
+    pub fn new(input: &[u8]) -> Self {
         Self {
-            idx: tmp.max_idx(bytes.len()),
+            idx: input.len(),
             prev_val: None,
-            stage: tmp,
+            width: 1,
+            cur_val: 1,
         }
     }
 
     pub fn desc(&self, dst: &mut String) {
         dst.push_str("arith ");
-        dst.push_str(match self.stage {
-            ArithStage::AddSub8(_) => "8/8",
-            ArithStage::AddSub16(_) => "16/8",
-            ArithStage::AddSub32(_) => "32/8",
+        dst.push_str(match self.width.abs() {
+            1 => "8/8",
+            2 => "16/8",
+            _ => "32/8",
         });
     }
 
-    pub fn iterations(&self) -> usize {
-        self.idx * 2 * (ARITH_MAX as usize)
+    pub fn total_cycles(&self, input: &[u8]) -> usize {
+        let mut total = 0;
+        let mut i = 1;
+        loop {
+            total += (input.len() - (i - 1) as usize) * 4 * 35;
+            i *= 2;
+            if i > 4 {
+                break;
+            }
+        }
+        total
     }
 
     /// Increment/decrement values
-    pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
-        let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
-
+    pub fn mutate(&mut self, mut input: &mut [u8]) -> StageResult {
         // Restore the orig input
         if let Some((idx, orig_val)) = self.prev_val.take() {
             unsafe {
-                match self.stage {
-                    ArithStage::AddSub8(_) => {
-                        *(bytes.as_mut_ptr().add(idx) as *mut u8) = orig_val as _
+                match self.width.abs() {
+                    1 => {
+                        input.set_byte(idx, orig_val as _);
                     }
-                    ArithStage::AddSub16(_) => {
-                        *(bytes.as_mut_ptr().add(idx) as *mut u16) = orig_val as _
+                    2 => {
+                        input.set_word(idx, orig_val as _);
                     }
-                    ArithStage::AddSub32(_) => {
-                        *(bytes.as_mut_ptr().add(idx) as *mut u32) = orig_val as _
+                    _ => {
+                        input.set_dword(idx, orig_val as _);
                     }
-                }
+                };
             }
         }
 
         loop {
             // If we have reached the end of the buffer
             if self.idx == 0 {
-                // Process to next stage
-                return if self.stage.next_stage() {
-                    self.idx = self.stage.max_idx(bytes.len());
-                    StageResult::Update
-                } else {
-                    StageResult::Done
-                };
+                // If done all arith values
+                if self.cur_val == ARITH_MAX {
+                    if self.width == -4 {
+                        // Last stage is Sub(u32)
+                        return StageResult::Done;
+                    } else if self.width == 4 {
+                        // Loop from Add(u32) to Sub(u8)
+                        self.width = -1;
+                    } else {
+                        // Move to next width
+                        self.width *= 2;
+                    }
+
+                    self.idx = input.len() - (self.width.abs() - 1) as usize;
+                    self.cur_val = 1;
+                    return StageResult::Update;
+                }
+                
+                self.idx = input.len() - (self.width.abs() - 1) as usize;
+                self.cur_val += 1;
+                continue;         
             }
 
             self.idx -= 1;
 
             unsafe {
-                let dst = bytes.as_mut_ptr().add(self.idx);
-                let orig: u32;
-
-                match self.stage {
-                    ArithStage::AddSub8(j) => {
-                        orig = *dst as u32;
-                        let r1 = orig ^ (orig.overflowing_add((j as i32) as u32)).0;
-                        if could_be_bitflip(r1) {
-                            continue;
-                        }
-                        self.prev_val = Some((self.idx, orig));
-                        *(dst as *mut i8) = (&mut *(dst as *mut i8)).overflowing_add(j).0;
+                match self.width {
+                    1 => {
+                        self.prev_val =
+                            Some((self.idx, input.add_byte(self.idx, self.cur_val as _) as u32));
                     }
-                    ArithStage::AddSub16(j) => {
-                        orig = *(dst as *mut u16) as u32;
-                        let r1 = orig ^ (orig.overflowing_add((j as i32) as u32)).0;
-
-                        // If the arith action doest cause an over/under flow
-                        if ((j > 0 && (orig & 0xFF) + j as u32 <= 0xFF) || (orig & 0xFF) > j as u32)
-                            || could_be_bitflip(r1)
-                        {
-                            continue;
-                        }
-                        self.prev_val = Some((self.idx, orig));
-                        *(dst as *mut i16) = (&mut *(dst as *mut i16)).overflowing_add(j).0;
+                    2 => {
+                        self.prev_val =
+                            Some((self.idx, input.add_word(self.idx, self.cur_val as _) as u32));
                     }
-                    ArithStage::AddSub32(j) => {
-                        orig = *(dst as *mut u32);
-                        let r1 = orig ^ (orig.overflowing_add((j as i32) as u32)).0;
-                        // If the arith action doest cause an over/under flow
-                        if ((j > 0 && (orig & 0xFFFF) + j as u32 <= 0xFFFF)
-                            || (orig & 0xFFFF) > j as u32)
-                            || could_be_bitflip(r1)
-                        {
-                            continue;
-                        }
-                        self.prev_val = Some((self.idx, orig));
-                        *(dst as *mut i32) = (&mut *(dst as *mut i32)).overflowing_add(j).0;
+                    4 => {
+                        self.prev_val = Some((
+                            self.idx,
+                            input.add_dword(self.idx, self.cur_val as _) as u32,
+                        ));
                     }
+                    -1 => {
+                        self.prev_val =
+                            Some((self.idx, input.sub_byte(self.idx, self.cur_val as _) as u32));
+                    }
+                    -2 => {
+                        self.prev_val =
+                            Some((self.idx, input.sub_word(self.idx, self.cur_val as _) as u32));
+                    }
+                    -4 => {
+                        self.prev_val = Some((
+                            self.idx,
+                            input.sub_dword(self.idx, self.cur_val as _) as u32,
+                        ));
+                    }
+                    _ => unreachable!(),
                 };
             }
-
             break;
         }
         StageResult::WillRestoreInput
@@ -211,10 +153,7 @@ pub fn could_be_arith(mut old_val: u32, mut new_val: u32, blen: u8) -> bool {
     }
     /* If only one byte differs and the values are within range, return 1. */
 
-    if diffs == 1
-        && (ov.overflowing_sub(nv).0 <= ARITH_MAX as _
-            || nv.overflowing_sub(ov).0 <= ARITH_MAX as _)
-    {
+    if diffs == 1 && (ov - nv <= ARITH_MAX as _ || nv - ov <= ARITH_MAX as _) {
         return true;
     }
     if blen == 1 {
@@ -237,33 +176,27 @@ pub fn could_be_arith(mut old_val: u32, mut new_val: u32, blen: u8) -> bool {
     }
     /* If only one word differs and the values are within range, return 1. */
     if diffs == 1 {
-        if ov.overflowing_sub(nv).0 <= ARITH_MAX as _ || nv.overflowing_sub(ov).0 <= ARITH_MAX as _
-        {
+        if ov - nv <= ARITH_MAX as _ || nv - ov <= ARITH_MAX as _ {
             return true;
         }
 
         ov = swap_16(ov);
         nv = swap_16(nv);
 
-        if ov.overflowing_sub(nv).0 <= ARITH_MAX as _ || nv.overflowing_sub(ov).0 <= ARITH_MAX as _
-        {
+        if ov - nv <= ARITH_MAX as _ || nv - ov <= ARITH_MAX as _ {
             return true;
         }
     }
     /* Finally, let's do the same thing for dwords. */
     if blen == 4 {
-        if old_val.overflowing_sub(new_val).0 <= ARITH_MAX as _
-            || new_val.overflowing_sub(old_val).0 <= ARITH_MAX as _
-        {
+        if old_val - new_val <= ARITH_MAX as _ || new_val - old_val <= ARITH_MAX as _ {
             return true;
         }
 
         new_val = swap_32(new_val);
         old_val = swap_32(old_val);
 
-        if old_val.overflowing_sub(new_val).0 <= ARITH_MAX as _
-            || new_val.overflowing_sub(old_val).0 <= ARITH_MAX as _
-        {
+        if old_val - new_val <= ARITH_MAX as _ || new_val - old_val <= ARITH_MAX as _ {
             return true;
         }
     }

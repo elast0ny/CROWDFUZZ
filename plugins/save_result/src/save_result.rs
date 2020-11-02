@@ -180,9 +180,7 @@ impl State {
 
         // calculate sha1 of input
         self.hasher.reset();
-        for chunk in &self.cur_input.chunks {
-            self.hasher.input(chunk);
-        }
+        self.hasher.input(&self.cur_input);
         self.hasher.result(&mut self.tmp_uid);
 
         // Build hexstr from file uid
@@ -204,12 +202,11 @@ impl State {
         let _ = dst.pop();
 
         // Write file contents
-        for chunk in &self.cur_input.chunks {
-            if let Err(e) = file.write_all(chunk) {
-                let _ = fs::remove_file(&dst);
-                return Err(From::from(e));
-            }
+        if let Err(e) = file.write_all(&self.cur_input) {
+            let _ = fs::remove_file(&dst);
+            return Err(From::from(e));
         }
+        
         Ok(true)
     }
 }

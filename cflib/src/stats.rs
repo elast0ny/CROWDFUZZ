@@ -174,6 +174,8 @@ impl StatBytes {
 
 /// Attemps to get a PID from the shared memory. If the fuzzer
 /// hasn't initialized the shared memory after 1s, Ok(None) is returned.
+/// # Safety
+/// This function assumes that the passed pointer can at least fit the stat header
 pub unsafe fn get_fuzzer_pid(shmem_start: *mut u8) -> Result<Option<u32>> {
     let magic_ptr = shmem_start as *mut u32;
     if *magic_ptr != STAT_MAGIC {

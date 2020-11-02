@@ -13,12 +13,11 @@ cflib::register!(fuzz, select_input);
 cflib::register!(unload, destroy);
 
 struct State {
+    orig_buf: Vec<u8>,
     cur_input: CfInput,
     restore_input: bool,
     cur_input_idx: usize,
     seq_input_idx: usize,
-    orig_buf: Vec<u8>,
-    fuzz_buf: Vec<u8>,
     input_list: &'static Vec<CfInputInfo>,
     no_select: &'static bool,
     priority_list: BinaryHeap<InputPriority>,
@@ -35,7 +34,6 @@ fn init(core: &mut dyn PluginInterface, store: &mut CfStore) -> Result<*mut u8> 
             cur_input_idx: 0,
             seq_input_idx: 0,
             orig_buf: Vec::new(),
-            fuzz_buf: Vec::new(),
             cur_input: CfInput::default(),
             priority_list: BinaryHeap::new(),
             restore_input: false,
@@ -126,9 +124,7 @@ fn select_input(
         s.orig_buf.clear();
         // If content is inlined in the input info
         if let Some(contents) = &input_info.contents {
-            for chunk in &contents.chunks {
-                s.orig_buf.extend_from_slice(chunk);
-            }
+            s.orig_buf.extend_from_slice(&contents);
         } else {
             // Lets read contents from disk
             let p = match &input_info.path {
@@ -156,13 +152,9 @@ fn select_input(
         //core.trace("Restored previous input");
     }
 
-    // Copy orig into fuzz_buf
-    s.fuzz_buf.clear();
-    s.fuzz_buf.extend_from_slice(&s.orig_buf);
-
-    // Make fuzz_buf new input
-    s.cur_input.chunks.clear();
-    s.cur_input.chunks.push(s.fuzz_buf.as_mut_slice());
+    // Copy orig into cur_input
+    s.cur_input.clear();
+    s.cur_input.extend_from_slice(&s.orig_buf);
 
     Ok(())
 }

@@ -130,8 +130,10 @@ fn mutate_input(
     if s.force_update || s.prev_input_idx != *s.cur_input_idx {
         // Reset stage
         stage.sync_to_input(q, afl, input);
+        
         // Update stage name
-        stage.update_info(&mut s.stage_name, s.stat_total_iterations.val);
+        s.stage_name.clear();
+        stage.update_state(input, Some(&mut s.stage_name), Some(s.stat_total_iterations.val));
         s.stat_cur_stage.set(&s.stage_name);
         *s.stat_stage_progress.val = 0;
 
@@ -154,9 +156,10 @@ fn mutate_input(
             }
             StageResult::Update => {
                 // Update cur_stage stat
-                stage.update_info(&mut s.stage_name, s.stat_total_iterations.val);
+                s.stage_name.clear();
+                stage.update_state(input, Some(&mut s.stage_name), None);
                 s.stat_cur_stage.set(&s.stage_name);
-                *s.stat_stage_progress.val = 0;
+
                 // Loop again to mutate at least once
                 continue;
             }
@@ -164,9 +167,11 @@ fn mutate_input(
                 // Can we progress to the next stage ?
                 if stage.next(q, afl, input) {
                     // Update cur_stage stat
-                    stage.update_info(&mut s.stage_name, s.stat_total_iterations.val);
+                    s.stage_name.clear();
+                    stage.update_state(input, Some(&mut s.stage_name), Some(s.stat_total_iterations.val));
                     s.stat_cur_stage.set(&s.stage_name);
                     *s.stat_stage_progress.val = 0;
+                    
                     continue;
                 }
                 

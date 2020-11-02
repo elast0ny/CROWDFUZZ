@@ -1,177 +1,115 @@
 use crate::*;
 
-#[derive(Clone, Copy, Debug)]
-enum InterestStage {
-    Width8(i8, usize),
-    Width16(i16, usize),
-    Width32(i32, usize),
-}
-impl Default for InterestStage {
-    fn default() -> Self {
-        Self::Width8(INTERESTING_8[0], 0)
-    }
-}
-impl InterestStage {
-    pub fn max_idx(&self, input_len: usize) -> usize {
-        match self {
-            Self::Width8(_, _) => input_len,
-            Self::Width16(_, _) => {
-                if input_len != 0 {
-                    input_len - 1
-                } else {
-                    0
-                }
-            }
-            Self::Width32(_, _) => {
-                if input_len > 4 {
-                    input_len - 3
-                } else {
-                    0
-                }
-            }
-        }
-    }
-
-    pub fn next_stage(&mut self) -> bool {
-        unsafe {
-            match self {
-                Self::Width8(ref mut val, ref mut idx) => {
-                    *idx += 1;
-                    if *idx == INTERESTING_8.len() {
-                        *self = Self::Width16(INTERESTING_16[0], 0);
-                    } else {
-                        *val = *INTERESTING_8.get_unchecked(*idx);
-                    }
-                }
-                Self::Width16(ref mut val, ref mut idx) => {
-                    *idx += 1;
-                    if *idx == INTERESTING_16.len() {
-                        *self = Self::Width32(INTERESTING_32[0], 0);
-                    } else {
-                        *val = *INTERESTING_16.get_unchecked(*idx);
-                    }
-                }
-                Self::Width32(ref mut val, ref mut idx) => {
-                    *idx += 1;
-                    if *idx == INTERESTING_32.len() {
-                        return false;
-                    } else {
-                        *val = *INTERESTING_32.get_unchecked(*idx);
-                    }
-                }
-            };
-            true
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
 pub struct InterestState {
     idx: usize,
     prev_val: Option<(usize, u32)>,
-    stage: InterestStage,
+    width: u8,
+    val_idx: usize,
 }
 impl InterestState {
-    pub fn new(input: &CfInput) -> Self {
-        let bytes = unsafe { input.chunks.get_unchecked(0) };
+    pub fn new(input: &[u8]) -> Self {
         Self {
-            idx: bytes.len(),
+            idx: input.len(),
             prev_val: None,
-            stage: InterestStage::default(),
+            width: 1,
+            val_idx: INTERESTING_8.len() - 1,
         }
     }
 
     pub fn desc(&self, dst: &mut String) {
         dst.push_str("interest ");
-        dst.push_str(match self.stage {
-            InterestStage::Width8(_, _) => "8/8",
-            InterestStage::Width16(_, _) => "16/8",
-            InterestStage::Width32(_, _) => "32/8",
+        dst.push_str(match self.width {
+            1 => "8/8",
+            2 => "16/8",
+            _ => "32/8",
         });
     }
 
-    pub fn iterations(&self) -> usize {
-        self.idx
-            * match self.stage {
-                InterestStage::Width8(_, _) => INTERESTING_8.len(),
-                InterestStage::Width16(_, _) => INTERESTING_16.len(),
-                InterestStage::Width32(_, _) => INTERESTING_32.len(),
+    pub fn total_cycles(&self, input: &[u8]) -> usize {
+        let mut total = 0;
+        let mut i = 1;
+        loop {
+            let max_idx = input.len() - (i - 1) as usize;
+
+            total += max_idx * if i == 1 {
+                INTERESTING_8.len()
+            } else if i == 2 {
+                INTERESTING_16.len()
+            } else {
+                INTERESTING_32.len()
+            };
+
+            i *= 2;
+            if i > 4 {
+                break;
             }
+        }
+        total
     }
 
-    pub fn mutate(&mut self, input: &mut CfInput) -> StageResult {
-        let bytes = unsafe { input.chunks.get_unchecked_mut(0) };
+    pub fn mutate(&mut self, mut input: &mut [u8]) -> StageResult {
         // Restore the orig input
         if let Some((idx, orig_val)) = self.prev_val.take() {
             unsafe {
-                match self.stage {
-                    InterestStage::Width8(_, _) => {
-                        *(bytes.as_mut_ptr().add(idx) as *mut u8) = orig_val as _
+                match self.width {
+                    1 => {
+                        input.set_byte(idx, orig_val as _);
                     }
-                    InterestStage::Width16(_, _) => {
-                        *(bytes.as_mut_ptr().add(idx) as *mut u16) = orig_val as _
+                    2 => {
+                        input.set_word(idx, orig_val as _);
                     }
-                    InterestStage::Width32(_, _) => {
-                        *(bytes.as_mut_ptr().add(idx) as *mut u32) = orig_val as _
+                    _ => {
+                        input.set_dword(idx, orig_val);
                     }
-                }
+                };
             }
         }
 
         loop {
+            // If we have reached the end of the buffer
             if self.idx == 0 {
-                return if self.stage.next_stage() {
-                    self.idx = self.stage.max_idx(bytes.len());
-                    StageResult::Update
-                } else {
-                    StageResult::Done
-                };
+                // If done all interesting values
+                if self.val_idx == 0 {
+                    if self.width == 4 {
+                        // Last stage is Interest(u32)
+                        return StageResult::Done;
+                    } else {
+                        // Move to next width
+                        self.width *= 2;
+                    }
+                    // Reset intersting value index
+                    self.val_idx = if self.width == 2 {
+                        INTERESTING_16.len() - 1
+                    } else {
+                        INTERESTING_32.len() - 1
+                    };
+                    self.idx = input.len() - (self.width - 1) as usize;
+                    return StageResult::Update;
+                }
+                
+                self.idx = input.len() - (self.width - 1) as usize;
+                self.val_idx -= 1;
+                continue;
             }
 
             self.idx -= 1;
 
-            unsafe {
-                let dst = bytes.as_mut_ptr().add(self.idx);
-                let orig: u32;
+            let orig = unsafe {
+                match self.width {
+                    1 => input.set_byte(self.idx, *INTERESTING_8.get_unchecked(self.val_idx)) as _,
+                    2 => input.set_word(self.idx, *INTERESTING_16.get_unchecked(self.val_idx)) as _,
+                    _ => input.set_dword(self.idx, *INTERESTING_32.get_unchecked(self.val_idx)),
+                }
+            };
 
-                match self.stage {
-                    InterestStage::Width8(j, _) => {
-                        orig = (*dst as u8) as u32;
-                        if could_be_bitflip(orig ^ (j as u8) as u32)
-                            || could_be_arith(orig, (j as u8) as u32, 1)
-                        {
-                            continue;
-                        }
-                        self.prev_val = Some((self.idx, orig));
-                        *(dst as *mut u8) = j as u8;
-                    }
-                    InterestStage::Width16(j, _) => {
-                        orig = *(dst as *mut u16) as u32;
-                        if could_be_bitflip(orig ^ (j as u16) as u32)
-                            || could_be_arith(orig, (j as u16) as u32, 2)
-                            || could_be_interest(orig, (j as u16) as _, 2, false)
-                        {
-                            continue;
-                        }
-                        self.prev_val = Some((self.idx, orig));
-                        *(dst as *mut u16) = j as u16;
-                    }
-                    InterestStage::Width32(j, _) => {
-                        orig = *(dst as *mut u32);
-                        if could_be_bitflip(orig ^ j as u32)
-                            || could_be_arith(orig, j as u32, 4)
-                            || could_be_interest(orig, j as _, 4, false)
-                        {
-                            continue;
-                        }
-                        self.prev_val = Some((self.idx, orig));
-                        *(dst as *mut u32) = j as u32;
-                    }
-                };
-            }
+            self.prev_val = Some((self.idx, orig));
 
             break;
         }
+
+        
+        
 
         StageResult::WillRestoreInput
     }
@@ -242,56 +180,36 @@ pub fn could_be_interest(old_val: u32, new_val: u32, blen: u8, check_le: bool) -
     false
 }
 
-pub const INTERESTING_8: &[i8] = &[
-    -128, /* Overflow signed 8-bit when decremented  */
-    -1,   /*                                         */
-    0,    /*                                         */
-    1,    /*                                         */
-    16,   /* One-off with common buffer size         */
-    32,   /* One-off with common buffer size         */
-    64,   /* One-off with common buffer size         */
-    100,  /* One-off with common buffer size         */
-    127,
+pub const INTERESTING_8: &[u8] = &[
+    0,   /*                                         */
+    1,   /*                                         */
+    16,  /* One-off with common buffer size         */
+    32,  /* One-off with common buffer size         */
+    64,  /* One-off with common buffer size         */
+    100, /* One-off with common buffer size         */
+    127, /*                                         */
+    128, /* Overflow signed 8-bit when decremented  */
+    255, /* u8::MAX                                 */
 ];
-pub const INTERESTING_16: &[i16] = &[
-    -128, -1, 0, 1, 16, 32, 64, 100, 127,
-    -32768, /* Overflow signed 16-bit when decremented */
-    -129,   /* Overflow signed 8-bit                   */
-    128,    /* Overflow signed 8-bit                   */
-    255,    /* Overflow unsig 8-bit when incremented   */
-    256,    /* Overflow unsig 8-bit                    */
-    512,    /* One-off with common buffer size         */
-    1000,   /* One-off with common buffer size         */
-    1024,   /* One-off with common buffer size         */
-    4096,   /* One-off with common buffer size         */
-    32767,  /* Overflow signed 16-bit when incremented */
+pub const INTERESTING_16: &[u16] = &[
+    0, 1, 16, 32, 64, 100, 127, 128, 128, 255,   /* Overflow signed 8-bit                   */
+    256,   /* Overflow unsig 8-bit                    */
+    512,   /* One-off with common buffer size         */
+    1000,  /* One-off with common buffer size         */
+    1024,  /* One-off with common buffer size         */
+    4096,  /* One-off with common buffer size         */
+    32767, /* Overflow signed 16-bit when incremented */
+    32768, /* Overflow signed 16-bit when decremented */
+    65407, /* Overflow signed 8-bit                   */
+    65535, /* u16::MAX                                */
 ];
-pub const INTERESTING_32: &[i32] = &[
-    -128,
-    -1,
-    0,
-    1,
-    16,
-    32,
-    64,
-    100,
-    127,
-    -32768,
-    -129,
-    128,
-    255,
-    256,
-    512,
-    1000,
-    1024,
-    4096,
-    32767,
-    -2147483648, /* Overflow signed 32-bit when decremented */
-    -100663046,  /* Large negative number (endian-agnostic) */
-    -32769,      /* Overflow signed 16-bit                  */
-    32768,       /* Overflow signed 16-bit                  */
-    65535,       /* Overflow unsig 16-bit when incremented  */
-    65536,       /* Overflow unsig 16 bit                   */
-    100663045,   /* Large positive number (endian-agnostic) */
-    2147483647,  /* Overflow signed 32-bit when incremented */
+pub const INTERESTING_32: &[u32] = &[
+    0, 1, 16, 32, 64, 100, 127, 128, 128, 255, 256, 512, 1000, 1024, 4096, 32767, 32768, 65407,
+    65535, 65536,      /* Overflow unsig 16 bit                   */
+    100663045,  /* Large positive number (endian-agnostic) */
+    2147483647, /* Overflow signed 32-bit when incremented */
+    2147483648, /* Overflow signed 32-bit when decremented */
+    4194304250, /* Large negative number (endian-agnostic) */
+    4294934527, /* Overflow signed 16-bit                  */
+    4294967295, /* u32::MAX                                */
 ];
