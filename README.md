@@ -41,7 +41,7 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 |[save_result](plugins/save_result/)|✔|Saves crashes and timeouts|
 |local_sync| TODO | Syncs local fuzzers working on the same project |
 |remote_sync| TODO | Syncs remote fuzzers working on the same project |
-|afl_state| In-Progress | Parses afl arguments and maintains the AFL state&queue |
-|afl_mutate| In-Progress | Implement AFL's file mutators|
+|afl_state| Working PoC | Parses afl arguments and maintains the AFL state&queue |
+|afl_mutate| Working PoC | Implement AFL's file mutators|
 |afl_fork_server| TODO | Support linux forking & DynamoRio for performant process creation|
 |afl_cov_analysis| TODO | Analyses the AFL bitmap to detect new coverage|
