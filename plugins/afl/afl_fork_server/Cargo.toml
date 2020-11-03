@@ -1,0 +1,26 @@
+[package]
+name = "afl_fork_server"
+version = "0.0.1"
+authors = ["Elast0ny <Elast0ny00@gmail.com>"]
+edition = "2018"
+
+[lib]
+path = "src/afl_fork_server.rs"
+name = "afl_fork_server"
+crate-type = ["cdylib"] # Compile to native lib
+
+[dependencies]
+cflib = {path="../../../cflib"}
+afl_lib = {path="../afl_lib"}
+cfg-if = "0.*"
+
+[target.'cfg(windows)'.dependencies]
+simple_parse = {path = "../../../../simple_parse"}
+winapi = {version = "0.*", features = ["minwinbase", "winnt"]}
+
+#[target.'cfg(unix)'.dependencies]
+#
+
+[build-dependencies]
+bindgen = "0.53.1"
+cfg-if = "0.*"

@@ -12,6 +12,8 @@ members = [
     "plugins/afl/afl_lib",
     "plugins/afl/afl_state",
     "plugins/afl/afl_mutate",
+    "plugins/afl/afl_fork_server",
+    
 ]
 
 exclude = [
