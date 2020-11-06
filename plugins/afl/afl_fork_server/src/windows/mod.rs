@@ -1,4 +1,5 @@
 use std::ffi::CString;
+use std::collections::HashSet;
 
 pub mod dynamorio;
 pub use dynamorio as dr;
@@ -33,7 +34,7 @@ pub struct ClientOptions {
     persistence_mode: PersistenceMode,
     coverage_kind: CoverageType,
     log_dir: CString,
-    target_modules: Vec<CString>,
+    target_modules: Vec<String>,
 }
 impl Default for ClientOptions {
     fn default() -> Self {
@@ -48,6 +49,18 @@ impl Default for ClientOptions {
     }
 }
 
+pub struct Globals {
+    modules: HashSet<String>,
+    options: ClientOptions,
+}
+impl Default for Globals {
+    fn default() -> Self {
+        Self {
+            modules: HashSet::new(),
+            options: ClientOptions::default(),
+        }
+    }
+}
 
 unsafe impl Send for ClientOptions {}
 unsafe impl Sync for ClientOptions {}

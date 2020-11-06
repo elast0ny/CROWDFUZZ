@@ -1,4 +1,4 @@
-use simple_parse::*;
+use ::simple_parse::*;
 use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -74,12 +74,11 @@ pub fn pretty_num(
     let mut generated_str = false;
 
     if let Some(postfix) = type_hints.1 {
-
         val = match postfix {
             TAG_POSTFIX_HEX => {
                 let _ = write!(dst, "0x{:X}", val);
                 return;
-            },
+            }
             TAG_POSTFIX_RESULT => {
                 let _ = write!(dst, "{}", val);
                 return;
@@ -192,15 +191,14 @@ pub(crate) fn release(lock: &mut AtomicU8) {
     lock.store(0, Ordering::Release);
 }
 
-#[derive(Debug)]
-pub(crate) struct GenericBuf {
-    capacity: &'static mut u64,
-    len: &'static mut u64,
-    /// Slice of 'capacity' bytes
-    buf: &'static mut [u8],
+#[derive(SpReadRawMut, Debug)]
+pub(crate) struct GenericBuf<'b> {
+    capacity: &'b mut u64,
+    len: &'b mut u64,
+    #[sp(count="capacity")]
+    buf: &'b mut [u8],
 }
-
-impl GenericBuf {
+impl<'b> GenericBuf<'b> {
     pub fn capacity(&self) -> u64 {
         *self.capacity
     }
@@ -226,100 +224,13 @@ impl GenericBuf {
     }
 }
 
-impl<'a> SpRead<'a> for GenericBuf {
-    fn inner_from_bytes(
-        input: &'a [u8],
-        _is_input_le: bool,
-        _count: Option<usize>,
-    ) -> std::result::Result<(&'a [u8], Self), SpError>
-    where
-        Self: 'a + Sized,
-    {
-        if input.len() < std::mem::size_of::<u64>() + std::mem::size_of::<u64>() {
-            return Err(SpError::NotEnoughBytes);
-        }
-        let (val, rest) = input.split_at(std::mem::size_of::<u64>());
-        let capacity = unsafe { &mut *(val.as_ptr() as *const u64 as *mut u64) };
-        let (val, rest) = rest.split_at(std::mem::size_of::<u64>());
-        let len = unsafe { &mut *(val.as_ptr() as *const u64 as *mut u64) };
-
-        if *capacity > rest.len() as u64 || *len > *capacity {
-            return Err(SpError::NotEnoughBytes);
-        }
-
-        let (val, rest) = rest.split_at(*capacity as usize);
-        let buf = unsafe {
-            std::slice::from_raw_parts_mut(val.as_ptr() as *const u8 as *mut u8, *capacity as usize)
-        };
-        Ok((rest, Self { capacity, len, buf }))
-    }
-
-    fn from_bytes(input: &'a [u8]) -> std::result::Result<(&'a [u8], Self), SpError>
-    where
-        Self: 'a + Sized,
-    {
-        Self::inner_from_bytes(input, true, None)
-    }
-}
-
-impl<'a> SpRead<'a> for StatNum {
-    fn inner_from_bytes(
-        input: &'a [u8],
-        _is_input_le: bool,
-        _count: Option<usize>,
-    ) -> std::result::Result<(&'a [u8], Self), SpError>
-    where
-        Self: 'a + Sized,
-    {
-        if input.len() < std::mem::size_of::<u64>() {
-            return Err(SpError::NotEnoughBytes);
-        }
-        let (typ_bytes, rest) = input.split_at(std::mem::size_of::<u64>());
-        let val = unsafe { &mut *(typ_bytes.as_ptr() as *const u64 as *mut u64) };
-
-        Ok((rest, Self { val }))
-    }
-
-    fn from_bytes(input: &'a [u8]) -> std::result::Result<(&'a [u8], Self), SpError>
-    where
-        Self: 'a + Sized,
-    {
-        Self::inner_from_bytes(input, true, None)
-    }
-}
-impl std::fmt::Debug for StatNum {
+impl<'b> std::fmt::Debug for StatNum<'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "0x{:X}", self.val)
     }
 }
 
-impl<'a> SpRead<'a> for StatStr {
-    fn inner_from_bytes(
-        input: &'a [u8],
-        _is_input_le: bool,
-        _count: Option<usize>,
-    ) -> std::result::Result<(&'a [u8], Self), SpError>
-    where
-        Self: 'a + Sized,
-    {
-        if input.len() < std::mem::size_of::<AtomicU8>() {
-            return Err(SpError::NotEnoughBytes);
-        }
-        let (typ_bytes, rest) = input.split_at(std::mem::size_of::<AtomicU8>());
-        let lock = unsafe { &mut *(typ_bytes.as_ptr() as *const AtomicU8 as *mut AtomicU8) };
-        let r = GenericBuf::from_bytes(rest)?;
-
-        Ok((r.0, Self { lock, val: r.1 }))
-    }
-
-    fn from_bytes(input: &'a [u8]) -> std::result::Result<(&'a [u8], Self), SpError>
-    where
-        Self: 'a + Sized,
-    {
-        Self::inner_from_bytes(input, true, None)
-    }
-}
-impl std::fmt::Debug for StatStr {
+impl<'b> std::fmt::Debug for StatStr<'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -331,33 +242,7 @@ impl std::fmt::Debug for StatStr {
     }
 }
 
-impl<'a> SpRead<'a> for StatBytes {
-    fn inner_from_bytes(
-        input: &'a [u8],
-        _is_input_le: bool,
-        _count: Option<usize>,
-    ) -> std::result::Result<(&'a [u8], Self), SpError>
-    where
-        Self: 'a + Sized,
-    {
-        if input.len() < std::mem::size_of::<AtomicU8>() {
-            return Err(SpError::NotEnoughBytes);
-        }
-        let (typ_bytes, rest) = input.split_at(std::mem::size_of::<AtomicU8>());
-        let lock = unsafe { &mut *(typ_bytes.as_ptr() as *const AtomicU8 as *mut AtomicU8) };
-        let r = GenericBuf::from_bytes(rest)?;
-
-        Ok((r.0, Self { lock, val: r.1 }))
-    }
-
-    fn from_bytes(input: &'a [u8]) -> std::result::Result<(&'a [u8], Self), SpError>
-    where
-        Self: 'a + Sized,
-    {
-        Self::inner_from_bytes(input, true, None)
-    }
-}
-impl std::fmt::Debug for StatBytes {
+impl<'b> std::fmt::Debug for StatBytes<'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

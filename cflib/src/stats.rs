@@ -1,4 +1,4 @@
-use simple_parse::*;
+use simple_parse::SpReadRawMut;
 use std::sync::atomic::AtomicU8;
 
 use crate::*;
@@ -55,10 +55,9 @@ pub const STAT_NUM_CRASHES: &str = "total_crashes_res";
 /// Number of timeouts
 pub const STAT_NUM_TIMEOUTS: &str = "total_timeouts_res";
 
-
 /// The states that the fuzzer core can have
-#[derive(SpRead, Debug, Clone, Copy)]
-#[sp(id_type = "u8")]
+#[derive(SpReadRawMut, Debug, Clone, Copy)]
+#[sp(id_type = "&u8")]
 pub enum CoreState {
     /// The core is in this state during load() and pre_fuzz()
     /// Stats should not be used when in this state
@@ -72,69 +71,65 @@ pub enum CoreState {
 }
 
 pub const STAT_MAGIC: u32 = 0xBADC0FFE;
+#[derive(SpReadRawMut, Debug)]
+pub struct CfStatsHeader<'b> {
+    pub magic: &'b u32,
+    pub state: CoreState,
+    pub pid: &'b u32,
+}
 
 /// Describes the statistic layout of a CROWDFUZZ instance
 /// Use simple_parse::SpRead to instanciate : CfStats::from_bytes(...)
-#[derive(SpRead, Debug)]
-pub struct CfStats {
-    pub magic: u32,
-    pub state: CoreState,
-    pub pid: u32,
-    num_plugins: u16,
-    #[sp(count = "num_plugins")]
-    pub plugins: Vec<PluginStats>,
+#[derive(SpReadRawMut, Debug)]
+pub struct CfStats<'b> {
+    pub header: CfStatsHeader<'b>,
+    pub plugins: Vec<PluginStats<'b>>,
 }
 
 /// Describes a plugin and its stats
-#[derive(SpRead, Debug)]
-pub struct PluginStats {
-    pub name: String,
-    num_stats: u32,
+#[derive(SpReadRawMut, Debug)]
+pub struct PluginStats<'b> {
+    pub name: &'b str,
+    num_stats: &'b u32,
     #[sp(count = "num_stats")]
-    pub stats: Vec<Stat>,
+    pub stats: Vec<Stat<'b>>,
 }
 
 /// Holds a stat tag and its value
-#[derive(SpRead, Debug)]
-pub struct Stat {
+#[derive(SpReadRawMut, Debug)]
+pub struct Stat<'b> {
     pub tag: String,
-    pub val: StatVal,
+    pub val: StatVal<'b>,
 }
 
 /// Different types of statistics
-#[derive(SpRead, Debug)]
+#[derive(SpReadRawMut, Debug)]
 #[sp(id_type = "u8")]
-pub enum StatVal {
+pub enum StatVal<'b> {
     #[sp(id = "0")]
-    Num(StatNum),
+    Num(StatNum<'b>),
     #[sp(id = "1")]
-    Bytes(StatBytes),
+    Bytes(StatBytes<'b>),
     #[sp(id = "2")]
-    Str(StatStr),
+    Str(StatStr<'b>),
 }
 
 /// Holds a reference to a number living in shared memory
 /// This reference is valid for the lifetime of the plugin
-pub struct StatNum {
-    pub val: &'static mut u64,
-}
-impl StatNum {
-    pub fn set(&mut self, new_val: u64) {
-        *self.val = new_val
-    }
-    pub fn get(&self) -> &u64 {
-        self.val
-    }
+#[derive(SpReadRawMut)]
+pub struct StatNum<'b> {
+    pub val: &'b mut u64,
 }
 
 /// Holds a reference to a string living in shared memory
 /// The get/set function use a spinlock to safely manage access to this data
 /// This reference is valid for the lifetime of the plugin
-pub struct StatStr {
-    pub(crate) lock: &'static mut AtomicU8,
-    pub(crate) val: GenericBuf,
+#[derive(SpReadRawMut)]
+pub struct StatStr<'b> {
+    pub(crate) lock: &'b mut AtomicU8,
+    pub(crate) val: GenericBuf<'b>,
 }
-impl StatStr {
+impl<'b> StatStr<'b> {
     pub fn set(&mut self, new_val: &str) {
         acquire(self.lock);
         self.val.set(new_val.as_bytes());
@@ -156,11 +151,12 @@ impl StatStr {
 /// Holds a reference to bytes living in shared memory
 /// The get/set function use a spinlock to safely manage access to this data
 /// This reference is valid for the lifetime of the plugin
-pub struct StatBytes {
-    pub(crate) lock: &'static mut AtomicU8,
-    pub(crate) val: GenericBuf,
+#[derive(SpReadRawMut)]
+pub struct StatBytes<'b> {
+    pub(crate) lock: &'b mut AtomicU8,
+    pub(crate) val: GenericBuf<'b>,
 }
-impl StatBytes {
+impl<'b> StatBytes<'b> {
     pub fn set(&mut self, new_val: &[u8]) {
         acquire(self.lock);
         self.val.set(new_val);
