@@ -146,7 +146,7 @@ pub fn draw_header<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
             state
                 .fuzzers
                 .iter()
-                .map(|f| f.stats.plugins[0].name.as_str()),
+                .map(|f| f.stats.plugins[0].name),
         )
         .collect::<Vec<&str>>()
         .drain(..)
@@ -249,7 +249,7 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
         }
     } else {
         let fuzzer = state.fuzzers.get_mut(state.ui.selected_tab - 1).unwrap();
-        let _ = write!(&mut state.ui.main_title, "core({})", fuzzer.stats.pid);
+        let _ = write!(&mut state.ui.main_title, "core({})", fuzzer.stats.header.pid);
         fuzzer_list.push(fuzzer);
     }
 
@@ -273,7 +273,7 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
                     let (_, cached_val) = get_or_add_cached_stat(
                         &mut state.ui.plugins_list_view,
                         plugin_idx - 1,
-                        plugin.name.as_str(),
+                        plugin.name,
                         &mut stat.val,
                     );
                     if fuzzer_idx == 0 {
@@ -281,7 +281,7 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
                     } else {
                         agregate_stat(
                             cached_val,
-                            plugin.name.as_str(),
+                            plugin.name,
                             &mut stat.val,
                             fuzzer_idx + 1,
                         );

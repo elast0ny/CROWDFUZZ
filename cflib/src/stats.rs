@@ -1,4 +1,4 @@
-use simple_parse::SpReadRawMut;
+use simple_parse::{SpReadRawMut, SpReadRaw};
 use std::sync::atomic::AtomicU8;
 
 use crate::*;
@@ -56,7 +56,7 @@ pub const STAT_NUM_CRASHES: &str = "total_crashes_res";
 pub const STAT_NUM_TIMEOUTS: &str = "total_timeouts_res";
 
 /// The states that the fuzzer core can have
-#[derive(SpReadRawMut, Debug, Clone, Copy)]
+#[derive(SpReadRawMut, SpReadRaw, Debug, Clone, Copy)]
 #[sp(id_type = "&u8")]
 pub enum CoreState {
     /// The core is in this state during load() and pre_fuzz()
@@ -71,10 +71,10 @@ pub enum CoreState {
 }
 
 pub const STAT_MAGIC: u32 = 0xBADC0FFE;
-#[derive(SpReadRawMut, Debug)]
+#[derive(SpReadRawMut, SpReadRaw, Debug)]
 pub struct CfStatsHeader<'b> {
     pub magic: &'b u32,
-    pub state: CoreState,
+    pub initialized: &'b u8,
     pub pid: &'b u32,
 }
 
@@ -170,19 +170,17 @@ impl<'b> StatBytes<'b> {
 
 /// Attemps to get a PID from the shared memory. If the fuzzer
 /// hasn't initialized the shared memory after 1s, Ok(None) is returned.
-/// # Safety
-/// This function assumes that the passed pointer can at least fit the stat header
-pub unsafe fn get_fuzzer_pid(shmem_start: *mut u8) -> Result<Option<u32>> {
-    let magic_ptr = shmem_start as *mut u32;
-    if *magic_ptr != STAT_MAGIC {
+pub fn get_fuzzer_pid(shmem_buf: &[u8]) -> Result<Option<u32>> {
+    let mut cur = std::io::Cursor::new(shmem_buf);
+    let header = CfStatsHeader::from_slice(&mut cur)?;
+
+    if *header.magic != STAT_MAGIC {
         return Err(From::from("Fuzzer stats invalid".to_string()));
     }
 
     let mut num_checks = 0;
-    let state_ptr = magic_ptr.add(1) as *mut CoreState;
-
     // Wait until shmem is initialized
-    while let CoreState::Initializing = *state_ptr {
+    while *header.initialized == 0 {
         std::thread::sleep(std::time::Duration::from_millis(200));
         num_checks += 1;
         if num_checks == 5 {
@@ -191,6 +189,5 @@ pub unsafe fn get_fuzzer_pid(shmem_start: *mut u8) -> Result<Option<u32>> {
         }
     }
 
-    let pid_ptr = state_ptr.add(1) as *mut u32;
-    Ok(Some(*pid_ptr))
+    Ok(Some(*header.pid))
 }

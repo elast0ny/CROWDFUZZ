@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use ::cflib::CfStats;
 use ::shared_memory::{Shmem, ShmemConf};
-use ::simple_parse::SpRead;
+use ::simple_parse::SpReadRawMut;
 use ::sysinfo::{ProcessExt, RefreshKind, System, SystemExt};
 
 use crate::*;
@@ -90,30 +90,36 @@ impl State {
                 }
             };
 
-            let cur = shmem.as_ptr();
+            let buf = unsafe {
+                std::slice::from_raw_parts_mut(
+                    shmem.as_ptr(),
+                    shmem.len(),
+                )
+            };
 
             let fuzzer_pid;
-            match unsafe { cflib::get_fuzzer_pid(cur) } {
+            match cflib::get_fuzzer_pid(buf) {
                 Ok(Some(p)) => fuzzer_pid = p,
                 Err(_) | Ok(None) => continue,
             };
 
-            let compare_pid_fn = |f: &Fuzzer| f.stats.pid == fuzzer_pid;
+            let compare_pid_fn = |f: &Fuzzer| *f.stats.header.pid == fuzzer_pid;
 
             // If we are already tracking this pid
             if self.fuzzers.iter().any(compare_pid_fn) {
                 continue;
             }
 
-            let buf = unsafe { std::slice::from_raw_parts_mut(cur, shmem.len()) };
-
             // Parse the fuzzer stats
-            let stats = match CfStats::from_bytes(buf) {
-                Ok((_, s)) => s,
+            let stats = match CfStats::from_mut_slice(&mut std::io::Cursor::new(buf)) {
+                Ok(s) => s,
                 Err(_) => continue,
             };
 
-            let fuzzer = Fuzzer { shmem, stats };
+            let fuzzer = Fuzzer {
+                shmem,
+                stats
+            };
             if !fuzzer.is_alive(&mut self.sys_info) {
                 continue;
             }
@@ -143,13 +149,13 @@ impl State {
 pub struct Fuzzer {
     #[allow(dead_code)]
     shmem: Shmem,
-    pub stats: CfStats,
+    pub stats: CfStats<'static>,
 }
 
 impl Fuzzer {
     pub fn is_alive(&self, sys_info: &mut System) -> bool {
         // Check if our PID is alive and is a crowdfuzz process
-        match sys_info.get_process(self.stats.pid as _) {
+        match sys_info.get_process(*self.stats.header.pid as _) {
             None => false,
             Some(p) => p.name().starts_with("crowdfuzz"),
         }
