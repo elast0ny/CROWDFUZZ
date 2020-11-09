@@ -1,6 +1,8 @@
-use simple_parse::{SpReadRawMut, SpReadRaw};
-use std::sync::atomic::AtomicU8;
+use simple_parse::{SpReadRaw, SpReadRawMut};
 use std::ptr::copy_nonoverlapping;
+use std::sync::atomic::AtomicU8;
+use std::io::Cursor;
+use std::ptr::read_volatile;
 
 use crate::*;
 
@@ -76,49 +78,47 @@ pub struct CfStats<'b> {
 #[derive(SpReadRawMut, Debug)]
 pub struct PluginStats<'b> {
     pub name: &'b str,
-    num_stats: &'b u32,
-    #[sp(count = "num_stats")]
     pub stats: Vec<Stat<'b>>,
 }
 
 /// Holds a stat tag and its value
 #[derive(SpReadRawMut, Debug)]
 pub struct Stat<'b> {
-    pub tag: String,
-    pub val: StatVal<'b>,
+    pub tag: &'b str,
+    pub val: StatVal,
 }
 
 /// Different types of statistics
 #[derive(SpReadRawMut, Debug)]
 #[sp(id_type = "u8")]
-pub enum StatVal<'b> {
+pub enum StatVal {
     #[sp(id = "0")]
-    Num(StatNum<'b>),
+    Num(StatNum),
     #[sp(id = "1")]
-    Bytes(StatBytes<'b>),
+    Bytes(StatBytes),
     #[sp(id = "2")]
-    Str(StatStr<'b>),
+    Str(StatStr),
 }
 
 /// Holds a reference to a number living in shared memory
 /// This reference is valid for the lifetime of the plugin
 #[derive(SpReadRawMut)]
-pub struct StatNum<'b> {
-    pub val: &'b mut u64,
+pub struct StatNum {
+    pub val: &'static mut u64,
 }
 
 /// Holds a reference to a string living in shared memory
 /// The get/set function use a spinlock to safely manage access to this data
 /// This reference is valid for the lifetime of the plugin
 #[derive(SpReadRawMut)]
-pub struct StatStr<'b> {
-    pub(crate) lock: &'b mut AtomicU8,
-    pub(crate) capacity: &'b u32,
-    pub(crate) len: &'b mut u32,
+pub struct StatStr {
+    pub(crate) lock: &'static mut AtomicU8,
+    pub(crate) capacity: &'static u32,
+    pub(crate) len: &'static mut u32,
     #[sp(count = "capacity")]
-    pub(crate) buf: &'b mut [u8],
+    pub(crate) buf: &'static mut [u8],
 }
-impl<'b> StatStr<'b> {
+impl StatStr {
     pub fn set<S: AsRef<str>>(&mut self, new_val: S) {
         acquire(self.lock);
         let src = new_val.as_ref().as_bytes();
@@ -147,24 +147,22 @@ impl<'b> StatStr<'b> {
 /// The get/set function use a spinlock to safely manage access to this data
 /// This reference is valid for the lifetime of the plugin
 #[derive(SpReadRawMut)]
-pub struct StatBytes<'b> {
-    pub(crate) lock: &'b mut AtomicU8,
-    pub(crate) capacity: &'b u32,
-    pub(crate) len: &'b mut u32,
+pub struct StatBytes {
+    pub(crate) lock: &'static mut AtomicU8,
+    pub(crate) capacity: &'static u32,
+    pub(crate) len: &'static mut u32,
     #[sp(count = "capacity")]
-    pub(crate) buf: &'b mut [u8],
+    pub(crate) buf: &'static mut [u8],
 }
-impl<'b> StatBytes<'b> {
+impl StatBytes {
     pub fn set<B: AsRef<[u8]>>(&mut self, new_val: B) {
         acquire(self.lock);
-        
         let src = new_val.as_ref();
         let new_len = std::cmp::min(*self.capacity as usize, src.len());
 
         unsafe {
             copy_nonoverlapping(src.as_ptr(), self.buf.as_mut_ptr(), new_len);
         }
-        
         *self.len = new_len as u32;
 
         release(self.lock);
@@ -178,23 +176,48 @@ impl<'b> StatBytes<'b> {
 /// Attemps to get a PID from the shared memory. If the fuzzer
 /// hasn't initialized the shared memory after 1s, Ok(None) is returned.
 pub fn get_fuzzer_pid(shmem_buf: &[u8]) -> Result<Option<u32>> {
-    let mut cur = std::io::Cursor::new(shmem_buf);
+    let mut cur = Cursor::new(shmem_buf);
     let header = CfStatsHeader::from_slice(&mut cur)?;
 
-    if *header.magic != STAT_MAGIC {
-        return Err(From::from("Fuzzer stats invalid".to_string()));
-    }
-
-    let mut num_checks = 0;
-    // Wait until shmem is initialized
-    while *header.initialized == 0 {
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        num_checks += 1;
-        if num_checks == 5 {
-            // Fuzzer didnt init in time
-            return Ok(None);
+    unsafe {
+        if read_volatile(header.magic) != STAT_MAGIC {
+            return Err(From::from(format!("Fuzzer stats invalid magic : {:X} != {:X}", read_volatile(header.magic), STAT_MAGIC)));
         }
-    }
 
-    Ok(Some(*header.pid))
+        let mut num_checks = 0;
+        // Wait until shmem is initialized
+        while std::ptr::read_volatile(header.initialized) == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            num_checks += 1;
+            if num_checks == 5 {
+                // Fuzzer didnt init in time
+                return Ok(None);
+            }
+        }
+
+        Ok(Some(std::ptr::read_volatile(header.pid)))
+    }
+}
+
+/* For stat owners */
+
+#[derive(SpReadRawMut, Debug)]
+pub struct OwnedCfStatsHeader <'b> {
+    pub magic: &'b mut u32,
+    pub initialized: &'b mut u8,
+    pub pid: &'b mut u32,
+}
+impl<'b> OwnedCfStatsHeader<'b> {
+    pub fn init(cur: &mut Cursor<&'b mut [u8]>) -> Result<Self> {
+
+        let s = <Self>::from_mut_slice(cur)?;
+
+        unsafe {
+            std::ptr::write_volatile(s.magic, STAT_MAGIC);
+            std::ptr::write_volatile(s.initialized, 0);
+            std::ptr::write_volatile(s.pid, std::process::id());
+        }
+
+        Ok(s)
+    }
 }

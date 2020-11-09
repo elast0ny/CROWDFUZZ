@@ -302,7 +302,7 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
                         "avg_plugin_time_ns"
                     }
                 } else {
-                    stat.tag.as_str()
+                    stat.tag
                 };
 
                 let (cached_tag, cached_val) =
@@ -327,7 +327,7 @@ pub fn draw_fuzzer<B: Backend>(state: &mut State, f: &mut Frame<B>, area: Rect) 
                         }
                     }
                 } else {
-                    agregate_stat(cached_val, stat.tag.as_str(), &mut stat.val, fuzzer_idx + 1);
+                    agregate_stat(cached_val, stat.tag, &mut stat.val, fuzzer_idx + 1);
                 }
             }
         }

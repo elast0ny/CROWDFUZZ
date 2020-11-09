@@ -100,7 +100,15 @@ impl State {
             let fuzzer_pid;
             match cflib::get_fuzzer_pid(buf) {
                 Ok(Some(p)) => fuzzer_pid = p,
-                Err(_) | Ok(None) => continue,
+                Err(e) => {
+                    let _ = destroy_ui();
+                    panic!("Failed to get pid : {}", e);
+                }
+                Ok(None) => {
+                    let _ = destroy_ui();
+                    panic!("fuzzer never initialized in time...");
+                    //continue
+                },
             };
 
             let compare_pid_fn = |f: &Fuzzer| *f.stats.header.pid == fuzzer_pid;
@@ -113,7 +121,10 @@ impl State {
             // Parse the fuzzer stats
             let stats = match CfStats::from_mut_slice(&mut std::io::Cursor::new(buf)) {
                 Ok(s) => s,
-                Err(_) => continue,
+                Err(e) => {
+                    let _ = destroy_ui();
+                    panic!("Failed to parse stat memory : {}", e);
+                },
             };
 
             let fuzzer = Fuzzer {

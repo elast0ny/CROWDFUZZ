@@ -18,16 +18,16 @@ impl PluginData {
     }
 }
 
-pub struct PluginCtx<'a> {
+pub struct PluginCtx<'b> {
     /// Statistic about the fuzzer that live in the shared memory
-    pub stats: Stats<'a>,
+    pub stats: Stats<'b>,
     /// Data used by the plugins
     pub plugin_data: Vec<PluginData>,
     /// current plugin being executed
     pub cur_plugin_id: usize,
 }
 
-impl<'a> PluginInterface for PluginCtx<'a> {
+impl<'b> PluginInterface for PluginCtx<'b> {
     fn info(&self, msg: &str) {
         let plugin = unsafe { self.plugin_data.get_unchecked(self.cur_plugin_id) };
         info!("[{}] {}", &plugin.name, msg);
@@ -88,7 +88,7 @@ pub struct Plugin {
     pub is_init: bool,
     pub ctx: *mut u8,
     pub has_stats: bool,
-    pub exec_time: cflib::StatNum<'static>,
+    pub exec_time: cflib::StatNum,
 
     #[allow(dead_code)] // This field is  just to keep the module loaded in memory
     module: libloading::Library,

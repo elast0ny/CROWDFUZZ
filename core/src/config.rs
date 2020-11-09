@@ -91,7 +91,7 @@ fn is_fuzzer_alive(stats_file: &Path) -> bool {
     let mut num_attempts = 5;
     let mut pid = 0;
     while num_attempts != 0 {
-        match unsafe { cflib::get_fuzzer_pid(&buf) } {
+        match cflib::get_fuzzer_pid(&buf) {
             Err(_) => {
                 warn!(
                     "Stat memory is invalid for '{}'",
@@ -212,9 +212,14 @@ impl Config {
                 .create()
             {
                 Ok(s) => {
-                    unsafe {
-                        *(s.as_ptr() as *mut u32) = STAT_MAGIC;
-                    }
+                    let buf = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            s.as_ptr(),
+                            s.len(),
+                        )
+                    };
+                    cflib::OwnedCfStatsHeader::init(&mut std::io::Cursor::new(buf))?;
+
                     Some(s)
                 }
                 Err(_) => {

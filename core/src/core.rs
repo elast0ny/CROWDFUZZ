@@ -15,25 +15,25 @@ use crate::plugin::*;
 use crate::stats::*;
 use crate::store::*;
 
-pub struct CfCore<'a> {
+pub struct CfCore<'b> {
     /// Information pulled from the input config file
     pub config: Config,
     /// Set to true when an exit event happens (ctrl-c)
     pub exiting: Arc<AtomicBool>,
-    /// The shared memory mapping used for stats
-    pub shmem: shared_memory::Shmem,
     /// Data available to plugins
-    pub ctx: PluginCtx<'a>,
+    pub ctx: PluginCtx<'b>,
     /// List of loaded plugins
     pub plugin_chain: Vec<Plugin>,
     /// Index of the first plugin of the fuzz loop
     pub fuzz_loop_start: usize,
-    pub stats: CoreStats<'static>,
+    /// The shared memory mapping used for stats
+    pub shmem: shared_memory::Shmem,
+    pub stats: CoreStats<'b>,
     /// Public plugin data store
     pub store: Store,
 }
 
-impl<'a> CfCore<'a> {
+impl<'b> CfCore<'b> {
     pub fn init(mut config: Config) -> Result<Pin<Box<Self>>> {
         info!(
             "Allocating space for fuzzer statistics '{}'",
@@ -48,9 +48,13 @@ impl<'a> CfCore<'a> {
                     .create()
                 {
                     Ok(s) => {
-                        unsafe {
-                            *(s.as_ptr() as *mut u32) = STAT_MAGIC;
-                        }
+                        let buf = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                s.as_ptr(),
+                                s.len(),
+                            )
+                        };
+                        cflib::OwnedCfStatsHeader::init(&mut std::io::Cursor::new(buf))?;
                         s
                     }
                     Err(e) => {
@@ -132,7 +136,11 @@ impl<'a> CfCore<'a> {
                 unsafe { self.plugin_chain.get_unchecked_mut(self.ctx.cur_plugin_id) };
 
             // Add new plugin to stats
-            self.ctx.stats.new_plugin(plugin.name())?;
+            if let Err(e) = self.ctx.stats.new_plugin(plugin.name()) {
+                error!("Failed to create plugin entry in stats memory : {}", e);
+                return Err(e);
+            }
+
             // Every plugin gets an exec_time
             plugin.exec_time = match self.ctx.stats.new_stat(
                 &format!(
@@ -179,7 +187,7 @@ impl<'a> CfCore<'a> {
             }
         }
         // Init is done
-        self.ctx.stats.set_state(CoreState::Fuzzing);
+        self.ctx.stats.set_initialized(true);
         self.ctx.cur_plugin_id = num_plugins;
 
         Ok(())
@@ -328,7 +336,7 @@ impl<'a> CfCore<'a> {
     }
 }
 
-impl<'a> Drop for CfCore<'a> {
+impl<'b> Drop for CfCore<'b> {
     fn drop(&mut self) {
         self.clear_public_store();
 

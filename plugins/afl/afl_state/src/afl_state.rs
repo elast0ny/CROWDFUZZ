@@ -20,8 +20,8 @@ struct State {
     tmp: String,
     init_testcase_num: usize,
 
-    queued_with_cov: StatNum<'_>,
-    queued_variable: StatNum<'_>,
+    queued_with_cov: StatNum,
+    queued_variable: StatNum,
 
     num_execs: &'static u64,
     no_select: &'static mut bool,

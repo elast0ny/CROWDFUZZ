@@ -189,13 +189,13 @@ pub(crate) fn release(lock: &mut AtomicU8) {
     lock.store(0, Ordering::Release);
 }
 
-impl<'b> std::fmt::Debug for StatNum<'b> {
+impl std::fmt::Debug for StatNum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "0x{:X}", self.val)
     }
 }
 
-impl<'b> std::fmt::Debug for StatStr<'b> {
+impl std::fmt::Debug for StatStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -209,7 +209,7 @@ impl<'b> std::fmt::Debug for StatStr<'b> {
     }
 }
 
-impl<'b> std::fmt::Debug for StatBytes<'b> {
+impl std::fmt::Debug for StatBytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
