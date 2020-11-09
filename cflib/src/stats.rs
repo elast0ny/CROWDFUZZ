@@ -1,5 +1,6 @@
 use simple_parse::{SpReadRawMut, SpReadRaw};
 use std::sync::atomic::AtomicU8;
+use std::ptr::copy_nonoverlapping;
 
 use crate::*;
 
@@ -54,21 +55,6 @@ pub const STAT_TARGET_EXEC_TIME: &str = "avg_target_exec_time_ns";
 pub const STAT_NUM_CRASHES: &str = "total_crashes_res";
 /// Number of timeouts
 pub const STAT_NUM_TIMEOUTS: &str = "total_timeouts_res";
-
-/// The states that the fuzzer core can have
-#[derive(SpReadRawMut, SpReadRaw, Debug, Clone, Copy)]
-#[sp(id_type = "&u8")]
-pub enum CoreState {
-    /// The core is in this state during load() and pre_fuzz()
-    /// Stats should not be used when in this state
-    #[sp(id = "0")]
-    Initializing,
-    /// During fuzz(). Stats memory is safe to read.
-    #[sp(id = "1")]
-    Fuzzing,
-    #[sp(id = "2")]
-    Exiting,
-}
 
 pub const STAT_MAGIC: u32 = 0xBADC0FFE;
 #[derive(SpReadRawMut, SpReadRaw, Debug)]
@@ -127,19 +113,28 @@ pub struct StatNum<'b> {
 #[derive(SpReadRawMut)]
 pub struct StatStr<'b> {
     pub(crate) lock: &'b mut AtomicU8,
-    pub(crate) val: GenericBuf<'b>,
+    pub(crate) capacity: &'b u32,
+    pub(crate) len: &'b mut u32,
+    #[sp(count = "capacity")]
+    pub(crate) buf: &'b mut [u8],
 }
 impl<'b> StatStr<'b> {
-    pub fn set(&mut self, new_val: &str) {
+    pub fn set<S: AsRef<str>>(&mut self, new_val: S) {
         acquire(self.lock);
-        self.val.set(new_val.as_bytes());
+        let src = new_val.as_ref().as_bytes();
+        let new_len = std::cmp::min(*self.capacity as usize, src.len());
+        unsafe {
+            copy_nonoverlapping(src.as_ptr(), self.buf.as_mut_ptr(), new_len);
+        }
+        *self.len = new_len as u32;
+
         release(self.lock);
     }
     pub fn get<'a>(&'a mut self) -> LockGuard<&'a str> {
         acquire(self.lock);
 
         // Convert current buf to a utf8 str
-        let s = match std::str::from_utf8(self.val.get()) {
+        let s = match std::str::from_utf8(&self.buf[..*self.len as usize]) {
             Ok(s) => s,
             Err(_) => "<INVALID UTF8>",
         };
@@ -154,17 +149,29 @@ impl<'b> StatStr<'b> {
 #[derive(SpReadRawMut)]
 pub struct StatBytes<'b> {
     pub(crate) lock: &'b mut AtomicU8,
-    pub(crate) val: GenericBuf<'b>,
+    pub(crate) capacity: &'b u32,
+    pub(crate) len: &'b mut u32,
+    #[sp(count = "capacity")]
+    pub(crate) buf: &'b mut [u8],
 }
 impl<'b> StatBytes<'b> {
-    pub fn set(&mut self, new_val: &[u8]) {
+    pub fn set<B: AsRef<[u8]>>(&mut self, new_val: B) {
         acquire(self.lock);
-        self.val.set(new_val);
+        
+        let src = new_val.as_ref();
+        let new_len = std::cmp::min(*self.capacity as usize, src.len());
+
+        unsafe {
+            copy_nonoverlapping(src.as_ptr(), self.buf.as_mut_ptr(), new_len);
+        }
+        
+        *self.len = new_len as u32;
+
         release(self.lock);
     }
     pub fn get<'a>(&'a mut self) -> LockGuard<&'a [u8]> {
         acquire(self.lock);
-        LockGuard::new(self.lock, self.val.get())
+        LockGuard::new(self.lock, &self.buf[..*self.len as usize])
     }
 }
 

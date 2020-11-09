@@ -81,10 +81,17 @@ fn is_fuzzer_alive(stats_file: &Path) -> bool {
         }
     };
 
+    let buf = unsafe {
+        std::slice::from_raw_parts_mut(
+            shmem.as_ptr(),
+            shmem.len(),
+        )
+    };
+
     let mut num_attempts = 5;
     let mut pid = 0;
     while num_attempts != 0 {
-        match unsafe { cflib::get_fuzzer_pid(shmem.as_ptr()) } {
+        match unsafe { cflib::get_fuzzer_pid(&buf) } {
             Err(_) => {
                 warn!(
                     "Stat memory is invalid for '{}'",

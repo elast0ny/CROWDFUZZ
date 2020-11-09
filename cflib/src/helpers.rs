@@ -1,5 +1,3 @@
-use ::simple_parse::*;
-use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::*;
@@ -191,39 +189,6 @@ pub(crate) fn release(lock: &mut AtomicU8) {
     lock.store(0, Ordering::Release);
 }
 
-#[derive(SpReadRawMut, Debug)]
-pub(crate) struct GenericBuf<'b> {
-    capacity: &'b mut u64,
-    len: &'b mut u64,
-    #[sp(count="capacity")]
-    buf: &'b mut [u8],
-}
-impl<'b> GenericBuf<'b> {
-    pub fn capacity(&self) -> u64 {
-        *self.capacity
-    }
-
-    /// Updates the contents of the buf
-    /// If new_val is too big, it gets truncated to self.capacity()
-    pub fn set(&mut self, new_val: &[u8]) {
-        let mut new_len = self.capacity();
-        if (new_val.len() as u64) < self.capacity() {
-            new_len = new_val.len() as u64;
-        }
-
-        *self.len = 0;
-        unsafe {
-            copy_nonoverlapping(new_val.as_ptr(), self.buf.as_mut_ptr(), new_len as usize);
-        }
-        *self.len = new_len;
-    }
-
-    /// Returns the current contents of the buf
-    pub fn get(&self) -> &[u8] {
-        &self.buf[..*self.len as usize]
-    }
-}
-
 impl<'b> std::fmt::Debug for StatNum<'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "0x{:X}", self.val)
@@ -235,9 +200,11 @@ impl<'b> std::fmt::Debug for StatStr<'b> {
         write!(
             f,
             "[{}/{}] '{}'",
-            self.val.len,
-            self.val.capacity(),
-            unsafe { std::str::from_utf8_unchecked(self.val.get()) }
+            *self.len,
+            *self.capacity,
+            unsafe {
+                std::str::from_utf8_unchecked(&self.buf[..*self.len as usize])
+            }
         )
     }
 }
@@ -247,9 +214,9 @@ impl<'b> std::fmt::Debug for StatBytes<'b> {
         write!(
             f,
             "[{}/{}] {:X?}",
-            self.val.len,
-            self.val.capacity(),
-            self.val.get()
+            *self.len,
+            *self.capacity,
+            &self.buf[..*self.len as usize]
         )
     }
 }

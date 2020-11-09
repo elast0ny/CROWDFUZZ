@@ -28,7 +28,7 @@ pub struct CfCore<'a> {
     pub plugin_chain: Vec<Plugin>,
     /// Index of the first plugin of the fuzz loop
     pub fuzz_loop_start: usize,
-    pub stats: CoreStats,
+    pub stats: CoreStats<'static>,
     /// Public plugin data store
     pub store: Store,
 }

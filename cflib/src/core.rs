@@ -22,13 +22,13 @@ pub trait PluginInterface {
 
     /// Creates a new number in the stats memory
     /// This can fail if the mapping runs out of space.
-    fn new_stat_num(&mut self, tag: &str, init: u64) -> Result<StatNum>;
+    fn new_stat_num(&mut self, tag: &str, init: u64) -> Result<StatNum<'static>>;
     /// Creates a new string in the stats memory
     /// This can fail if the mapping runs out of space.
-    fn new_stat_str(&mut self, tag: &str, max_size: usize, init: &str) -> Result<StatStr>;
+    fn new_stat_str(&mut self, tag: &str, max_size: usize, init: &str) -> Result<StatStr<'static>>;
     /// Creates a new byte buffer in the stats memory
     /// This can fail if the mapping runs out of space.
-    fn new_stat_bytes(&mut self, tag: &str, max_size: usize, init: &[u8]) -> Result<StatBytes>;
+    fn new_stat_bytes(&mut self, tag: &str, max_size: usize, init: &[u8]) -> Result<StatBytes<'static>>;
 }
 
 /// Initializes the plugin.

@@ -88,7 +88,7 @@ pub struct Plugin {
     pub is_init: bool,
     pub ctx: *mut u8,
     pub has_stats: bool,
-    pub exec_time: cflib::StatNum,
+    pub exec_time: cflib::StatNum<'static>,
 
     #[allow(dead_code)] // This field is  just to keep the module loaded in memory
     module: libloading::Library,

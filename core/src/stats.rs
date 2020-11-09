@@ -6,26 +6,26 @@ use std::sync::atomic::AtomicU8;
 
 use ::cflib::*;
 use ::log::*;
-use ::simple_parse::{SpRead, SpWrite};
+use ::simple_parse::{SpReadRawMut, SpWrite};
 
 use crate::core::CfCore;
 use crate::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub struct CoreStats {
+pub struct CoreStats<'b> {
     /// EPOCHS on startup
-    pub start_time: cflib::StatNum,
+    pub start_time: cflib::StatNum<'b>,
     /// Number of executions since startup
-    pub num_execs: cflib::StatNum,
+    pub num_execs: cflib::StatNum<'b>,
     /// Time it takes for a single execution
-    pub total_exec_time: cflib::StatNum,
+    pub total_exec_time: cflib::StatNum<'b>,
     /// Time spent in the fuzzer core
-    pub exec_time: cflib::StatNum,
-    pub cwd: cflib::StatStr,
-    pub cmd_line: cflib::StatStr,
-    pub target_hash: cflib::StatBytes,
+    pub exec_time: cflib::StatNum<'b>,
+    pub cwd: cflib::StatStr<'b>,
+    pub cmd_line: cflib::StatStr<'b>,
+    pub target_hash: cflib::StatBytes<'b>,
 }
-impl Default for CoreStats {
+impl<'b> Default for CoreStats<'b> {
     fn default() -> Self {
         // This gets initialized properly before being used in init_stats()
         #[allow(invalid_value)]
@@ -255,7 +255,7 @@ impl<'a> Stats<'a> {
         let num_plugins = unsafe { &mut *(buf.add(self.num_plugin_idx) as *mut u16) };
 
         let plugin_start_idx = self.end_idx;
-        let _ = name.to_bytes(&mut tmp);
+        let _ = name.to_writer(&mut tmp);
         if self.buf.len() < self.end_idx + tmp.len() {
             return Err(From::from("Stats memory is too small".to_string()));
         }
@@ -283,7 +283,7 @@ impl<'a> Stats<'a> {
         Ok(())
     }
 
-    pub fn new_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal> {
+    pub fn new_stat(&mut self, tag: &str, stat: NewStat) -> Result<StatVal<'static>> {
         match self.get_state() {
             CoreState::Initializing => {}
             _ => {
