@@ -249,9 +249,9 @@ fn destroy(
 ) -> Result<()> {
     let _state = box_take!(plugin_ctx, State);
 
-    let _ = store.remove(STORE_EXIT_STATUS);
-    let _ = store.remove(STORE_TARGET_EXEC_TIME);
-    let _ = store.remove(STORE_AVG_TARGET_EXEC_TIME);
+    store.remove(STORE_EXIT_STATUS)?;
+    store.remove(STORE_TARGET_EXEC_TIME)?;
+    store.remove(STORE_AVG_TARGET_EXEC_TIME)?;
 
     Ok(())
 }

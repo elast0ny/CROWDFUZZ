@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use ::simple_parse::{SpRead, SpWrite};
+
 use crate::*;
 
 pub type CfStore = HashMap<String, *mut u8>;
@@ -100,9 +102,14 @@ pub const STORE_TARGET_EXEC_TIME: &str = "exec_time";
 /// (*const u64) Average nanoseconds the target takes to run
 pub const STORE_AVG_TARGET_EXEC_TIME: &str = "avg_exec_time";
 
+#[derive(SpRead, SpWrite)]
+#[sp(id_type = "u8")]
 pub enum TargetExitStatus {
+    #[sp(id = "0")]
     Normal(i32),
+    #[sp(id = "1")]
     Timeout,
+    #[sp(id = "2")]
     Crash(i32),
 }
 
