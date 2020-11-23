@@ -45,3 +45,14 @@ This fuzzer does not bring any novel techniques to fuzzing on its own. The goal 
 |afl_mutate| Working PoC | Implement AFL's file mutators|
 |afl_fork_server| TODO | Support linux forking & DynamoRio for performant process creation|
 |afl_cov_analysis| TODO | Analyses the AFL bitmap to detect new coverage|
+
+## License
+
+ * [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
+ * [MIT license](http://opensource.org/licenses/MIT)
+
+## Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
